@@ -51,7 +51,8 @@ jobs:
           [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           choco install mingw --version 8.1.0 --forcex86
-          Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1      - uses: actions/setup-go@v5
+          Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.23.0'
           cache: true
