@@ -41,10 +41,10 @@ jobs:
           sudo apt-get install -y gcc-multilib libc6-dev-i386
       - name: Install MinGW 32-bit on Windows
         if: matrix.arch == '386' && matrix.os == 'windows-latest'
+        shell: powershell
         run: |
           choco install mingw --version 8.1.0 --forcex86
-          refreshenv
-      - uses: actions/setup-go@v5
+          Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1      - uses: actions/setup-go@v5
         with:
           go-version: '1.23.0'
           cache: true
