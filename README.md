@@ -1,6 +1,6 @@
 # Shisui
 
-![AppVeyor Build (with branch)](https://ci.appveyor.com/api/projects/status/github/optimism-java/shisui?branch=portal&svg=true)
+![GitHub Actions](https://github.com/optimism-java/shisui2/workflows/CI/badge.svg?branch=main)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-blue.svg)](https://discord.gg/HBAgaHCBuY)
 
 Shisui is an [Ethereum portal client](https://github.com/ethereum/portal-network-specs) written in Go language based
