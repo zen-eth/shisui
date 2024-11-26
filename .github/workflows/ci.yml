@@ -50,12 +50,13 @@ jobs:
             mingw-w64-i686-make
             mingw-w64-i686-toolchain
           path-type: inherit
-      - name: Configure Build Environment
+      - name: List MSYS2 Directory
         if: matrix.arch == '386' && matrix.os == 'windows-latest'
-        shell: msys2 {0}
+        shell: bash
         run: |
-          echo "CC=C:/msys64/mingw32/bin/gcc.exe" >> $GITHUB_ENV
-          echo "C:/msys64/mingw32/bin" >> $GITHUB_PATH
+          ls -la /c/msys64/mingw32/bin/
+          echo "CC=$(cygpath -w /c/msys64/mingw32/bin/gcc.exe)" >> $GITHUB_ENV
+          echo "/c/msys64/mingw32/bin" >> $GITHUB_PATH
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.0'
