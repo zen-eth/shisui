@@ -55,7 +55,7 @@ jobs:
         shell: msys2 {0}
         run: |
           pwd
-          find / -name gcc.exe
+          find /mingw32 -name gcc.exe
           which gcc
       - uses: actions/setup-go@v5
         with:
