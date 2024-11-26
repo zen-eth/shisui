@@ -1,0 +1,45 @@
+linters:
+  enable:
+    - gofmt
+    - govet
+    - gosimple
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - typecheck
+    - unused
+    - revive
+    - gocyclo
+#    - gosec
+    - misspell
+    - prealloc
+    - copyloopvar
+#    - gocritic
+    - bodyclose
+    - unconvert
+    - unparam
+    - whitespace
+#    - wsl
+
+linters-settings:
+  revive:
+    enable-all-rules: false
+    # here we enable specific useful rules
+    # see https://golangci-lint.run/usage/linters/#revive for supported rules
+    rules:
+      - name: receiver-naming
+        severity: warning
+        disabled: false
+        exclude: [""]
+
+issues:
+  exclude-dirs:
+    - vendor
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+    - path: history/storage_test.go
+      text: "`newContentStorage` - `nodeDataDir` always receives `nodeDataDir`"
+      linters:
+        - unparam
