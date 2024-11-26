@@ -42,7 +42,8 @@ jobs:
       - name: Install MinGW 32-bit on Windows
         if: matrix.arch == '386' && matrix.os == 'windows-latest'
         run: |
-          choco install mingw --forcex86
+          choco install mingw --version 8.1.0 --forcex86
+          refreshenv
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.0'
