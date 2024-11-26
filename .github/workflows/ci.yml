@@ -39,18 +39,21 @@ jobs:
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y gcc-multilib libc6-dev-i386
-      - name: Install MinGW 32-bit on Windows
+      - name: Install MSYS2 with i686 toolchain
         if: matrix.arch == '386' && matrix.os == 'windows-latest'
-        shell: powershell
-        env:
-          GETH_MINGW: 'C:\ProgramData\chocolatey\lib\mingw\tools\install'
-          GETH_CC: 'C:\ProgramData\chocolatey\lib\mingw\tools\install\bin\gcc.exe'
-          PATH: 'C:\ProgramData\chocolatey\lib\mingw\tools\install\bin;C:\Program Files (x86)\NSIS\;${{ env.PATH }}'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW32
+          update: true
+          install: >-
+            mingw-w64-i686-gcc
+            mingw-w64-i686-binutils
+      - name: Set up Windows build environment
+        if: matrix.arch == '386' && matrix.os == 'windows-latest'
+        shell: bash
         run: |
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine")
-          choco install mingw --version 8.1.0 --forcex86
-          Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
-      - uses: actions/setup-go@v5
+          echo "GETH_CC=/mingw32/bin/gcc.exe" >> $GITHUB_ENV
+          echo "/mingw32/bin" >> $GITHUB_PATH      - uses: actions/setup-go@v5
         with:
           go-version: '1.23.0'
           cache: false
