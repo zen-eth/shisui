@@ -42,4 +42,7 @@ issues:
     - path: history/storage_test.go
       text: "`newContentStorage` - `nodeDataDir` always receives `nodeDataDir`"
       linters:
-        - unparam
+
+run:
+  timeout: 10m
+
