@@ -27,7 +27,7 @@ const (
 	HistoricalSummaries         storage.ContentType = 0x14
 )
 
-type BeaconNetwork struct {
+type Network struct {
 	portalProtocol *portalwire.PortalProtocol
 	spec           *common.Spec
 	log            log.Logger
@@ -36,10 +36,10 @@ type BeaconNetwork struct {
 	lightClient    *ConsensusLightClient
 }
 
-func NewBeaconNetwork(portalProtocol *portalwire.PortalProtocol) *BeaconNetwork {
+func NewBeaconNetwork(portalProtocol *portalwire.PortalProtocol) *Network {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &BeaconNetwork{
+	return &Network{
 		portalProtocol: portalProtocol,
 		spec:           configs.Mainnet,
 		closeCtx:       ctx,
@@ -48,7 +48,7 @@ func NewBeaconNetwork(portalProtocol *portalwire.PortalProtocol) *BeaconNetwork 
 	}
 }
 
-func (bn *BeaconNetwork) Start() error {
+func (bn *Network) Start() error {
 	err := bn.portalProtocol.Start()
 	if err != nil {
 		return err
@@ -58,12 +58,12 @@ func (bn *BeaconNetwork) Start() error {
 	return nil
 }
 
-func (bn *BeaconNetwork) Stop() {
+func (bn *Network) Stop() {
 	bn.closeFunc()
 	bn.portalProtocol.Stop()
 }
 
-func (bn *BeaconNetwork) GetUpdates(firstPeriod, count uint64) ([]common.SpecObj, error) {
+func (bn *Network) GetUpdates(firstPeriod, count uint64) ([]common.SpecObj, error) {
 	lightClientUpdateKey := &LightClientUpdateKey{
 		StartPeriod: firstPeriod,
 		Count:       count,
@@ -86,7 +86,7 @@ func (bn *BeaconNetwork) GetUpdates(firstPeriod, count uint64) ([]common.SpecObj
 	return res, nil
 }
 
-func (bn *BeaconNetwork) GetCheckpointData(checkpointHash tree.Root) (common.SpecObj, error) {
+func (bn *Network) GetCheckpointData(checkpointHash tree.Root) (common.SpecObj, error) {
 	bootstrapKey := &LightClientBootstrapKey{
 		BlockHash: checkpointHash[:],
 	}
@@ -104,7 +104,7 @@ func (bn *BeaconNetwork) GetCheckpointData(checkpointHash tree.Root) (common.Spe
 	return forkedLightClientBootstrap.Bootstrap, nil
 }
 
-func (bn *BeaconNetwork) GetFinalityUpdate(finalizedSlot uint64) (common.SpecObj, error) {
+func (bn *Network) GetFinalityUpdate(finalizedSlot uint64) (common.SpecObj, error) {
 	finalityUpdateKey := &LightClientFinalityUpdateKey{
 		FinalizedSlot: finalizedSlot,
 	}
@@ -122,7 +122,7 @@ func (bn *BeaconNetwork) GetFinalityUpdate(finalizedSlot uint64) (common.SpecObj
 	return forkedLightClientFinalityUpdate.LightClientFinalityUpdate, nil
 }
 
-func (bn *BeaconNetwork) GetOptimisticUpdate(optimisticSlot uint64) (common.SpecObj, error) {
+func (bn *Network) GetOptimisticUpdate(optimisticSlot uint64) (common.SpecObj, error) {
 	optimisticUpdateKey := &LightClientOptimisticUpdateKey{
 		OptimisticSlot: optimisticSlot,
 	}
@@ -141,7 +141,7 @@ func (bn *BeaconNetwork) GetOptimisticUpdate(optimisticSlot uint64) (common.Spec
 	return forkedLightClientOptimisticUpdate.LightClientOptimisticUpdate, nil
 }
 
-func (bn *BeaconNetwork) getContent(contentType storage.ContentType, beaconContentKey ssz.Marshaler) ([]byte, error) {
+func (bn *Network) getContent(contentType storage.ContentType, beaconContentKey ssz.Marshaler) ([]byte, error) {
 	contentKeyBytes, err := beaconContentKey.MarshalSSZ()
 	if err != nil {
 		return nil, err
@@ -168,7 +168,7 @@ func (bn *BeaconNetwork) getContent(contentType storage.ContentType, beaconConte
 	return content, nil
 }
 
-func (bn *BeaconNetwork) validateContent(contentKey []byte, content []byte) error {
+func (bn *Network) validateContent(contentKey []byte, content []byte) error {
 	switch storage.ContentType(contentKey[0]) {
 	case LightClientUpdate:
 		var lightClientUpdateRange LightClientUpdateRange = make([]ForkedLightClientUpdate, 0)
@@ -271,7 +271,7 @@ func (bn *BeaconNetwork) validateContent(contentKey []byte, content []byte) erro
 	}
 }
 
-func (bn *BeaconNetwork) validateContents(contentKeys [][]byte, contents [][]byte) error {
+func (bn *Network) validateContents(contentKeys [][]byte, contents [][]byte) error {
 	for i, content := range contents {
 		contentKey := contentKeys[i]
 		err := bn.validateContent(contentKey, content)
@@ -289,7 +289,7 @@ func (bn *BeaconNetwork) validateContents(contentKeys [][]byte, contents [][]byt
 	return nil
 }
 
-func (bn *BeaconNetwork) processContentLoop(ctx context.Context) {
+func (bn *Network) processContentLoop(ctx context.Context) {
 	contentChan := bn.portalProtocol.GetContent()
 	for {
 		select {
@@ -319,7 +319,7 @@ func (bn *BeaconNetwork) processContentLoop(ctx context.Context) {
 	}
 }
 
-func (bn *BeaconNetwork) generalSummariesValidation(contentKey, content []byte) (*ForkedHistoricalSummariesWithProof, error) {
+func (bn *Network) generalSummariesValidation(contentKey, content []byte) (*ForkedHistoricalSummariesWithProof, error) {
 	key := &HistoricalSummariesWithProofKey{}
 	err := key.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey[1:]), uint64(len(contentKey[1:]))))
 	if err != nil {
@@ -336,7 +336,7 @@ func (bn *BeaconNetwork) generalSummariesValidation(contentKey, content []byte) 
 	return forkedHistoricalSummariesWithProof, nil
 }
 
-func (bn *BeaconNetwork) stateSummariesValidation(f ForkedHistoricalSummariesWithProof, latestFinalizedRoot common.Root) bool {
+func (bn *Network) stateSummariesValidation(f ForkedHistoricalSummariesWithProof, latestFinalizedRoot common.Root) bool {
 	proof := f.HistoricalSummariesWithProof.Proof
 	summariesRoot := f.HistoricalSummariesWithProof.HistoricalSummaries.HashTreeRoot(bn.spec, tree.GetHashFn())
 

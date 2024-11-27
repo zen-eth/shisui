@@ -307,7 +307,7 @@ func ContractStorageTrieNodeTest(name string, original *TestData, t *testing.T) 
 
 	// content_value encode and decode test
 	contentValue := ContractStorageTrieNodeWithProof{
-		StoregeProof: original.GetStorageTrieProof(),
+		StorageProof: original.GetStorageTrieProof(),
 		AccountProof: original.GetAccountTrieProof(),
 		BlockHash:    tree.Root(original.GetBlockHash()),
 	}
@@ -319,7 +319,7 @@ func ContractStorageTrieNodeTest(name string, original *TestData, t *testing.T) 
 	newContentValue := &ContractStorageTrieNodeWithProof{}
 	err = newContentValue.Deserialize(codec.NewDecodingReader(&contentValueBuf, uint64(len(contentValueBuf.Bytes()))))
 	require.NoError(t, err)
-	require.Equal(t, newContentValue.StoregeProof, contentValue.StoregeProof)
+	require.Equal(t, newContentValue.StorageProof, contentValue.StorageProof)
 	require.Equal(t, newContentValue.AccountProof, contentValue.AccountProof)
 	require.Equal(t, newContentValue.BlockHash, contentValue.BlockHash)
 }

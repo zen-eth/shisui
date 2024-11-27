@@ -30,7 +30,7 @@ func (p *PortalLightApi) ChainID() uint64 {
 	return 1
 }
 
-// GetCheckpointData implements ConsensusAPI.
+// GetBootstrap implements ConsensusAPI.
 func (p *PortalLightApi) GetBootstrap(blockRoot tree.Root) (common.SpecObj, error) {
 	bootstrapKey := &LightClientBootstrapKey{
 		BlockHash: blockRoot[:],
@@ -54,7 +54,7 @@ func (p *PortalLightApi) GetBootstrap(blockRoot tree.Root) (common.SpecObj, erro
 	return forkedLightClientBootstrap.Bootstrap, nil
 }
 
-// GetFinalityData implements ConsensusAPI.
+// GetFinalityUpdate implements ConsensusAPI.
 func (p *PortalLightApi) GetFinalityUpdate() (common.SpecObj, error) {
 	// Get the finality update for the most recent finalized epoch. We use 0 as the finalized
 	// slot because the finalized slot is not known at this point and the protocol is
@@ -81,7 +81,7 @@ func (p *PortalLightApi) GetFinalityUpdate() (common.SpecObj, error) {
 	return finalityUpdate.LightClientFinalityUpdate, nil
 }
 
-// GetOptimisticData implements ConsensusAPI.
+// GetOptimisticUpdate implements ConsensusAPI.
 func (p *PortalLightApi) GetOptimisticUpdate() (common.SpecObj, error) {
 	currentSlot := p.spec.TimeToSlot(common.Timestamp(time.Now().Unix()), common.Timestamp(GenesisTime))
 	optimisticUpdateKey := &LightClientOptimisticUpdateKey{

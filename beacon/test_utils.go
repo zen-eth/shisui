@@ -21,7 +21,7 @@ import (
 	"github.com/protolambda/ztyp/tree"
 )
 
-func SetupBeaconNetwork(addr string, bootNodes []*enode.Node) (*BeaconNetwork, error) {
+func SetupBeaconNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 	conf := portalwire2.DefaultPortalProtocolConfig()
 	if addr != "" {
 		conf.ListenAddr = addr

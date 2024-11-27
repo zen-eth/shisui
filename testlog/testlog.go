@@ -187,7 +187,7 @@ func (l *logger) New(ctx ...interface{}) log.Logger {
 func (h *bufHandler) terminalFormat(r slog.Record) string {
 	buf := &bytes.Buffer{}
 	lvl := log.LevelAlignedString(r.Level)
-	attrs := []slog.Attr{}
+	var attrs []slog.Attr
 	r.Attrs(func(attr slog.Attr) bool {
 		attrs = append(attrs, attr)
 		return true
@@ -195,13 +195,13 @@ func (h *bufHandler) terminalFormat(r slog.Record) string {
 
 	attrs = append(h.attrs, attrs...)
 
-	fmt.Fprintf(buf, "%s[%s] %s ", lvl, r.Time.Format(termTimeFormat), r.Message)
+	_, _ = fmt.Fprintf(buf, "%s[%s] %s ", lvl, r.Time.Format(termTimeFormat), r.Message)
 	if length := len(r.Message); length < 40 {
 		buf.Write(bytes.Repeat([]byte{' '}, 40-length))
 	}
 
 	for _, attr := range attrs {
-		fmt.Fprintf(buf, " %s=%s", attr.Key, string(log.FormatSlogValue(attr.Value, nil)))
+		_, _ = fmt.Fprintf(buf, " %s=%s", attr.Key, string(log.FormatSlogValue(attr.Value, nil)))
 	}
 	buf.WriteByte('\n')
 	return buf.String()

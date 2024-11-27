@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/holiman/uint256"
 	_ "github.com/mattn/go-sqlite3"
-	storage2 "github.com/optimism-java/shisui2/storage"
+	"github.com/optimism-java/shisui2/storage"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +42,7 @@ func TestGetAndPut(t *testing.T) {
 
 		contentId := defaultContentIdFunc(key)
 		_, err = beaconStorage.Get(key, contentId)
-		require.Equal(t, storage2.ErrContentNotFound, err)
+		require.Equal(t, storage.ErrContentNotFound, err)
 
 		err = beaconStorage.Put(key, contentId, value)
 		require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestGetAndPut(t *testing.T) {
 	}
 }
 
-func genStorage(testDir string) (storage2.ContentStorage, error) {
+func genStorage(testDir string) (storage.ContentStorage, error) {
 	err := os.MkdirAll(testDir, 0755)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func genStorage(testDir string) (storage2.ContentStorage, error) {
 	if err != nil {
 		return nil, err
 	}
-	config := &storage2.PortalStorageConfig{
+	config := &storage.PortalStorageConfig{
 		StorageCapacityMB: 1000,
 		DB:                db,
 		NodeId:            enode.ID(zeroNodeId),

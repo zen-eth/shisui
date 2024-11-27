@@ -17,11 +17,11 @@ func newLocalNodeForTesting() (*enode.LocalNode, *enode.DB) {
 }
 
 func TestDoPortMapping(t *testing.T) {
-	nat := nat.ExtIP{33, 44, 55, 66}
+	extIP := nat.ExtIP{33, 44, 55, 66}
 	localNode, _ := newLocalNodeForTesting()
 	listenerAddr := &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: 1234}
 
-	doPortMapping(nat, localNode, listenerAddr)
+	doPortMapping(extIP, localNode, listenerAddr)
 
 	assert.Equal(t, localNode.Seq(), uint64(1))
 	assert.Equal(t, localNode.Node().IP(), net.IP{33, 44, 55, 66})

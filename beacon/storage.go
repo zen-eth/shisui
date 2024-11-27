@@ -144,7 +144,6 @@ func (bs *Storage) getContentValue(contentId []byte) ([]byte, error) {
 }
 
 func (bs *Storage) getLcUpdateValueByRange(start, end uint64) ([]byte, error) {
-	// LightClientUpdateRange := make([]ForkedLightClientUpdate, 0)
 	var lightClientUpdateRange LightClientUpdateRange
 	rows, err := bs.db.QueryContext(context.Background(), LCUpdateLookupQueryByRange, start, end)
 	if err != nil {

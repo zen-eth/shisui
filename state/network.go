@@ -20,7 +20,7 @@ import (
 	"github.com/protolambda/ztyp/codec"
 )
 
-type StateNetwork struct {
+type Network struct {
 	portalProtocol *portalwire2.PortalProtocol
 	closeCtx       context.Context
 	closeFunc      context.CancelFunc
@@ -29,9 +29,9 @@ type StateNetwork struct {
 	client         *rpc.Client
 }
 
-func NewStateNetwork(portalProtocol *portalwire2.PortalProtocol, client *rpc.Client) *StateNetwork {
+func NewStateNetwork(portalProtocol *portalwire2.PortalProtocol, client *rpc.Client) *Network {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &StateNetwork{
+	return &Network{
 		portalProtocol: portalProtocol,
 		closeCtx:       ctx,
 		closeFunc:      cancel,
@@ -41,7 +41,7 @@ func NewStateNetwork(portalProtocol *portalwire2.PortalProtocol, client *rpc.Cli
 	}
 }
 
-func (h *StateNetwork) Start() error {
+func (h *Network) Start() error {
 	err := h.portalProtocol.Start()
 	if err != nil {
 		return err
@@ -51,12 +51,12 @@ func (h *StateNetwork) Start() error {
 	return nil
 }
 
-func (h *StateNetwork) Stop() {
+func (h *Network) Stop() {
 	h.closeFunc()
 	h.portalProtocol.Stop()
 }
 
-func (h *StateNetwork) processContentLoop(ctx context.Context) {
+func (h *Network) processContentLoop(ctx context.Context) {
 	contentChan := h.portalProtocol.GetContent()
 	for {
 		select {
@@ -87,7 +87,7 @@ func (h *StateNetwork) processContentLoop(ctx context.Context) {
 	}
 }
 
-func (h *StateNetwork) validateContents(contentKeys [][]byte, contents [][]byte) error {
+func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) error {
 	for i, content := range contents {
 		contentKey := contentKeys[i]
 		err := h.validateContent(contentKey, content)
@@ -104,7 +104,7 @@ func (h *StateNetwork) validateContents(contentKeys [][]byte, contents [][]byte)
 	return nil
 }
 
-func (h *StateNetwork) validateContent(contentKey []byte, content []byte) error {
+func (h *Network) validateContent(contentKey []byte, content []byte) error {
 	keyType := contentKey[0]
 	switch keyType {
 	case AccountTrieNodeType:
@@ -117,7 +117,7 @@ func (h *StateNetwork) validateContent(contentKey []byte, content []byte) error 
 	return errors.New("unknown content type")
 }
 
-func (h *StateNetwork) validateAccountTrieNode(contentKey []byte, content []byte) error {
+func (h *Network) validateAccountTrieNode(contentKey []byte, content []byte) error {
 	accountKey := &AccountTrieNodeKey{}
 	err := accountKey.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey), uint64(len(contentKey))))
 	if err != nil {
@@ -138,7 +138,7 @@ func (h *StateNetwork) validateAccountTrieNode(contentKey []byte, content []byte
 	return err
 }
 
-func (h *StateNetwork) validateContractStorageTrieNode(contentKey []byte, content []byte) error {
+func (h *Network) validateContractStorageTrieNode(contentKey []byte, content []byte) error {
 	contractStorageKey := &ContractStorageTrieNodeKey{}
 	err := contractStorageKey.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey), uint64(len(contentKey))))
 	if err != nil {
@@ -159,11 +159,11 @@ func (h *StateNetwork) validateContractStorageTrieNode(contentKey []byte, conten
 	if err != nil {
 		return err
 	}
-	err = validateNodeTrieProof(common.Bytes32(accountState.Root), contractStorageKey.NodeHash, &contractStorageKey.Path, &contractProof.StoregeProof)
+	err = validateNodeTrieProof(common.Bytes32(accountState.Root), contractStorageKey.NodeHash, &contractStorageKey.Path, &contractProof.StorageProof)
 	return err
 }
 
-func (h *StateNetwork) validateContractByteCode(contentKey []byte, content []byte) error {
+func (h *Network) validateContractByteCode(contentKey []byte, content []byte) error {
 	contractByteCodeKey := &ContractBytecodeKey{}
 	err := contractByteCodeKey.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey), uint64(len(contentKey))))
 	if err != nil {
@@ -188,7 +188,7 @@ func (h *StateNetwork) validateContractByteCode(contentKey []byte, content []byt
 	return nil
 }
 
-func (h *StateNetwork) getStateRoot(blockHash common.Bytes32) (common.Bytes32, error) {
+func (h *Network) getStateRoot(blockHash common.Bytes32) (common.Bytes32, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 	contentKey := make([]byte, 0)

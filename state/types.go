@@ -121,7 +121,7 @@ func unpackNibblePair(pair byte) (byte, byte) {
 	return pair >> 4, pair & 0xf
 }
 
-// test data from
+// AccountTrieNodeKey test data from
 // https://github.com/ethereum/portal-network-specs/blob/master/state/state-network-test-vectors.md
 type AccountTrieNodeKey struct {
 	Path     Nibbles
@@ -267,7 +267,7 @@ func (e *EncodedTrieNode) NodeHash() common.Bytes32 {
 	return tree.Root(crypto.Keccak256(*e))
 }
 
-// A content value type, used when retrieving a trie node.
+// TrieNode A content value type, used when retrieving a trie node.
 type TrieNode struct {
 	Node EncodedTrieNode
 }
@@ -357,7 +357,7 @@ func (t ContractByteCode) HashTreeRoot(hFn tree.HashFn) tree.Root {
 	return hFn.ByteListHTR(t, MaxContractBytecodeLength)
 }
 
-// A content value type, used when retrieving contract's bytecode.
+// ContractBytecodeContainer A content value type, used when retrieving contract's bytecode.
 type ContractBytecodeContainer struct {
 	Code ContractByteCode
 }
@@ -382,7 +382,7 @@ func (t ContractBytecodeContainer) HashTreeRoot(hFn tree.HashFn) tree.Root {
 	return hFn.HashTreeRoot(t.Code)
 }
 
-// A content value type, used when offering a trie node from the account trie.
+// AccountTrieNodeWithProof A content value type, used when offering a trie node from the account trie.
 type AccountTrieNodeWithProof struct {
 	/// An proof for the account trie node.
 	Proof TrieProof
@@ -422,10 +422,10 @@ func (a *AccountTrieNodeWithProof) HashTreeRoot(hFn tree.HashFn) common.Root {
 	)
 }
 
-// A content value type, used when offering a trie node from the contract storage trie.
+// ContractStorageTrieNodeWithProof A content value type, used when offering a trie node from the contract storage trie.
 type ContractStorageTrieNodeWithProof struct {
 	// A proof for the contract storage trie node.
-	StoregeProof TrieProof
+	StorageProof TrieProof
 	// A proof for the account state.
 	AccountProof TrieProof
 	// A block at which the proof is anchored.
@@ -434,7 +434,7 @@ type ContractStorageTrieNodeWithProof struct {
 
 func (c *ContractStorageTrieNodeWithProof) Deserialize(dr *codec.DecodingReader) error {
 	return dr.Container(
-		&c.StoregeProof,
+		&c.StorageProof,
 		&c.AccountProof,
 		&c.BlockHash,
 	)
@@ -442,7 +442,7 @@ func (c *ContractStorageTrieNodeWithProof) Deserialize(dr *codec.DecodingReader)
 
 func (c *ContractStorageTrieNodeWithProof) Serialize(w *codec.EncodingWriter) error {
 	return w.Container(
-		&c.StoregeProof,
+		&c.StorageProof,
 		&c.AccountProof,
 		&c.BlockHash,
 	)
@@ -450,7 +450,7 @@ func (c *ContractStorageTrieNodeWithProof) Serialize(w *codec.EncodingWriter) er
 
 func (c *ContractStorageTrieNodeWithProof) ByteLength() uint64 {
 	return codec.ContainerLength(
-		&c.StoregeProof,
+		&c.StorageProof,
 		&c.AccountProof,
 		&c.BlockHash,
 	)
@@ -462,13 +462,13 @@ func (c *ContractStorageTrieNodeWithProof) FixedLength() uint64 {
 
 func (c *ContractStorageTrieNodeWithProof) HashTreeRoot(hFn tree.HashFn) common.Root {
 	return hFn.HashTreeRoot(
-		&c.StoregeProof,
+		&c.StorageProof,
 		&c.AccountProof,
 		&c.BlockHash,
 	)
 }
 
-// A content value type, used when offering contract's bytecode.
+// ContractBytecodeWithProof A content value type, used when offering contract's bytecode.
 type ContractBytecodeWithProof struct {
 	// A contract's bytecode.
 	Code ContractByteCode

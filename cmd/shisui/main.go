@@ -65,8 +65,8 @@ type Config struct {
 type Client struct {
 	DiscV5API      *portalwire.DiscV5API
 	HistoryNetwork *history.Network
-	BeaconNetwork  *beacon.BeaconNetwork
-	StateNetwork   *state.StateNetwork
+	BeaconNetwork  *beacon.Network
+	StateNetwork   *state.Network
 	Server         *http.Server
 }
 
@@ -113,7 +113,10 @@ func init() {
 
 func main() {
 	if err := app.Run(os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, err = fmt.Fprintln(os.Stderr, err)
+		if err != nil {
+			log.Error("Failed to write error to stderr", "err", err)
+		}
 		os.Exit(1)
 	}
 }
@@ -216,7 +219,10 @@ func (cli *Client) closePortalRpcServer() {
 	log.Info("Closing UDPv5 protocol...")
 	cli.DiscV5API.DiscV5.Close()
 	log.Info("Closing servers...")
-	cli.Server.Close()
+	err := cli.Server.Close()
+	if err != nil {
+		log.Error("Failed to close server", "err", err)
+	}
 	os.Exit(1)
 }
 
@@ -252,7 +258,7 @@ func startPortalRpcServer(config Config, conn discover.UDPConn, addr string, cli
 		client.HistoryNetwork = historyNetwork
 	}
 
-	var beaconNetwork *beacon.BeaconNetwork
+	var beaconNetwork *beacon.Network
 	if slices.Contains(config.Networks, portalwire.Beacon.Name()) {
 		beaconNetwork, err = initBeacon(config, server, conn, localNode, discV5, utp)
 		if err != nil {
@@ -261,7 +267,7 @@ func startPortalRpcServer(config Config, conn discover.UDPConn, addr string, cli
 		client.BeaconNetwork = beaconNetwork
 	}
 
-	var stateNetwork *state.StateNetwork
+	var stateNetwork *state.Network
 	if slices.Contains(config.Networks, portalwire.State.Name()) {
 		stateNetwork, err = initState(config, server, conn, localNode, discV5, utp)
 		if err != nil {
@@ -270,12 +276,12 @@ func startPortalRpcServer(config Config, conn discover.UDPConn, addr string, cli
 		client.StateNetwork = stateNetwork
 	}
 
-	ethapi := &ethapi.API{
+	ethApi := &ethapi.API{
 		History: historyNetwork,
 		// static configuration of ChainId, currently only mainnet implemented
 		ChainID: core.DefaultGenesisBlock().Config.ChainID,
 	}
-	err = server.RegisterName("eth", ethapi)
+	err = server.RegisterName("eth", ethApi)
 	if err != nil {
 		return err
 	}
@@ -307,9 +313,9 @@ func initDiscV5(config Config, conn discover.UDPConn) (*discover.UDPv5, *enode.L
 
 	localNode.Set(portalwire.Tag)
 	listenerAddr := conn.LocalAddr().(*net.UDPAddr)
-	nat := config.Protocol.NAT
-	if nat != nil && !listenerAddr.IP.IsLoopback() {
-		doPortMapping(nat, localNode, listenerAddr)
+	natConf := config.Protocol.NAT
+	if natConf != nil && !listenerAddr.IP.IsLoopback() {
+		doPortMapping(natConf, localNode, listenerAddr)
 	}
 
 	discV5, err := discover.ListenV5(conn, localNode, discCfg)
@@ -415,7 +421,7 @@ func initHistory(config Config, server *rpc.Server, conn discover.UDPConn, local
 	return historyNetwork, historyNetwork.Start()
 }
 
-func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*beacon.BeaconNetwork, error) {
+func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*beacon.Network, error) {
 	dbPath := path.Join(config.DataDir, "beacon")
 	err := os.MkdirAll(dbPath, 0755)
 	if err != nil {
@@ -464,7 +470,7 @@ func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localN
 	return beaconNetwork, beaconNetwork.Start()
 }
 
-func initState(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*state.StateNetwork, error) {
+func initState(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*state.Network, error) {
 	networkName := portalwire.State.Name()
 	db, err := history.NewDB(config.DataDir, networkName)
 	if err != nil {
@@ -575,7 +581,12 @@ func setPrivateKey(ctx *cli.Context, config *Config) error {
 				if err != nil {
 					log.Error("Failed to create file:", "err", err)
 				}
-				defer file.Close()
+				defer func(file *os.File) {
+					err := file.Close()
+					if err != nil {
+						log.Error("Failed to close file:", "err", err)
+					}
+				}(file)
 			}
 			log.Info("Creating new private key")
 			privateKey, err = crypto.GenerateKey()
@@ -601,7 +612,12 @@ func writePrivateKey(privateKey *ecdsa.PrivateKey, config *Config, fileName stri
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err = file.Close()
+		if err != nil {
+			log.Error("Failed to close file", "err", err)
+		}
+	}(file)
 
 	_, err = file.WriteString(keyEnc)
 	if err != nil {
