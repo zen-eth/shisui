@@ -24,13 +24,12 @@ package flags
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/mattn/go-isatty"
-	"github.com/optimism-java/shisui2/version"
+	"github.com/optimism-java/shisui2/internal/version"
 	"github.com/urfave/cli/v2"
 )
 
@@ -141,14 +140,6 @@ func doMigrateFlags(ctx *cli.Context) {
 }
 
 func init() {
-	if usecolor {
-		// Annotate all help categories with colors
-		cli.AppHelpTemplate = regexp.MustCompile("[A-Z ]+:").ReplaceAllString(cli.AppHelpTemplate, "\u001B[33m$0\u001B[0m")
-
-		// Annotate flag categories with colors (private template, so need to
-		// copy-paste the entire thing here...)
-		cli.AppHelpTemplate = strings.ReplaceAll(cli.AppHelpTemplate, "{{template \"visibleFlagCategoryTemplate\" .}}", "{{range .VisibleFlagCategories}}\n   {{if .Name}}\u001B[33m{{.Name}}\u001B[0m\n\n   {{end}}{{$flglen := len .Flags}}{{range $i, $e := .Flags}}{{if eq (subtract $flglen $i) 1}}{{$e}}\n{{else}}{{$e}}\n   {{end}}{{end}}{{end}}")
-	}
 	cli.FlagStringer = FlagString
 }
 
