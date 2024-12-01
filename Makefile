@@ -8,9 +8,12 @@ GOBIN = ./build/bin
 GO ?= latest
 GORUN = go run
 
+GIT_COMMIT := $(shell git rev-parse HEAD)
+GIT_DATE := $(shell git log -1 --format=%ci | cut -d ' ' -f 1)
+
 #? shisui: Build shisui
 shisui:
-	go build ./cmd/shisui/main.go
+	go build -ldflags "-X github.com/optimism-java/shisui2/internal/version.gitCommit=$(GIT_COMMIT) -X github.com/optimism-java/shisui2/internal/version.gitDate=$(GIT_DATE)" ./cmd/shisui/main.go
 	mkdir -p $(GOBIN)
 	mv main $(GOBIN)/shisui
 	@echo "Done building."

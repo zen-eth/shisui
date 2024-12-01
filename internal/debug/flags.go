@@ -37,7 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics/exp"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
-	"github.com/optimism-java/shisui2/flags"
+	"github.com/optimism-java/shisui2/internal/flags"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
