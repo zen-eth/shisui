@@ -21,7 +21,7 @@ shisui:
 
 #? shisui-image: Build shisui image
 shisui-image:
-	docker build -t ghcr.io/optimism-java/shisui:latest -f Dockerfile.portal .
+	docker build -t ghcr.io/optimism-java/shisui:latest -f Dockerfile .
 
 #? fmt: Ensure consistent code formatting.
 fmt:
