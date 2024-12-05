@@ -134,6 +134,10 @@ func (bs *Storage) Radius() *uint256.Int {
 	return storage2.MaxDistance
 }
 
+func (bs *Storage) Close() error {
+	return bs.db.Close()
+}
+
 func (bs *Storage) getContentValue(contentId []byte) ([]byte, error) {
 	res := make([]byte, 0)
 	err := bs.db.QueryRowContext(context.Background(), ContentValueLookupQueryBeacon, contentId).Scan(&res)

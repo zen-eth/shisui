@@ -1,4 +1,4 @@
-package history
+package sqlite
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/mattn/go-sqlite3"
 	"github.com/optimism-java/shisui2/portalwire"
-	storage2 "github.com/optimism-java/shisui2/storage"
+	"github.com/optimism-java/shisui2/storage"
 )
 
 const (
@@ -43,7 +43,7 @@ const (
 		ORDER BY distance DESC`
 )
 
-var _ storage2.ContentStorage = &ContentStorage{}
+var _ storage.ContentStorage = &ContentStorage{}
 var once sync.Once
 
 type ContentStorage struct {
@@ -104,14 +104,14 @@ func NewDB(dataDir string, network string) (*sql.DB, error) {
 	return sqlDb, err
 }
 
-func NewHistoryStorage(config storage2.PortalStorageConfig) (storage2.ContentStorage, error) {
+func NewHistoryStorage(config storage.PortalStorageConfig) (storage.ContentStorage, error) {
 	hs := &ContentStorage{
 		nodeId:                 config.NodeId,
 		sqliteDB:               config.DB,
 		storageCapacityInBytes: config.StorageCapacityMB * 1000000,
 		log:                    log.New("storage", config.NetworkName),
 	}
-	hs.radius.Store(storage2.MaxDistance)
+	hs.radius.Store(storage.MaxDistance)
 
 	err := hs.createTable()
 	if err != nil {
@@ -139,7 +139,7 @@ func (p *ContentStorage) Get(contentKey []byte, contentId []byte) ([]byte, error
 	var res []byte
 	err := p.getStmt.QueryRow(contentId).Scan(&res)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, storage2.ErrContentNotFound
+		return nil, storage.ErrContentNotFound
 	}
 	return res, err
 }
@@ -370,7 +370,7 @@ func (p *ContentStorage) EstimateNewRadius(currentRadius *uint256.Int) (*uint256
 		if metrics.Enabled {
 			newRadius := new(uint256.Int).Div(currentRadius, uint256.MustFromBig(bigFormat))
 			newRadius.Mul(newRadius, uint256.NewInt(100))
-			newRadius.Mod(newRadius, storage2.MaxDistance)
+			newRadius.Mod(newRadius, storage.MaxDistance)
 			portalStorageMetrics.RadiusRatio.Update(newRadius.Float64() / 100)
 		}
 		return new(uint256.Int).Div(currentRadius, uint256.MustFromBig(bigFormat)), nil
@@ -466,7 +466,7 @@ func (p *ContentStorage) deleteContentFraction(fraction float64) (deleteCount in
 		p.radius.Store(dis)
 		if metrics.Enabled {
 			dis.Mul(dis, uint256.NewInt(100))
-			dis.Mod(dis, storage2.MaxDistance)
+			dis.Mod(dis, storage.MaxDistance)
 			portalStorageMetrics.RadiusRatio.Update(dis.Float64() / 100)
 		}
 	}
