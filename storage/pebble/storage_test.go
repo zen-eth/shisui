@@ -1,4 +1,4 @@
-package ethpepple
+package pepple
 
 import (
 	"testing"

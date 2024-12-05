@@ -22,7 +22,6 @@
 package version
 
 import (
-	"fmt"
 	"runtime/debug"
 	"time"
 )
@@ -47,9 +46,6 @@ type VCSInfo struct {
 
 // VCS returns version control information of the current executable.
 func VCS() (VCSInfo, bool) {
-	fmt.Println("vcs")
-	fmt.Println(gitCommit)
-	fmt.Println(gitDate)
 	if gitCommit != "" {
 		// Use information set by the build script if present.
 		return VCSInfo{Commit: gitCommit, Date: gitDate}, true
