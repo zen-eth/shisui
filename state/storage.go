@@ -3,9 +3,9 @@ package state
 import (
 	"bytes"
 	"crypto/sha256"
-	"database/sql"
 	"errors"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -24,24 +24,24 @@ var _ storage.ContentStorage = &Storage{}
 
 type Storage struct {
 	store storage.ContentStorage
-	db    *sql.DB
+	db    *pebble.DB
 	log   log.Logger
 }
 
 var portalStorageMetrics *portalwire.PortalStorageMetrics
 
-func NewStateStorage(store storage.ContentStorage, db *sql.DB) *Storage {
+func NewStateStorage(store storage.ContentStorage, db *pebble.DB) *Storage {
 	stateStorage := &Storage{
 		store: store,
 		db:    db,
 		log:   log.New("storage", "state"),
 	}
 
-	var err error
-	portalStorageMetrics, err = portalwire.NewPortalStorageMetrics("state", db)
-	if err != nil {
-		return nil
-	}
+	// var err error
+	// portalStorageMetrics, err = portalwire.NewPortalStorageMetrics("state", db)
+	// if err != nil {
+	// 	return nil
+	// }
 
 	return stateStorage
 }

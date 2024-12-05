@@ -64,11 +64,10 @@ func genStorage(testDir string) (storage.ContentStorage, error) {
 	}
 	config := &storage.PortalStorageConfig{
 		StorageCapacityMB: 1000,
-		DB:                db,
 		NodeId:            enode.ID(zeroNodeId),
 		Spec:              configs.Mainnet,
 	}
-	return NewBeaconStorage(*config)
+	return NewBeaconStorage(*config, db)
 }
 
 type entry struct {

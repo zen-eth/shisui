@@ -34,10 +34,10 @@ type beaconStorageCache struct {
 
 var _ storage2.ContentStorage = &Storage{}
 
-func NewBeaconStorage(config storage2.PortalStorageConfig) (storage2.ContentStorage, error) {
+func NewBeaconStorage(config storage2.PortalStorageConfig, db *sql.DB) (storage2.ContentStorage, error) {
 	bs := &Storage{
 		storageCapacityInBytes: config.StorageCapacityMB * BytesInMB,
-		db:                     config.DB,
+		db:                     db,
 		log:                    log.New("beacon_storage"),
 		spec:                   config.Spec,
 		cache:                  &beaconStorageCache{},
@@ -47,7 +47,7 @@ func NewBeaconStorage(config storage2.PortalStorageConfig) (storage2.ContentStor
 	}
 
 	var err error
-	portalStorageMetrics, err = portalwire.NewPortalStorageMetrics(config.NetworkName, config.DB)
+	portalStorageMetrics, err = portalwire.NewPortalStorageMetrics(config.NetworkName, db)
 	if err != nil {
 		return nil, err
 	}

@@ -48,13 +48,12 @@ func BenchmarkStorageComparison(b *testing.B) {
 
 		b.Run("Pebble_"+tc.name, func(b *testing.B) {
 			dir, _ := os.MkdirTemp("", "pebble-bench-*")
-			db, _ := ethpepple.NewPeppleDB(dir, 16, 16, "bench")
-			storage, _ := ethpepple.NewPeppleStorage(ethpepple.PeppleStorageConfig{
+			db, _ := ethpepple.NewDB(dir, 16, 16, "bench")
+			storage, _ := ethpepple.NewStorage(storage.PortalStorageConfig{
 				StorageCapacityMB: 1000,
-				DB:                db,
 				NodeId:            enode.ID{},
 				NetworkName:       "bench",
-			})
+			}, db)
 			defer func() {
 				db.Close()
 				os.RemoveAll(dir)
@@ -77,12 +76,11 @@ func BenchmarkStorageComparison(b *testing.B) {
 		b.Run("SQLite_"+tc.name, func(b *testing.B) {
 			dir, _ := os.MkdirTemp("", "sqlite-bench-*")
 			db, _ := sqlite.NewDB(dir, "bench")
-			storage, _ := sqlite.NewHistoryStorage(storage.PortalStorageConfig{
+			storage, _ := sqlite.NewStorage(storage.PortalStorageConfig{
 				StorageCapacityMB: 1000,
-				DB:                db,
 				NodeId:            enode.ID{},
 				NetworkName:       "bench",
-			})
+			}, db)
 			defer func() {
 				storage.Close()
 				os.RemoveAll(dir)

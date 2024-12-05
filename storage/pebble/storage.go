@@ -1,4 +1,4 @@
-package pepple
+package pebble
 
 import (
 	"bytes"
@@ -31,14 +31,7 @@ const (
 
 var _ storage.ContentStorage = &ContentStorage{}
 
-type PeppleStorageConfig struct {
-	StorageCapacityMB uint64
-	DB                *pebble.DB
-	NodeId            enode.ID
-	NetworkName       string
-}
-
-func NewPeppleDB(dataDir string, cache, handles int, namespace string) (*pebble.DB, error) {
+func NewDB(dataDir string, cache, handles int, namespace string) (*pebble.DB, error) {
 	// Ensure we have some minimal caching and file guarantees
 	if cache < minCache {
 		cache = minCache
@@ -128,10 +121,10 @@ type ContentStorage struct {
 	bytePool               sync.Pool
 }
 
-func NewPeppleStorage(config PeppleStorageConfig) (storage.ContentStorage, error) {
+func NewStorage(config storage.PortalStorageConfig, db *pebble.DB) (storage.ContentStorage, error) {
 	cs := &ContentStorage{
 		nodeId:                 config.NodeId,
-		db:                     config.DB,
+		db:                     db,
 		storageCapacityInBytes: config.StorageCapacityMB * 1000_000,
 		log:                    log.New("storage", config.NetworkName),
 		writeOptions:           &pebble.WriteOptions{Sync: false},

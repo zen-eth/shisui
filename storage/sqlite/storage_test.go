@@ -31,11 +31,10 @@ func newContentStorage(storageCapacityInMB uint64, nodeId enode.ID) (*ContentSto
 	if err != nil {
 		return nil, err
 	}
-	hs, err := NewHistoryStorage(contentStorage.PortalStorageConfig{
-		DB:                db,
+	hs, err := NewStorage(contentStorage.PortalStorageConfig{
 		StorageCapacityMB: storageCapacityInMB,
 		NodeId:            nodeId,
-	})
+	}, db)
 	if err != nil {
 		return nil, err
 	}

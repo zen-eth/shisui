@@ -1,4 +1,4 @@
-package pepple
+package pebble
 
 import (
 	"testing"
@@ -18,7 +18,7 @@ func genBytes(length int) []byte {
 }
 
 func TestNewPeppleDB(t *testing.T) {
-	db, err := NewPeppleDB(t.TempDir(), 16, 16, "test")
+	db, err := NewDB(t.TempDir(), 16, 16, "test")
 	assert.NoError(t, err)
 	defer db.Close()
 
@@ -26,18 +26,17 @@ func TestNewPeppleDB(t *testing.T) {
 }
 
 func setupTestStorage(t *testing.T) storage.ContentStorage {
-	db, err := NewPeppleDB(t.TempDir(), 16, 16, "test")
+	db, err := NewDB(t.TempDir(), 16, 16, "test")
 	assert.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
-	config := PeppleStorageConfig{
+	config := storage.PortalStorageConfig{
 		StorageCapacityMB: 1,
-		DB:                db,
 		NodeId:            uint256.NewInt(0).Bytes32(),
 		NetworkName:       "test",
 	}
 
-	storage, err := NewPeppleStorage(config)
+	storage, err := NewStorage(config, db)
 	assert.NoError(t, err)
 	return storage
 }
