@@ -39,6 +39,7 @@ import (
 	"github.com/optimism-java/shisui2/portalwire"
 	"github.com/optimism-java/shisui2/state"
 	"github.com/optimism-java/shisui2/storage"
+	"github.com/optimism-java/shisui2/storage/sqlite"
 	"github.com/optimism-java/shisui2/web3"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/urfave/cli/v2"
@@ -378,11 +379,11 @@ func doPortMapping(natm nat.Interface, ln *enode.LocalNode, addr *net.UDPAddr) {
 
 func initHistory(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*history.Network, error) {
 	networkName := portalwire.History.Name()
-	db, err := history.NewDB(config.DataDir, networkName)
+	db, err := sqlite.NewDB(config.DataDir, networkName)
 	if err != nil {
 		return nil, err
 	}
-	contentStorage, err := history.NewHistoryStorage(storage.PortalStorageConfig{
+	contentStorage, err := sqlite.NewHistoryStorage(storage.PortalStorageConfig{
 		StorageCapacityMB: config.DataCapacity,
 		DB:                db,
 		NodeId:            localNode.ID(),
@@ -472,11 +473,11 @@ func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localN
 
 func initState(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*state.Network, error) {
 	networkName := portalwire.State.Name()
-	db, err := history.NewDB(config.DataDir, networkName)
+	db, err := sqlite.NewDB(config.DataDir, networkName)
 	if err != nil {
 		return nil, err
 	}
-	contentStorage, err := history.NewHistoryStorage(storage.PortalStorageConfig{
+	contentStorage, err := sqlite.NewHistoryStorage(storage.PortalStorageConfig{
 		StorageCapacityMB: config.DataCapacity,
 		DB:                db,
 		NodeId:            localNode.ID(),

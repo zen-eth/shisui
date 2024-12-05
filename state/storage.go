@@ -175,3 +175,7 @@ func (s *Storage) putContractBytecode(contentKey []byte, contentId []byte, conte
 	}
 	return nil
 }
+
+func (s *Storage) Close() error {
+	return s.store.Close()
+}

@@ -40,6 +40,8 @@ type ContentStorage interface {
 	Put(contentKey []byte, contentId []byte, content []byte) error
 
 	Radius() *uint256.Int
+
+	Close() error
 }
 
 type MockStorage struct {
@@ -66,4 +68,8 @@ func (m *MockStorage) Put(contentKey []byte, contentId []byte, content []byte) e
 
 func (m *MockStorage) Radius() *uint256.Int {
 	return uint256.MustFromHex("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+}
+
+func (m *MockStorage) Close() error {
+	return nil
 }
