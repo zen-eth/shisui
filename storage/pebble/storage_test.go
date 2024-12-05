@@ -2,6 +2,7 @@ package ethpepple
 
 import (
 	"testing"
+	"time"
 
 	"github.com/holiman/uint256"
 	"github.com/optimism-java/shisui2/storage"
@@ -160,4 +161,6 @@ func TestPrune(t *testing.T) {
 	assert.NoError(t, err)
 	actual := uint256.NewInt(2).Bytes32()
 	assert.Equal(t, data, actual[:])
+	// wait compact finish or test will fail
+	time.Sleep(2 * time.Second)
 }
