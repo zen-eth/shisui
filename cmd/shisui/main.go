@@ -39,7 +39,7 @@ import (
 	"github.com/optimism-java/shisui2/portalwire"
 	"github.com/optimism-java/shisui2/state"
 	"github.com/optimism-java/shisui2/storage"
-	"github.com/optimism-java/shisui2/storage/sqlite"
+	"github.com/optimism-java/shisui2/storage/pebble"
 	"github.com/optimism-java/shisui2/web3"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/urfave/cli/v2"
@@ -379,16 +379,15 @@ func doPortMapping(natm nat.Interface, ln *enode.LocalNode, addr *net.UDPAddr) {
 
 func initHistory(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*history.Network, error) {
 	networkName := portalwire.History.Name()
-	db, err := sqlite.NewDB(config.DataDir, networkName)
+	db, err := pebble.NewDB(config.DataDir, 16, 400, networkName)
 	if err != nil {
 		return nil, err
 	}
-	contentStorage, err := sqlite.NewHistoryStorage(storage.PortalStorageConfig{
+	contentStorage, err := pebble.NewStorage(storage.PortalStorageConfig{
 		StorageCapacityMB: config.DataCapacity,
-		DB:                db,
 		NodeId:            localNode.ID(),
 		NetworkName:       networkName,
-	})
+	}, db)
 	if err != nil {
 		return nil, err
 	}
@@ -435,11 +434,10 @@ func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localN
 
 	contentStorage, err := beacon.NewBeaconStorage(storage.PortalStorageConfig{
 		StorageCapacityMB: config.DataCapacity,
-		DB:                sqlDb,
 		NodeId:            localNode.ID(),
 		Spec:              configs.Mainnet,
 		NetworkName:       portalwire.Beacon.Name(),
-	})
+	}, sqlDb)
 	if err != nil {
 		return nil, err
 	}
@@ -473,16 +471,15 @@ func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localN
 
 func initState(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*state.Network, error) {
 	networkName := portalwire.State.Name()
-	db, err := sqlite.NewDB(config.DataDir, networkName)
+	db, err := pebble.NewDB(config.DataDir, 16, 400, networkName)
 	if err != nil {
 		return nil, err
 	}
-	contentStorage, err := sqlite.NewHistoryStorage(storage.PortalStorageConfig{
+	contentStorage, err := pebble.NewStorage(storage.PortalStorageConfig{
 		StorageCapacityMB: config.DataCapacity,
-		DB:                db,
 		NodeId:            localNode.ID(),
 		NetworkName:       networkName,
-	})
+	}, db)
 	if err != nil {
 		return nil, err
 	}

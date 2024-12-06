@@ -104,10 +104,10 @@ func NewDB(dataDir string, network string) (*sql.DB, error) {
 	return sqlDb, err
 }
 
-func NewHistoryStorage(config storage.PortalStorageConfig) (storage.ContentStorage, error) {
+func NewStorage(config storage.PortalStorageConfig, db *sql.DB) (storage.ContentStorage, error) {
 	hs := &ContentStorage{
 		nodeId:                 config.NodeId,
-		sqliteDB:               config.DB,
+		sqliteDB:               db,
 		storageCapacityInBytes: config.StorageCapacityMB * 1000000,
 		log:                    log.New("storage", config.NetworkName),
 	}
@@ -124,7 +124,7 @@ func NewHistoryStorage(config storage.PortalStorageConfig) (storage.ContentStora
 
 	// necessary to test NetworkName==history because state also initialize HistoryStorage
 	if strings.ToLower(config.NetworkName) == "history" {
-		portalStorageMetrics, err = portalwire.NewPortalStorageMetrics(config.NetworkName, config.DB)
+		portalStorageMetrics, err = portalwire.NewPortalStorageMetrics(config.NetworkName, db)
 		if err != nil {
 			return nil, err
 		}
