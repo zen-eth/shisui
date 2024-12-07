@@ -315,10 +315,11 @@ func (p *PortalProtocol) setupDiscV5AndTable() error {
 	}
 
 	cfg := discover.Config{
-		PrivateKey:  p.PrivateKey,
-		NetRestrict: p.NetRestrict,
-		Bootnodes:   p.BootstrapNodes,
-		Log:         p.Log,
+		PrivateKey:              p.PrivateKey,
+		NetRestrict:             p.NetRestrict,
+		Bootnodes:               p.BootstrapNodes,
+		Log:                     p.Log,
+		NoFindnodeLivenessCheck: true,
 	}
 
 	p.table, err = discover.NewTable(p, p.localNode.Database(), cfg)
@@ -970,7 +971,7 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 	enrs := p.truncateNodes(nodes, maxPayloadSize, enrOverhead)
 
 	nodesMsg := &Nodes{
-		Total: 1,
+		Total: uint8(len(enrs)),
 		Enrs:  enrs,
 	}
 
