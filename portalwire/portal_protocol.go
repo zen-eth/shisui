@@ -280,7 +280,7 @@ func (p *PortalProtocol) RoutingTableInfo() [][]string {
 }
 
 func (p *PortalProtocol) AddEnr(n *enode.Node) {
-	added := p.table.AddInboundNode(n)
+	added := p.table.AddFoundNode(n, true)
 	if !added {
 		p.Log.Warn("add node failed", "id", n.ID(), "ip", n.IPAddr())
 		return
@@ -315,11 +315,10 @@ func (p *PortalProtocol) setupDiscV5AndTable() error {
 	}
 
 	cfg := discover.Config{
-		PrivateKey:              p.PrivateKey,
-		NetRestrict:             p.NetRestrict,
-		Bootnodes:               p.BootstrapNodes,
-		Log:                     p.Log,
-		NoFindnodeLivenessCheck: true,
+		PrivateKey:  p.PrivateKey,
+		NetRestrict: p.NetRestrict,
+		Bootnodes:   p.BootstrapNodes,
+		Log:         p.Log,
 	}
 
 	p.table, err = discover.NewTable(p, p.localNode.Database(), cfg)
@@ -971,7 +970,9 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 	enrs := p.truncateNodes(nodes, maxPayloadSize, enrOverhead)
 
 	nodesMsg := &Nodes{
-		Total: uint8(len(enrs)),
+		// https://github.com/ethereum/portal-network-specs/blob/master/portal-wire-protocol.md
+		// total: The total number of Nodes response messages being sent. Currently fixed to only 1 response message.
+		Total: 1,
 		Enrs:  enrs,
 	}
 
