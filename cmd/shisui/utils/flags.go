@@ -1,8 +1,18 @@
 package utils
 
 import (
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/metrics/exp"
+	"github.com/ethereum/go-ethereum/metrics/influxdb"
 	"github.com/optimism-java/shisui2/internal/flags"
 	"github.com/optimism-java/shisui2/portalwire"
 	"github.com/urfave/cli/v2"
@@ -107,7 +117,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	PortalRPCPortFlag = &cli.IntFlag{
 		Name:     "rpc.port",
 		Usage:    "HTTP-RPC server listening port",
-		Value:    node.DefaultHTTPPort,
+		Value:    8545,
 		Category: flags.PortalNetworkCategory,
 	}
 
@@ -132,24 +142,17 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Category: flags.PortalNetworkCategory,
 	}
 
-	PortalUDPListenAddrFlag = &cli.StringFlag{
-		Name:     "udp.addr",
-		Usage:    "Protocol UDP server listening interface",
-		Value:    "",
-		Category: flags.PortalNetworkCategory,
-	}
-
 	PortalUDPPortFlag = &cli.IntFlag{
 		Name:     "udp.port",
 		Usage:    "Protocol UDP server listening port",
-		Value:    node.DefaultUDPPort,
+		Value:    9009,
 		Category: flags.PortalNetworkCategory,
 	}
 
 	PortalLogLevelFlag = &cli.IntFlag{
 		Name:     "loglevel",
 		Usage:    "Loglevel of portal network",
-		Value:    node.DefaultLoglevel,
+		Value:    3,
 		Category: flags.PortalNetworkCategory,
 	}
 
@@ -178,3 +181,154 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    cli.NewStringSlice(portalwire.History.Name()),
 	}
 )
+
+func SetupMetrics(ctx *cli.Context) {
+	if metrics.Enabled {
+		log.Info("Enabling metrics collection")
+
+		var (
+			enableExport   = ctx.Bool(MetricsEnableInfluxDBFlag.Name)
+			enableExportV2 = ctx.Bool(MetricsEnableInfluxDBV2Flag.Name)
+		)
+
+		if enableExport || enableExportV2 {
+			CheckExclusive(ctx, MetricsEnableInfluxDBFlag, MetricsEnableInfluxDBV2Flag)
+
+			v1FlagIsSet := ctx.IsSet(MetricsInfluxDBUsernameFlag.Name) ||
+				ctx.IsSet(MetricsInfluxDBPasswordFlag.Name)
+
+			v2FlagIsSet := ctx.IsSet(MetricsInfluxDBTokenFlag.Name) ||
+				ctx.IsSet(MetricsInfluxDBOrganizationFlag.Name) ||
+				ctx.IsSet(MetricsInfluxDBBucketFlag.Name)
+
+			if enableExport && v2FlagIsSet {
+				Fatalf("Flags --influxdb.metrics.organization, --influxdb.metrics.token, --influxdb.metrics.bucket are only available for influxdb-v2")
+			} else if enableExportV2 && v1FlagIsSet {
+				Fatalf("Flags --influxdb.metrics.username, --influxdb.metrics.password are only available for influxdb-v1")
+			}
+		}
+
+		var (
+			endpoint = ctx.String(MetricsInfluxDBEndpointFlag.Name)
+			database = ctx.String(MetricsInfluxDBDatabaseFlag.Name)
+			username = ctx.String(MetricsInfluxDBUsernameFlag.Name)
+			password = ctx.String(MetricsInfluxDBPasswordFlag.Name)
+
+			token        = ctx.String(MetricsInfluxDBTokenFlag.Name)
+			bucket       = ctx.String(MetricsInfluxDBBucketFlag.Name)
+			organization = ctx.String(MetricsInfluxDBOrganizationFlag.Name)
+		)
+
+		if enableExport {
+			tagsMap := SplitTagsFlag(ctx.String(MetricsInfluxDBTagsFlag.Name))
+
+			log.Info("Enabling metrics export to InfluxDB")
+
+			go influxdb.InfluxDBWithTags(metrics.DefaultRegistry, 10*time.Second, endpoint, database, username, password, "geth.", tagsMap)
+		} else if enableExportV2 {
+			tagsMap := SplitTagsFlag(ctx.String(MetricsInfluxDBTagsFlag.Name))
+
+			log.Info("Enabling metrics export to InfluxDB (v2)")
+
+			go influxdb.InfluxDBV2WithTags(metrics.DefaultRegistry, 10*time.Second, endpoint, token, bucket, organization, "geth.", tagsMap)
+		}
+
+		if ctx.IsSet(MetricsHTTPFlag.Name) {
+			address := net.JoinHostPort(ctx.String(MetricsHTTPFlag.Name), fmt.Sprintf("%d", ctx.Int(MetricsPortFlag.Name)))
+			log.Info("Enabling stand-alone metrics HTTP endpoint", "address", address)
+			exp.Setup(address)
+		} else if ctx.IsSet(MetricsPortFlag.Name) {
+			log.Warn(fmt.Sprintf("--%s specified without --%s, metrics server will not start.", MetricsPortFlag.Name, MetricsHTTPFlag.Name))
+		}
+	}
+}
+
+// CheckExclusive verifies that only a single instance of the provided flags was
+// set by the user. Each flag might optionally be followed by a string type to
+// specialize it further.
+func CheckExclusive(ctx *cli.Context, args ...interface{}) {
+	set := make([]string, 0, 1)
+	for i := 0; i < len(args); i++ {
+		// Make sure the next argument is a flag and skip if not set
+		flag, ok := args[i].(cli.Flag)
+		if !ok {
+			panic(fmt.Sprintf("invalid argument, not cli.Flag type: %T", args[i]))
+		}
+		// Check if next arg extends current and expand its name if so
+		name := flag.Names()[0]
+
+		if i+1 < len(args) {
+			switch option := args[i+1].(type) {
+			case string:
+				// Extended flag check, make sure value set doesn't conflict with passed in option
+				if ctx.String(flag.Names()[0]) == option {
+					name += "=" + option
+					set = append(set, "--"+name)
+				}
+				// shift arguments and continue
+				i++
+				continue
+
+			case cli.Flag:
+			default:
+				panic(fmt.Sprintf("invalid argument, not cli.Flag or string extension: %T", args[i+1]))
+			}
+		}
+		// Mark the flag if it's set
+		if ctx.IsSet(flag.Names()[0]) {
+			set = append(set, "--"+name)
+		}
+	}
+	if len(set) > 1 {
+		Fatalf("Flags %v can't be used at the same time", strings.Join(set, ", "))
+	}
+}
+
+// Fatalf formats a message to standard error and exits the program.
+// The message is also printed to standard output if standard error
+// is redirected to a different file.
+func Fatalf(format string, args ...interface{}) {
+	w := io.MultiWriter(os.Stdout, os.Stderr)
+	if runtime.GOOS == "windows" {
+		// The SameFile check below doesn't work on Windows.
+		// stdout is unlikely to get redirected though, so just print there.
+		w = os.Stdout
+	} else {
+		outf, _ := os.Stdout.Stat()
+		errf, _ := os.Stderr.Stat()
+		if outf != nil && errf != nil && os.SameFile(outf, errf) {
+			w = os.Stderr
+		}
+	}
+	fmt.Fprintf(w, "Fatal: "+format+"\n", args...)
+	os.Exit(1)
+}
+
+func SplitTagsFlag(tagsFlag string) map[string]string {
+	tags := strings.Split(tagsFlag, ",")
+	tagsMap := map[string]string{}
+
+	for _, t := range tags {
+		if t != "" {
+			kv := strings.Split(t, "=")
+
+			if len(kv) == 2 {
+				tagsMap[kv[0]] = kv[1]
+			}
+		}
+	}
+
+	return tagsMap
+}
+
+// SplitAndTrim splits input separated by a comma
+// and trims excessive white space from the substrings.
+func SplitAndTrim(input string) (ret []string) {
+	l := strings.Split(input, ",")
+	for _, r := range l {
+		if r = strings.TrimSpace(r); r != "" {
+			ret = append(ret, r)
+		}
+	}
+	return ret
+}

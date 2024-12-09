@@ -18,7 +18,6 @@ import (
 
 	"os"
 
-	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -31,6 +30,7 @@ import (
 	"github.com/mattn/go-isatty"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/optimism-java/shisui2/beacon"
+	"github.com/optimism-java/shisui2/cmd/shisui/utils"
 	"github.com/optimism-java/shisui2/ethapi"
 	"github.com/optimism-java/shisui2/history"
 	"github.com/optimism-java/shisui2/internal/debug"
