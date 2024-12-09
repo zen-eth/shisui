@@ -12,16 +12,16 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethereum/go-ethereum/trie"
 	"github.com/optimism-java/shisui2/history"
-	portalwire2 "github.com/optimism-java/shisui2/portalwire"
+	"github.com/optimism-java/shisui2/portalwire"
+	"github.com/optimism-java/shisui2/state/trie"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
 )
 
 type Network struct {
-	portalProtocol *portalwire2.PortalProtocol
+	portalProtocol *portalwire.PortalProtocol
 	closeCtx       context.Context
 	closeFunc      context.CancelFunc
 	log            log.Logger
@@ -29,7 +29,7 @@ type Network struct {
 	client         *rpc.Client
 }
 
-func NewStateNetwork(portalProtocol *portalwire2.PortalProtocol, client *rpc.Client) *Network {
+func NewStateNetwork(portalProtocol *portalwire.PortalProtocol, client *rpc.Client) *Network {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Network{
 		portalProtocol: portalProtocol,
@@ -196,7 +196,7 @@ func (h *Network) getStateRoot(blockHash common.Bytes32) (common.Bytes32, error)
 	contentKey = append(contentKey, blockHash[:]...)
 
 	arg := hexutil.Encode(contentKey)
-	res := &portalwire2.ContentInfo{}
+	res := &portalwire.ContentInfo{}
 	err := h.client.CallContext(ctx, res, "portal_historyGetContent", arg)
 	if err != nil {
 		return common.Bytes32{}, err

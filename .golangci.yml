@@ -41,7 +41,17 @@ issues:
         - errcheck
     - path: history/storage_test.go
       text: "`newContentStorage` - `nodeDataDir` always receives `nodeDataDir`"
+    - path: state/trie/node.go
       linters:
+         - unused
+    - path: state/trie/node_enc.go
+      linters:
+        - unused
+    - path: state/trie/encoding.go
+      linters:
+        - unused
+    - path: state/trie/node_test.go
+      text: "`randBytes` - `n` always receives `32`"
 
 run:
   timeout: 10m

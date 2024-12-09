@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/nat"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/mattn/go-isatty"
 	_ "github.com/mattn/go-sqlite3"
@@ -645,7 +644,7 @@ func readPrivateKey(config *Config, fileName string) (*ecdsa.PrivateKey, error) 
 // setPortalBootstrapNodes creates a list of bootstrap nodes from the command line
 // flags, reverting to pre-configured ones if none have been specified.
 func setPortalBootstrapNodes(ctx *cli.Context, config *Config) {
-	urls := params.PortalBootnodes
+	urls := portalwire.PortalBootnodes
 	if ctx.IsSet(utils.PortalBootNodesFlag.Name) {
 		flag := ctx.String(utils.PortalBootNodesFlag.Name)
 		if flag == "none" {
