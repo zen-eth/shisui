@@ -2,7 +2,6 @@ package portalwire
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/optimism-java/shisui2/storage"
 	"github.com/optimism-java/shisui2/testlog"
@@ -270,24 +268,24 @@ func TestPortalWireProtocol(t *testing.T) {
 
 	time.Sleep(12 * time.Second)
 
-	slices.ContainsFunc(node1.table.NodeList(), func(n *enode.Node) bool {
+	slices.ContainsFunc(node1.table.nodeList(), func(n *enode.Node) bool {
 		return n.ID() == node2.localNode.Node().ID()
 	})
-	slices.ContainsFunc(node1.table.NodeList(), func(n *enode.Node) bool {
+	slices.ContainsFunc(node1.table.nodeList(), func(n *enode.Node) bool {
 		return n.ID() == node3.localNode.Node().ID()
 	})
 
-	slices.ContainsFunc(node2.table.NodeList(), func(n *enode.Node) bool {
+	slices.ContainsFunc(node2.table.nodeList(), func(n *enode.Node) bool {
 		return n.ID() == node1.localNode.Node().ID()
 	})
-	slices.ContainsFunc(node2.table.NodeList(), func(n *enode.Node) bool {
+	slices.ContainsFunc(node2.table.nodeList(), func(n *enode.Node) bool {
 		return n.ID() == node3.localNode.Node().ID()
 	})
 
-	slices.ContainsFunc(node3.table.NodeList(), func(n *enode.Node) bool {
+	slices.ContainsFunc(node3.table.nodeList(), func(n *enode.Node) bool {
 		return n.ID() == node1.localNode.Node().ID()
 	})
-	slices.ContainsFunc(node3.table.NodeList(), func(n *enode.Node) bool {
+	slices.ContainsFunc(node3.table.nodeList(), func(n *enode.Node) bool {
 		return n.ID() == node2.localNode.Node().ID()
 	})
 
@@ -502,12 +500,4 @@ func TestTraceContentLookup(t *testing.T) {
 
 	node1Response := res.Trace.Responses[node1Id]
 	assert.Equal(t, node1Response.RespondedWith, ([]string)(nil))
-}
-
-func newkey() *ecdsa.PrivateKey {
-	key, err := crypto.GenerateKey()
-	if err != nil {
-		panic("couldn't generate key: " + err.Error())
-	}
-	return key
 }

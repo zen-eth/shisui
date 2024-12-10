@@ -103,7 +103,7 @@ func (d *DiscV5API) AddEnr(enr string) (bool, error) {
 	}
 
 	// immediately add the node to the routing table
-	d.DiscV5.Table().AddInboundNode(n)
+	d.DiscV5.AddKnownNode(n)
 	return true, nil
 }
 
@@ -112,7 +112,7 @@ func (d *DiscV5API) GetEnr(nodeId string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	n := d.DiscV5.Table().GetNode(id)
+	n := d.DiscV5.GetNode(id)
 	if n == nil {
 		return false, errors.New("record not in local routing table")
 	}
@@ -126,12 +126,12 @@ func (d *DiscV5API) DeleteEnr(nodeId string) (bool, error) {
 		return false, err
 	}
 
-	n := d.DiscV5.Table().GetNode(id)
+	n := d.DiscV5.GetNode(id)
 	if n == nil {
 		return false, errors.New("record not in local routing table")
 	}
 
-	d.DiscV5.Table().DeleteNode(n)
+	d.DiscV5.DeleteNode(n)
 	return true, nil
 }
 
@@ -278,7 +278,7 @@ func (p *PortalProtocolAPI) GetEnr(nodeId string) (string, error) {
 		return p.portalProtocol.localNode.Node().String(), nil
 	}
 
-	n := p.portalProtocol.table.GetNode(id)
+	n := p.portalProtocol.table.getNode(id)
 	if n == nil {
 		return "", errors.New("record not in local routing table")
 	}
@@ -292,12 +292,12 @@ func (p *PortalProtocolAPI) DeleteEnr(nodeId string) (bool, error) {
 		return false, err
 	}
 
-	n := p.portalProtocol.table.GetNode(id)
+	n := p.portalProtocol.table.getNode(id)
 	if n == nil {
 		return false, nil
 	}
 
-	p.portalProtocol.table.DeleteNode(n)
+	p.portalProtocol.table.deleteNode(n)
 	return true, nil
 }
 

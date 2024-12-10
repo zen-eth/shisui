@@ -26,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/discover"
-	"github.com/ethereum/go-ethereum/p2p/discover/v5wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
@@ -76,6 +75,10 @@ const (
 	// And then there are still limits to be applied also for FindContent and the
 	// incoming directions.
 	concurrentOffers = 50
+
+	lookupRequestLimit = 3 // max requests against a single node during lookup
+
+	maxPacketSize = 1280
 )
 
 const (
@@ -113,6 +116,12 @@ var PortalBootnodes = []string{
 	"enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
 	"enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o",
 }
+
+var (
+	errClosed  = errors.New("socket closed")
+	errTimeout = errors.New("RPC timeout")
+	errLowPort = errors.New("low port")
+)
 
 type ContentElement struct {
 	Node        enode.ID
@@ -180,7 +189,7 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 }
 
 type PortalProtocol struct {
-	table *discover.Table
+	table *Table
 
 	protocolId   string
 	protocolName string
@@ -272,32 +281,32 @@ func (p *PortalProtocol) Start() error {
 		return err
 	}
 
-	go p.table.Loop()
+	go p.table.loop()
 
 	for i := 0; i < concurrentOffers; i++ {
 		go p.offerWorker()
 	}
 
 	// wait for both initialization processes to complete
-	p.DiscV5.Table().WaitInit()
-	p.table.WaitInit()
+	p.DiscV5.WaitInit()
+	p.table.waitInit()
 	return nil
 }
 
 func (p *PortalProtocol) Stop() {
 	p.cancelCloseCtx()
-	p.table.Close()
+	p.table.close()
 	p.DiscV5.Close()
 	if p.Utp != nil {
 		p.Utp.Stop()
 	}
 }
 func (p *PortalProtocol) RoutingTableInfo() [][]string {
-	return p.table.NodeIds()
+	return p.table.nodeIds()
 }
 
 func (p *PortalProtocol) AddEnr(n *enode.Node) {
-	added := p.table.AddFoundNode(n, true)
+	added := p.table.addFoundNode(n, true)
 	if !added {
 		p.Log.Warn("add node failed", "id", n.ID(), "ip", n.IPAddr())
 		return
@@ -331,14 +340,14 @@ func (p *PortalProtocol) setupDiscV5AndTable() error {
 		return err
 	}
 
-	cfg := discover.Config{
+	cfg := Config{
 		PrivateKey:  p.PrivateKey,
 		NetRestrict: p.NetRestrict,
 		Bootnodes:   p.BootstrapNodes,
 		Log:         p.Log,
 	}
 
-	p.table, err = discover.NewTable(p, p.localNode.Database(), cfg)
+	p.table, err = newTable(p, p.localNode.Database(), cfg)
 	if err != nil {
 		return err
 	}
@@ -346,7 +355,7 @@ func (p *PortalProtocol) setupDiscV5AndTable() error {
 	return nil
 }
 
-func (p *PortalProtocol) Ping(node *enode.Node) (uint64, error) {
+func (p *PortalProtocol) ping(node *enode.Node) (uint64, error) {
 	pong, err := p.pingInner(node)
 	if err != nil {
 		return 0, err
@@ -518,7 +527,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 	if metrics.Enabled {
 		p.portalMetrics.messagesReceivedAccept.Mark(1)
 	}
-	isAdded := p.table.AddFoundNode(target, true)
+	isAdded := p.table.addFoundNode(target, true)
 	if isAdded {
 		log.Debug("Node added to bucket", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	} else {
@@ -650,7 +659,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		if metrics.Enabled {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 		}
-		isAdded := p.table.AddFoundNode(target, true)
+		isAdded := p.table.addFoundNode(target, true)
 		if isAdded {
 			log.Debug("Node added to bucket", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 		} else {
@@ -668,7 +677,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		if metrics.Enabled {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 		}
-		isAdded := p.table.AddFoundNode(target, true)
+		isAdded := p.table.addFoundNode(target, true)
 		if isAdded {
 			log.Debug("Node added to bucket", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 		} else {
@@ -728,7 +737,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		if metrics.Enabled {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 		}
-		isAdded := p.table.AddFoundNode(target, true)
+		isAdded := p.table.addFoundNode(target, true)
 		if isAdded {
 			log.Debug("Node added to bucket", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 		} else {
@@ -756,7 +765,7 @@ func (p *PortalProtocol) processNodes(target *enode.Node, resp []byte, distances
 		return nil, err
 	}
 
-	isAdded := p.table.AddFoundNode(target, true)
+	isAdded := p.table.addFoundNode(target, true)
 	if isAdded {
 		log.Debug("Node added to bucket", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	} else {
@@ -827,7 +836,7 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, er
 	if metrics.Enabled {
 		p.portalMetrics.messagesReceivedPong.Mark(1)
 	}
-	isAdded := p.table.AddFoundNode(target, true)
+	isAdded := p.table.addFoundNode(target, true)
 	if isAdded {
 		log.Debug("Node added to bucket", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	} else {
@@ -840,7 +849,7 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, er
 
 func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg []byte) []byte {
 	if n := p.DiscV5.GetNode(id); n != nil {
-		p.table.AddInboundNode(n)
+		p.table.addInboundNode(n)
 	}
 
 	msgCode := msg[0]
@@ -981,7 +990,7 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 	nodes := p.collectTableNodes(fromAddr.IP, distances, portalFindnodesResultLimit)
 
 	nodesOverhead := 1 + 1 + 4 // msg id + total + container offset
-	maxPayloadSize := v5wire.MaxPacketSize - talkRespOverhead - nodesOverhead
+	maxPayloadSize := maxPacketSize - talkRespOverhead - nodesOverhead
 	enrOverhead := 4 // per added ENR, 4 bytes offset overhead
 
 	enrs := p.truncateNodes(nodes, maxPayloadSize, enrOverhead)
@@ -1011,7 +1020,7 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 
 func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, request *FindContent) ([]byte, error) {
 	contentOverhead := 1 + 1 // msg id + SSZ Union selector
-	maxPayloadSize := v5wire.MaxPacketSize - talkRespOverhead - contentOverhead
+	maxPayloadSize := maxPacketSize - talkRespOverhead - contentOverhead
 	enrOverhead := 4 // per added ENR, 4 bytes offset overhead
 	var err error
 	contentKey := request.ContentKey
@@ -1378,7 +1387,7 @@ func (p *PortalProtocol) verifyResponseNode(sender *enode.Node, r *enr.Record, d
 		return nil, errors.New("not contained in netrestrict list")
 	}
 	if n.UDP() <= 1024 {
-		return nil, discover.ErrLowPort
+		return nil, errLowPort
 	}
 	if distances != nil {
 		nd := enode.LogDist(sender.ID(), n.ID())
@@ -1395,24 +1404,24 @@ func (p *PortalProtocol) verifyResponseNode(sender *enode.Node, r *enr.Record, d
 
 // LookupRandom looks up a random target.
 // This is needed to satisfy the transport interface.
-func (p *PortalProtocol) LookupRandom() []*enode.Node {
-	return p.newRandomLookup(p.closeCtx).Run()
+func (p *PortalProtocol) lookupRandom() []*enode.Node {
+	return p.newRandomLookup(p.closeCtx).run()
 }
 
 // LookupSelf looks up our own node ID.
 // This is needed to satisfy the transport interface.
-func (p *PortalProtocol) LookupSelf() []*enode.Node {
-	return p.newLookup(p.closeCtx, p.Self().ID()).Run()
+func (p *PortalProtocol) lookupSelf() []*enode.Node {
+	return p.newLookup(p.closeCtx, p.Self().ID()).run()
 }
 
-func (p *PortalProtocol) newRandomLookup(ctx context.Context) *discover.Lookup {
+func (p *PortalProtocol) newRandomLookup(ctx context.Context) *lookup {
 	var target enode.ID
 	_, _ = crand.Read(target[:])
 	return p.newLookup(ctx, target)
 }
 
-func (p *PortalProtocol) newLookup(ctx context.Context, target enode.ID) *discover.Lookup {
-	return discover.NewLookup(ctx, p.table, target, func(n *enode.Node) ([]*enode.Node, error) {
+func (p *PortalProtocol) newLookup(ctx context.Context, target enode.ID) *lookup {
+	return newLookup(ctx, p.table, target, func(n *enode.Node) ([]*enode.Node, error) {
 		return p.lookupWorker(n, target)
 	})
 }
@@ -1420,28 +1429,28 @@ func (p *PortalProtocol) newLookup(ctx context.Context, target enode.ID) *discov
 // lookupWorker performs FINDNODE calls against a single node during lookup.
 func (p *PortalProtocol) lookupWorker(destNode *enode.Node, target enode.ID) ([]*enode.Node, error) {
 	var (
-		dists = discover.LookupDistances(target, destNode.ID())
-		nodes = discover.NodesByDistance{Target: target}
+		dists = lookupDistances(target, destNode.ID())
+		nodes = nodesByDistance{target: target}
 		err   error
 	)
 	var r []*enode.Node
 
 	r, err = p.findNodes(destNode, dists)
-	if errors.Is(err, discover.ErrClosed) {
+	if errors.Is(err, errClosed) {
 		return nil, err
 	}
 	for _, n := range r {
 		if n.ID() != p.Self().ID() {
-			isAdded := p.table.AddFoundNode(n, false)
+			isAdded := p.table.addFoundNode(n, false)
 			if isAdded {
 				log.Debug("Node added to bucket", "protocol", p.protocolName, "node", n.IP(), "port", n.UDP())
 			} else {
 				log.Debug("Node added to replacements list", "protocol", p.protocolName, "node", n.IP(), "port", n.UDP())
 			}
-			nodes.Push(n, portalFindnodesResultLimit)
+			nodes.push(n, portalFindnodesResultLimit)
 		}
 	}
-	return nodes.Entries, err
+	return nodes.entries, err
 }
 
 func (p *PortalProtocol) offerWorker() {
@@ -1480,7 +1489,7 @@ func (p *PortalProtocol) truncateNodes(nodes []*enode.Node, maxSize int, enrOver
 }
 
 func (p *PortalProtocol) findNodesCloseToContent(contentId []byte, limit int) []*enode.Node {
-	allNodes := p.table.NodeList()
+	allNodes := p.table.nodeList()
 	sort.Slice(allNodes, func(i, j int) bool {
 		return enode.LogDist(allNodes[i].ID(), enode.ID(contentId)) < enode.LogDist(allNodes[j].ID(), enode.ID(contentId))
 	})
@@ -1495,13 +1504,13 @@ func (p *PortalProtocol) findNodesCloseToContent(contentId []byte, limit int) []
 // Lookup performs a recursive lookup for the given target.
 // It returns the closest nodes to target.
 func (p *PortalProtocol) Lookup(target enode.ID) []*enode.Node {
-	return p.newLookup(p.closeCtx, target).Run()
+	return p.newLookup(p.closeCtx, target).run()
 }
 
 // Resolve searches for a specific Node with the given ID and tries to get the most recent
 // version of the Node record for it. It returns n if the Node could not be resolved.
 func (p *PortalProtocol) Resolve(n *enode.Node) *enode.Node {
-	if intable := p.table.GetNode(n.ID()); intable != nil && intable.Seq() > n.Seq() {
+	if intable := p.table.getNode(n.ID()); intable != nil && intable.Seq() > n.Seq() {
 		n = intable
 	}
 	// Try asking directly. This works if the Node is still responding on the endpoint we have.
@@ -1526,7 +1535,7 @@ func (p *PortalProtocol) ResolveNodeId(id enode.ID) *enode.Node {
 		return p.Self()
 	}
 
-	n := p.table.GetNode(id)
+	n := p.table.getNode(id)
 	if n != nil {
 		p.Log.Debug("found Id in table and will request enr from the node", "id", id.String())
 		// Try asking directly. This works if the Node is still responding on the endpoint we have.
@@ -1562,8 +1571,8 @@ func (p *PortalProtocol) collectTableNodes(rip net.IP, distances []uint, limit i
 		}
 		processed[dist] = struct{}{}
 
-		checkLive := !p.table.Config().NoFindnodeLivenessCheck
-		for _, n := range p.table.AppendBucketNodes(dist, bn[:0], checkLive) {
+		checkLive := !p.table.cfg.NoFindnodeLivenessCheck
+		for _, n := range p.table.appendBucketNodes(dist, bn[:0], checkLive) {
 			// Apply some pre-checks to avoid sending invalid nodes.
 			// Note liveness is checked by appendLiveNodes.
 			if netutil.CheckRelayIP(rip, n.IP()) != nil {
@@ -1581,7 +1590,7 @@ func (p *PortalProtocol) collectTableNodes(rip net.IP, distances []uint, limit i
 func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bool, error) {
 	lookupContext, cancel := context.WithCancel(context.Background())
 
-	resChan := make(chan *traceContentInfoResp, discover.Alpha)
+	resChan := make(chan *traceContentInfoResp, alpha)
 	hasResult := int32(0)
 
 	result := ContentInfoResp{}
@@ -1599,9 +1608,9 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 		}
 	}()
 
-	discover.NewLookup(lookupContext, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
+	newLookup(lookupContext, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
 		return p.contentLookupWorker(n, contentKey, resChan, cancel, &hasResult)
-	}).Run()
+	}).run()
 	close(resChan)
 
 	wg.Wait()
@@ -1615,7 +1624,7 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*TraceContentResult, error) {
 	lookupContext, cancel := context.WithCancel(context.Background())
 	// resp channel
-	resChan := make(chan *traceContentInfoResp, discover.Alpha)
+	resChan := make(chan *traceContentInfoResp, alpha)
 
 	hasResult := int32(0)
 
@@ -1632,10 +1641,10 @@ func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*Trac
 		Cancelled:   make([]string, 0),
 	}
 
-	nodes := p.table.FindnodeByID(enode.ID(contentId), discover.BucketSize, false)
+	nodes := p.table.findnodeByID(enode.ID(contentId), bucketSize, false)
 
-	localResponse := make([]string, 0, len(nodes.Entries))
-	for _, node := range nodes.Entries {
+	localResponse := make([]string, 0, len(nodes.entries))
+	for _, node := range nodes.entries {
 		id := "0x" + node.ID().String()
 		localResponse = append(localResponse, id)
 	}
@@ -1697,10 +1706,10 @@ func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*Trac
 		}
 	}()
 
-	lookup := discover.NewLookup(lookupContext, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
+	lookup := newLookup(lookupContext, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
 		return p.contentLookupWorker(n, contentKey, resChan, cancel, &hasResult)
 	})
-	lookup.Run()
+	lookup.run()
 	close(resChan)
 
 	wg.Wait()
@@ -1926,4 +1935,21 @@ func getContentKeys(request *OfferRequest) [][]byte {
 	} else {
 		return request.Request.(*PersistOfferRequest).ContentKeys
 	}
+}
+
+// lookupDistances computes the distance parameter for FINDNODE calls to dest.
+// It chooses distances adjacent to logdist(target, dest), e.g. for a target
+// with logdist(target, dest) = 255 the result is [255, 256, 254].
+func lookupDistances(target, dest enode.ID) (dists []uint) {
+	td := enode.LogDist(target, dest)
+	dists = append(dists, uint(td))
+	for i := 1; len(dists) < lookupRequestLimit; i++ {
+		if td+i <= 256 {
+			dists = append(dists, uint(td+i))
+		}
+		if td-i > 0 {
+			dists = append(dists, uint(td-i))
+		}
+	}
+	return dists
 }

@@ -50,6 +50,22 @@ issues:
     - path: state/trie/encoding.go
       linters:
         - unused
+    - path: portalwire/table_util_test.go
+      linters:
+        - unused
+    - path: portalwire/table.go
+      linters:
+        - unused
+        - unparam
+    - path: portalwire/table_test.go
+      linters:
+        - unparam
+    - path: portalwire/table_reval.go
+      linters:
+        - unparam
+    - path: portalwire/lookup.go
+      linters:
+        - unused
     - path: state/trie/node_test.go
       text: "`randBytes` - `n` always receives `32`"
 
