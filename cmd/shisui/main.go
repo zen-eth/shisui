@@ -109,6 +109,20 @@ func init() {
 	app.Action = shisui
 	app.Flags = slices.Concat(portalProtocolFlags, historyRpcFlags, metricsFlags, debug.Flags)
 	flags.AutoEnvVars(app.Flags, "SHISUI")
+
+	app.Before = func(ctx *cli.Context) error {
+		flags.MigrateGlobalFlags(ctx)
+		if err := debug.Setup(ctx); err != nil {
+			return err
+		}
+		flags.CheckEnvVars(ctx, app.Flags, "SHISUI")
+		return nil
+	}
+
+	app.After = func(ctx *cli.Context) error {
+		debug.Exit()
+		return nil
+	}
 }
 
 func main() {
