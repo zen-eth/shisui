@@ -7,7 +7,7 @@ COPY . .
 RUN make shisui
 
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 COPY --from=builder /app/build/bin/shisui /usr/local/bin/app
 
