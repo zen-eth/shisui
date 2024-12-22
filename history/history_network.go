@@ -148,7 +148,7 @@ func (h *Network) GetBlockHeader(blockHash []byte) (*types.Header, error) {
 		}
 		err = h.portalProtocol.Put(contentKey, contentId, content)
 		if err != nil {
-			h.log.Error("failed to store content in getBlockHeader", "contentKey", hexutil.Encode(contentKey), "content", hexutil.Encode(content))
+			h.log.Error("failed to store content in getBlockHeader", "contentKey", hexutil.Encode(contentKey), "err", err)
 		}
 		return header, nil
 	}
@@ -199,7 +199,7 @@ func (h *Network) GetBlockBody(blockHash []byte) (*types.Body, error) {
 		}
 		err = h.portalProtocol.Put(contentKey, contentId, content)
 		if err != nil {
-			h.log.Error("failed to store content in getBlockBody", "contentKey", hexutil.Encode(contentKey), "content", hexutil.Encode(content))
+			h.log.Error("failed to store content in getBlockBody", "contentKey", hexutil.Encode(contentKey), "err", err)
 		}
 		return body, nil
 	}
@@ -248,7 +248,7 @@ func (h *Network) GetReceipts(blockHash []byte) ([]*types.Receipt, error) {
 		}
 		err = h.portalProtocol.Put(contentKey, contentId, content)
 		if err != nil {
-			h.log.Error("failed to store content in getReceipts", "contentKey", hexutil.Encode(contentKey), "content", hexutil.Encode(content))
+			h.log.Error("failed to store content in getReceipts", "contentKey", hexutil.Encode(contentKey), "err", err)
 		}
 		return receipts, nil
 	}
@@ -564,8 +564,7 @@ func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) erro
 		contentKey := contentKeys[i]
 		err := h.validateContent(contentKey, content)
 		if err != nil {
-			h.log.Error("content validate failed", "contentKey", hexutil.Encode(contentKey), "content", hexutil.Encode(content), "err", err)
-			return fmt.Errorf("content validate failed with content key %x and content %x", contentKey, content)
+			return fmt.Errorf("content validate failed with content key %x and content %x, err is %v", contentKey, content, err)
 		}
 		contentId := h.portalProtocol.ToContentId(contentKey)
 		_ = h.portalProtocol.Put(contentKey, contentId, content)
