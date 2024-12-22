@@ -160,11 +160,8 @@ func shisui(ctx *cli.Context) error {
 	clientChan := make(chan *Client, 1)
 	go handlerInterrupt(clientChan)
 
-	addr, err := net.ResolveUDPAddr("udp", config.Protocol.ListenAddr)
-	if err != nil {
-		return err
-	}
-	conn, err := net.ListenUDP("udp", addr)
+	conn := portalwire.NewGnetConn(log.New("discv5", "gnet"))
+	err = conn.ListenUDP(context.Background(), config.Protocol.ListenAddr)
 	if err != nil {
 		return err
 	}
