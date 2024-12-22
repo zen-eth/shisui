@@ -300,11 +300,10 @@ func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 		conf.BootstrapNodes = bootNodes
 	}
 
-	addr1, err := net.ResolveUDPAddr("udp", conf.ListenAddr)
-	if err != nil {
-		return nil, err
-	}
-	conn, err := net.ListenUDP("udp", addr1)
+	conn := portalwire.NewGnetConn(log.New("gnet", addr))
+
+	err := conn.ListenUDP(context.Background(), addr)
+
 	if err != nil {
 		return nil, err
 	}
