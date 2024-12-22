@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -35,11 +36,15 @@ func setupLocalPortalNode(addr string, bootNodes []*enode.Node) (*PortalProtocol
 		conf.BootstrapNodes = bootNodes
 	}
 
-	addr1, err := net.ResolveUDPAddr("udp", conf.ListenAddr)
-	if err != nil {
-		return nil, err
-	}
-	conn, err := net.ListenUDP("udp", addr1)
+	glogger := log.NewGlogHandler(log.JSONHandler(os.Stderr))
+	slogVerbosity := log.FromLegacyLevel(4)
+	glogger.Verbosity(slogVerbosity)
+	defaultLogger := log.NewLogger(glogger)
+	log.SetDefault(defaultLogger)
+
+	conn := NewGnetConn(log.New("gnet", addr))
+
+	err := conn.ListenUDP(context.Background(), addr)
 	if err != nil {
 		return nil, err
 	}
@@ -110,19 +115,22 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 	node1.Log = testlog.Logger(t, log.LvlTrace)
 	err = node1.Start()
 	assert.NoError(t, err)
+	defer node1.Stop()
 
 	node2, err := setupLocalPortalNode(":8778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LvlTrace)
 	err = node2.Start()
 	assert.NoError(t, err)
-	time.Sleep(12 * time.Second)
+	defer node2.Stop()
 
 	node3, err := setupLocalPortalNode(":8779", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LvlTrace)
 	err = node3.Start()
 	assert.NoError(t, err)
+	defer node3.Stop()
+
 	time.Sleep(12 * time.Second)
 
 	cid1 := libutp.ReceConnId(12)
@@ -240,9 +248,9 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 		assert.Equal(t, largeTestContent, data)
 	}()
 	workGroup.Wait()
-	node1.Stop()
-	node2.Stop()
-	node3.Stop()
+	// node1.Stop()
+	// node2.Stop()
+	// node3.Stop()
 }
 
 func TestPortalWireProtocol(t *testing.T) {
@@ -251,20 +259,22 @@ func TestPortalWireProtocol(t *testing.T) {
 	node1.Log = testlog.Logger(t, log.LevelDebug)
 	err = node1.Start()
 	assert.NoError(t, err)
+	defer node1.Stop()
 
 	node2, err := setupLocalPortalNode(":7778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LevelDebug)
 	err = node2.Start()
 	assert.NoError(t, err)
-
-	time.Sleep(12 * time.Second)
+	defer node2.Stop()
+	// time.Sleep(12 * time.Second)
 
 	node3, err := setupLocalPortalNode(":7779", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LevelDebug)
 	err = node3.Start()
 	assert.NoError(t, err)
+	defer node3.Stop()
 
 	time.Sleep(12 * time.Second)
 
@@ -367,10 +377,6 @@ func TestPortalWireProtocol(t *testing.T) {
 	assert.Equal(t, testGossipContent[0], contentElement.Contents[0])
 	assert.Equal(t, testGossipContentKeys[1], contentElement.ContentKeys[1])
 	assert.Equal(t, testGossipContent[1], contentElement.Contents[1])
-
-	node1.Stop()
-	node2.Stop()
-	node3.Stop()
 }
 
 func TestCancel(t *testing.T) {
