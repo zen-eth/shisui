@@ -42,6 +42,7 @@ import (
 	"github.com/optimism-java/shisui2/web3"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/urfave/cli/v2"
+	"go.uber.org/automaxprocs/maxprocs"
 )
 
 var (
@@ -111,6 +112,10 @@ func init() {
 	flags.AutoEnvVars(app.Flags, "SHISUI")
 
 	app.Before = func(ctx *cli.Context) error {
+		_, err := maxprocs.Set() // Automatically set GOMAXPROCS to match Linux container CPU quota.
+		if err != nil {
+			return err
+		}
 		flags.MigrateGlobalFlags(ctx)
 		if err := debug.Setup(ctx); err != nil {
 			return err

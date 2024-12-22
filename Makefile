@@ -8,7 +8,7 @@ GOBIN = ./build/bin
 GO ?= latest
 GORUN = go run
 
-GIT_COMMIT := $(shell git rev-parse HEAD)
+GIT_COMMIT := $(shell git rev-parse --short=8 HEAD)
 GIT_DATE := $(shell git log -1 --format=%ci | cut -d ' ' -f 1)
 
 #? shisui: Build shisui
@@ -21,7 +21,7 @@ shisui:
 
 #? shisui-image: Build shisui image
 shisui-image:
-	docker build -t ghcr.io/optimism-java/shisui:latest -f Dockerfile .
+	docker build -t ghcr.io/zen-eth/shisui:latest -f Dockerfile .
 
 #? fmt: Ensure consistent code formatting.
 fmt:

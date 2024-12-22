@@ -3,6 +3,7 @@ package pebble
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -237,7 +238,8 @@ func (c *ContentStorage) Close() error {
 
 func (c *ContentStorage) prune() error {
 	expectSize := uint64(float64(c.storageCapacityInBytes) * contentDeletionFraction)
-	var curentSize uint64 = 0
+	var currentSize uint64 = 0
+	c.log.Debug("start pruning", "expectSize", expectSize)
 
 	// get the keys to be deleted order by distance desc
 	iter, err := c.db.NewIter(nil)
@@ -245,17 +247,19 @@ func (c *ContentStorage) prune() error {
 		return err
 	}
 
+	pruneCount := 0
 	batch := c.db.NewBatch()
 	for iter.Last(); iter.Valid(); iter.Prev() {
 		if bytes.Equal(iter.Key(), storage.SizeKey) {
 			continue
 		}
-		if curentSize < expectSize {
+		if currentSize < expectSize {
 			err := batch.Delete(iter.Key(), nil)
 			if err != nil {
 				return err
 			}
-			curentSize += uint64(len(iter.Key())) + uint64(len(iter.Value()))
+			currentSize += uint64(len(iter.Key())) + uint64(len(iter.Value()))
+			pruneCount++
 		} else {
 			distance := iter.Key()
 			dis := uint256.NewInt(0)
@@ -267,7 +271,12 @@ func (c *ContentStorage) prune() error {
 			break
 		}
 	}
-	newSize := c.size.Add(-curentSize)
+	size := c.size.Load()
+	if size < currentSize {
+		return fmt.Errorf("prune error, size < currentSize, got size %d, currentSize %d", size, currentSize)
+	}
+	newSize := size - currentSize
+	c.size.Store(newSize)
 	buf := c.bytePool.Get().(*[]byte)
 	defer c.bytePool.Put(buf)
 	binary.BigEndian.PutUint64(*buf, newSize)
@@ -279,6 +288,8 @@ func (c *ContentStorage) prune() error {
 	if err != nil {
 		return err
 	}
+
+	c.log.Debug("prune finished", "pruneCount", pruneCount, "pruneSize", currentSize, "current storage", newSize)
 	go func() {
 		start := uint256.NewInt(0).Bytes32()
 		end := storage.MaxDistance.Bytes32()
