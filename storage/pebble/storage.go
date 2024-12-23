@@ -152,21 +152,23 @@ func NewStorage(config storage.PortalStorageConfig, db *pebble.DB) (storage.Cont
 				return nil, err
 			}
 		}
-	}
-
-	iter, err := cs.db.NewIter(nil)
-	if err != nil {
-		return nil, err
-	}
-	defer iter.Close()
-	if iter.Last() && iter.Valid() {
-		distance := iter.Key()
-		dis := uint256.NewInt(0)
-		err = dis.UnmarshalSSZ(distance)
-		if err != nil {
-			return nil, err
+		// if size greater than 95% of capacity, get radius from DB
+		if size > uint64(float64(cs.storageCapacityInBytes)*(1-contentDeletionFraction)) {
+			iter, err := cs.db.NewIter(nil)
+			if err != nil {
+				return nil, err
+			}
+			defer iter.Close()
+			if iter.Last() && iter.Valid() {
+				distance := iter.Key()
+				dis := uint256.NewInt(0)
+				err = dis.UnmarshalSSZ(distance)
+				if err != nil {
+					return nil, err
+				}
+				cs.radius.Store(dis)
+			}
 		}
-		cs.radius.Store(dis)
 	}
 	return cs, nil
 }
