@@ -15,7 +15,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-sqlite3 v1.14.24
-	github.com/optimism-java/utp-go v0.0.0-20241220063931-e7f66577a96c
+	github.com/optimism-java/utp-go v0.0.0-20241223023954-dac5386d1424
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.32.3
 	github.com/protolambda/ztyp v0.2.2
