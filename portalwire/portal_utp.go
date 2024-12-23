@@ -80,9 +80,11 @@ func (p *PortalUtp) Start() error {
 }
 
 func (p *PortalUtp) Stop() {
-	err := p.listener.Close()
-	if err != nil {
-		p.log.Error("close utp listener has error", "error", err)
+	if p.listener != nil {
+		err := p.listener.Close()
+		if err != nil {
+			p.log.Error("close utp listener has error", "error", err)
+		}
 	}
 	p.discV5.Close()
 }
