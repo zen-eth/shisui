@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/holiman/uint256"
-	"github.com/optimism-java/shisui2/storage"
+	"github.com/zen-eth/shisui/storage"
 )
 
 const (

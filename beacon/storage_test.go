@@ -13,9 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/holiman/uint256"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/optimism-java/shisui2/storage"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/stretchr/testify/require"
+	"github.com/zen-eth/shisui/storage"
 )
 
 var zeroNodeId = uint256.NewInt(0).Bytes32()

@@ -8,8 +8,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/holiman/uint256"
-	contentStorage "github.com/optimism-java/shisui2/storage"
 	"github.com/stretchr/testify/assert"
+	contentStorage "github.com/zen-eth/shisui/storage"
 )
 
 const nodeDataDir = "./unit_test"

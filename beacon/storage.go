@@ -9,10 +9,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/holiman/uint256"
-	"github.com/optimism-java/shisui2/portalwire"
-	storage2 "github.com/optimism-java/shisui2/storage"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/ztyp/codec"
+	"github.com/zen-eth/shisui/portalwire"
+	storage2 "github.com/zen-eth/shisui/storage"
 )
 
 const BytesInMB uint64 = 1000 * 1000
@@ -189,7 +189,7 @@ func (bs *Storage) getLcUpdateValueByRange(start, end uint64) ([]byte, error) {
 func (bs *Storage) putContentValue(contentId, contentKey, value []byte) error {
 	length := 32 + len(contentKey) + len(value)
 	_, err := bs.db.ExecContext(context.Background(), InsertQueryBeacon, contentId, contentKey, value, length)
-	if metrics.Enabled && err == nil {
+	if metrics.Enabled() && err == nil {
 		portalStorageMetrics.EntriesCount.Inc(1)
 		portalStorageMetrics.ContentStorageUsage.Inc(int64(len(value)))
 	}
@@ -198,7 +198,7 @@ func (bs *Storage) putContentValue(contentId, contentKey, value []byte) error {
 
 func (bs *Storage) putLcUpdate(period uint64, value []byte) error {
 	_, err := bs.db.ExecContext(context.Background(), InsertLCUpdateQuery, period, value, 0, len(value))
-	if metrics.Enabled && err == nil {
+	if metrics.Enabled() && err == nil {
 		portalStorageMetrics.EntriesCount.Inc(1)
 		portalStorageMetrics.ContentStorageUsage.Inc(int64(len(value)))
 	}

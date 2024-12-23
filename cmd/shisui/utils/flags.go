@@ -13,9 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/metrics/exp"
 	"github.com/ethereum/go-ethereum/metrics/influxdb"
-	"github.com/optimism-java/shisui2/internal/flags"
-	"github.com/optimism-java/shisui2/portalwire"
 	"github.com/urfave/cli/v2"
+	"github.com/zen-eth/shisui/internal/flags"
+	"github.com/zen-eth/shisui/portalwire"
 )
 
 var (
@@ -183,7 +183,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 )
 
 func SetupMetrics(ctx *cli.Context) {
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		log.Info("Enabling metrics collection")
 
 		var (

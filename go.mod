@@ -1,4 +1,4 @@
-module github.com/optimism-java/shisui2
+module github.com/zen-eth/shisui
 
 go 1.23.1
 

@@ -12,13 +12,13 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	ssz "github.com/ferranbt/fastssz"
 	"github.com/golang/snappy"
-	portalwire2 "github.com/optimism-java/shisui2/portalwire"
-	"github.com/optimism-java/shisui2/storage"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/beacon/deneb"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/tree"
+	portalwire2 "github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/storage"
 )
 
 func SetupBeaconNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {

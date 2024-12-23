@@ -29,24 +29,24 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/mattn/go-isatty"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/optimism-java/shisui2/beacon"
-	"github.com/optimism-java/shisui2/cmd/shisui/utils"
-	"github.com/optimism-java/shisui2/ethapi"
-	"github.com/optimism-java/shisui2/history"
-	"github.com/optimism-java/shisui2/internal/debug"
-	"github.com/optimism-java/shisui2/internal/flags"
-	"github.com/optimism-java/shisui2/portalwire"
-	"github.com/optimism-java/shisui2/state"
-	"github.com/optimism-java/shisui2/storage"
-	"github.com/optimism-java/shisui2/storage/pebble"
-	"github.com/optimism-java/shisui2/web3"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/urfave/cli/v2"
+	"github.com/zen-eth/shisui/beacon"
+	"github.com/zen-eth/shisui/cmd/shisui/utils"
+	"github.com/zen-eth/shisui/ethapi"
+	"github.com/zen-eth/shisui/history"
+	"github.com/zen-eth/shisui/internal/debug"
+	"github.com/zen-eth/shisui/internal/flags"
+	"github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/state"
+	"github.com/zen-eth/shisui/storage"
+	"github.com/zen-eth/shisui/storage/pebble"
+	"github.com/zen-eth/shisui/web3"
 	"go.uber.org/automaxprocs/maxprocs"
 )
 
 var (
-	storageCapacity metrics.Gauge
+	storageCapacity *metrics.Gauge
 )
 
 const (
@@ -153,7 +153,7 @@ func shisui(ctx *cli.Context) error {
 	go metrics.CollectProcessMetrics(3 * time.Second)
 	go portalwire.CollectPortalMetrics(5*time.Second, ctx.StringSlice(utils.PortalNetworksFlag.Name), ctx.String(utils.PortalDataDirFlag.Name))
 
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		storageCapacity = metrics.NewRegisteredGauge("portal/storage_capacity", nil)
 		storageCapacity.Update(ctx.Int64(utils.PortalDataCapacityFlag.Name))
 	}

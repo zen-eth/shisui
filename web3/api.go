@@ -3,7 +3,7 @@ package web3
 import (
 	"runtime"
 
-	"github.com/optimism-java/shisui2/internal/version"
+	"github.com/zen-eth/shisui/internal/version"
 )
 
 type API struct{}

@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/optimism-java/shisui2/storage"
-	ethpepple "github.com/optimism-java/shisui2/storage/pebble"
-	"github.com/optimism-java/shisui2/storage/sqlite"
+	"github.com/zen-eth/shisui/storage"
+	ethpepple "github.com/zen-eth/shisui/storage/pebble"
+	"github.com/zen-eth/shisui/storage/sqlite"
 )
 
 type testCase struct {

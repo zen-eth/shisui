@@ -10,13 +10,13 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	ssz "github.com/ferranbt/fastssz"
-	"github.com/optimism-java/shisui2/portalwire"
-	"github.com/optimism-java/shisui2/storage"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/zrnt/eth2/util/merkle"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/tree"
+	"github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/storage"
 )
 
 const (

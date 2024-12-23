@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/optimism-java/shisui2/storage"
 	"github.com/stretchr/testify/require"
+	"github.com/zen-eth/shisui/storage"
 )
 
 func TestStorage(t *testing.T) {

@@ -18,8 +18,8 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/holiman/uint256"
 	"github.com/mattn/go-sqlite3"
-	"github.com/optimism-java/shisui2/portalwire"
-	"github.com/optimism-java/shisui2/storage"
+	"github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/storage"
 )
 
 const (
@@ -200,7 +200,7 @@ func (p *ContentStorage) put(contentId []byte, content []byte) PutResult {
 		return PutResult{pruned: true, count: count}
 	}
 
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		portalStorageMetrics.EntriesCount.Inc(1)
 		portalStorageMetrics.ContentStorageUsage.Inc(int64(len(content)))
 	}
@@ -367,7 +367,7 @@ func (p *ContentStorage) EstimateNewRadius(currentRadius *uint256.Int) (*uint256
 	sizeRatio := currrentSize / p.storageCapacityInBytes
 	if sizeRatio > 0 {
 		bigFormat := new(big.Int).SetUint64(sizeRatio)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			newRadius := new(uint256.Int).Div(currentRadius, uint256.MustFromBig(bigFormat))
 			newRadius.Mul(newRadius, uint256.NewInt(100))
 			newRadius.Mod(newRadius, storage.MaxDistance)
@@ -464,7 +464,7 @@ func (p *ContentStorage) deleteContentFraction(fraction float64) (deleteCount in
 			return 0, err
 		}
 		p.radius.Store(dis)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			dis.Mul(dis, uint256.NewInt(100))
 			dis.Mod(dis, storage.MaxDistance)
 			portalStorageMetrics.RadiusRatio.Update(dis.Float64() / 100)
@@ -483,14 +483,14 @@ func (p *ContentStorage) deleteContentFraction(fraction float64) (deleteCount in
 func (p *ContentStorage) del(contentId []byte) error {
 	var sizeDel uint64
 	var err error
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		sizeDel, err = p.SizeByKey(contentId)
 		if err != nil {
 			return err
 		}
 	}
 	_, err = p.delStmt.Exec(contentId)
-	if metrics.Enabled && err == nil {
+	if metrics.Enabled() && err == nil {
 		portalStorageMetrics.EntriesCount.Dec(1)
 		portalStorageMetrics.ContentStorageUsage.Dec(int64(sizeDel))
 	}
@@ -500,7 +500,7 @@ func (p *ContentStorage) del(contentId []byte) error {
 func (p *ContentStorage) batchDel(ids [][]byte) error {
 	var sizeDel uint64
 	var err error
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		sizeDel, err = p.SizeByKeys(ids)
 		if err != nil {
 			return err
@@ -514,7 +514,7 @@ func (p *ContentStorage) batchDel(ids [][]byte) error {
 
 	// delete items
 	_, err = p.sqliteDB.Exec(query, args...)
-	if metrics.Enabled && err == nil {
+	if metrics.Enabled() && err == nil {
 		portalStorageMetrics.EntriesCount.Dec(int64(len(args)))
 		portalStorageMetrics.ContentStorageUsage.Dec(int64(sizeDel))
 	}
@@ -531,7 +531,7 @@ func (p *ContentStorage) ReclaimSpace() error {
 func (p *ContentStorage) deleteContentOutOfRadius(radius *uint256.Int) error {
 	var sizeDel uint64
 	var err error
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		sizeDel, err = p.SizeOutRadius(radius)
 		if err != nil {
 			return err
@@ -543,7 +543,7 @@ func (p *ContentStorage) deleteContentOutOfRadius(radius *uint256.Int) error {
 	}
 	count, err := res.RowsAffected()
 	p.log.Trace("delete items", "count", count)
-	if metrics.Enabled && err == nil {
+	if metrics.Enabled() && err == nil {
 		portalStorageMetrics.EntriesCount.Dec(count)
 		portalStorageMetrics.ContentStorageUsage.Dec(int64(sizeDel))
 	}

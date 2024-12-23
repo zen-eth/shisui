@@ -12,12 +12,12 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/optimism-java/shisui2/history"
-	"github.com/optimism-java/shisui2/portalwire"
-	"github.com/optimism-java/shisui2/state/trie"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
+	"github.com/zen-eth/shisui/history"
+	"github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/state/trie"
 )
 
 type Network struct {

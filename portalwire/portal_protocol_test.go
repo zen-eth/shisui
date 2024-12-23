@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/p2p/discover"
-	"github.com/optimism-java/shisui2/storage"
-	"github.com/optimism-java/shisui2/testlog"
 	"github.com/optimism-java/utp-go"
 	"github.com/optimism-java/utp-go/libutp"
 	"github.com/prysmaticlabs/go-bitfield"
+	"github.com/zen-eth/shisui/storage"
+	"github.com/zen-eth/shisui/testlog"
 	"golang.org/x/exp/slices"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"

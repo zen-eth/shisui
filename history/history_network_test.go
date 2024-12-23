@@ -17,9 +17,9 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	portalwire2 "github.com/optimism-java/shisui2/portalwire"
-	"github.com/optimism-java/shisui2/storage"
 	"github.com/stretchr/testify/require"
+	"github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/storage"
 	"gopkg.in/yaml.v3"
 )
 
@@ -292,7 +292,7 @@ func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 	slogVerbosity := log.FromLegacyLevel(5)
 	glogger.Verbosity(slogVerbosity)
 	log.SetDefault(log.NewLogger(glogger))
-	conf := portalwire2.DefaultPortalProtocolConfig()
+	conf := portalwire.DefaultPortalProtocolConfig()
 	if addr != "" {
 		conf.ListenAddr = addr
 	}
@@ -327,16 +327,16 @@ func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 
 	localNode := enode.NewLocalNode(nodeDB, privKey)
 	localNode.SetFallbackIP(net.IP{127, 0, 0, 1})
-	localNode.Set(portalwire2.Tag)
+	localNode.Set(portalwire.Tag)
 
 	discV5, err := discover.ListenV5(conn, localNode, discCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	contentQueue := make(chan *portalwire2.ContentElement, 50)
-	utpSocket := portalwire2.NewPortalUtp(context.Background(), conf, discV5, conn)
-	portalProtocol, err := portalwire2.NewPortalProtocol(conf, portalwire2.History, privKey, conn, localNode, discV5, utpSocket, &storage.MockStorage{Db: make(map[string][]byte)}, contentQueue)
+	contentQueue := make(chan *portalwire.ContentElement, 50)
+	utpSocket := portalwire.NewPortalUtp(context.Background(), conf, discV5, conn)
+	portalProtocol, err := portalwire.NewPortalProtocol(conf, portalwire.History, privKey, conn, localNode, discV5, utpSocket, &storage.MockStorage{Db: make(map[string][]byte)}, contentQueue)
 	if err != nil {
 		return nil, err
 	}

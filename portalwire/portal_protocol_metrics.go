@@ -14,36 +14,36 @@ import (
 )
 
 type portalMetrics struct {
-	messagesReceivedAccept      metrics.Meter
-	messagesReceivedNodes       metrics.Meter
-	messagesReceivedFindNodes   metrics.Meter
-	messagesReceivedFindContent metrics.Meter
-	messagesReceivedContent     metrics.Meter
-	messagesReceivedOffer       metrics.Meter
-	messagesReceivedPing        metrics.Meter
-	messagesReceivedPong        metrics.Meter
+	messagesReceivedAccept      *metrics.Meter
+	messagesReceivedNodes       *metrics.Meter
+	messagesReceivedFindNodes   *metrics.Meter
+	messagesReceivedFindContent *metrics.Meter
+	messagesReceivedContent     *metrics.Meter
+	messagesReceivedOffer       *metrics.Meter
+	messagesReceivedPing        *metrics.Meter
+	messagesReceivedPong        *metrics.Meter
 
-	messagesSentAccept      metrics.Meter
-	messagesSentNodes       metrics.Meter
-	messagesSentFindNodes   metrics.Meter
-	messagesSentFindContent metrics.Meter
-	messagesSentContent     metrics.Meter
-	messagesSentOffer       metrics.Meter
-	messagesSentPing        metrics.Meter
-	messagesSentPong        metrics.Meter
+	messagesSentAccept      *metrics.Meter
+	messagesSentNodes       *metrics.Meter
+	messagesSentFindNodes   *metrics.Meter
+	messagesSentFindContent *metrics.Meter
+	messagesSentContent     *metrics.Meter
+	messagesSentOffer       *metrics.Meter
+	messagesSentPing        *metrics.Meter
+	messagesSentPong        *metrics.Meter
 
-	utpInFailConn     metrics.Counter
-	utpInFailRead     metrics.Counter
-	utpInFailDeadline metrics.Counter
-	utpInSuccess      metrics.Counter
+	utpInFailConn     *metrics.Counter
+	utpInFailRead     *metrics.Counter
+	utpInFailDeadline *metrics.Counter
+	utpInSuccess      *metrics.Counter
 
-	utpOutFailConn     metrics.Counter
-	utpOutFailWrite    metrics.Counter
-	utpOutFailDeadline metrics.Counter
-	utpOutSuccess      metrics.Counter
+	utpOutFailConn     *metrics.Counter
+	utpOutFailWrite    *metrics.Counter
+	utpOutFailDeadline *metrics.Counter
+	utpOutSuccess      *metrics.Counter
 
-	contentDecodedTrue  metrics.Counter
-	contentDecodedFalse metrics.Counter
+	contentDecodedTrue  *metrics.Counter
+	contentDecodedFalse *metrics.Counter
 }
 
 func newPortalMetrics(protocolName string) *portalMetrics {
@@ -79,15 +79,15 @@ func newPortalMetrics(protocolName string) *portalMetrics {
 
 type networkFileMetric struct {
 	filename string
-	metric   metrics.Gauge
+	metric   *metrics.Gauge
 	file     *os.File
 	network  string
 }
 
 type PortalStorageMetrics struct {
-	RadiusRatio         metrics.GaugeFloat64
-	EntriesCount        metrics.Gauge
-	ContentStorageUsage metrics.Gauge
+	RadiusRatio         *metrics.GaugeFloat64
+	EntriesCount        *metrics.Gauge
+	ContentStorageUsage *metrics.Gauge
 }
 
 const (
@@ -98,7 +98,7 @@ const (
 // CollectPortalMetrics periodically collects various metrics about system entities.
 func CollectPortalMetrics(refresh time.Duration, networks []string, dataDir string) {
 	// Short circuit if the metrics system is disabled
-	if !metrics.Enabled {
+	if !metrics.Enabled() {
 		return
 	}
 
@@ -160,7 +160,7 @@ func CollectPortalMetrics(refresh time.Duration, networks []string, dataDir stri
 }
 
 func NewPortalStorageMetrics(network string, db *sql.DB) (*PortalStorageMetrics, error) {
-	if !metrics.Enabled {
+	if !metrics.Enabled() {
 		return nil, nil
 	}
 

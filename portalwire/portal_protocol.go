@@ -33,11 +33,11 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	ssz "github.com/ferranbt/fastssz"
 	"github.com/holiman/uint256"
-	"github.com/optimism-java/shisui2/storage"
 	"github.com/optimism-java/utp-go"
 	"github.com/optimism-java/utp-go/libutp"
 	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/tetratelabs/wabin/leb128"
+	"github.com/zen-eth/shisui/storage"
 )
 
 const (
@@ -258,7 +258,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		opt(protocol)
 	}
 
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		protocol.portalMetrics = newPortalMetrics(protocolId.Name())
 	}
 
@@ -385,7 +385,7 @@ func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, error) {
 	}
 
 	p.Log.Trace(">> PING/"+p.protocolName, "protocol", p.protocolName, "ip", p.Self().IP().String(), "source", p.Self().ID(), "target", node.ID(), "ping", pingRequest)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesSentPing.Mark(1)
 	}
 	pingRequestBytes, err := pingRequest.MarshalSSZ()
@@ -404,7 +404,7 @@ func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, error) {
 	}
 
 	p.Log.Trace("<< PONG/"+p.protocolName, "source", p.Self().ID(), "target", node.ID(), "res", talkResp)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedPong.Mark(1)
 	}
 
@@ -426,7 +426,7 @@ func (p *PortalProtocol) findNodes(node *enode.Node, distances []uint) ([]*enode
 	}
 
 	p.Log.Trace(">> FIND_NODES/"+p.protocolName, "id", node.ID(), "findNodes", findNodes)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesSentFindNodes.Mark(1)
 	}
 	findNodesBytes, err := findNodes.MarshalSSZ()
@@ -454,7 +454,7 @@ func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte,
 	}
 
 	p.Log.Trace(">> FIND_CONTENT/"+p.protocolName, "id", node.ID(), "findContent", findContent)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesSentFindContent.Mark(1)
 	}
 	findContentBytes, err := findContent.MarshalSSZ()
@@ -484,7 +484,7 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest) ([]
 	}
 
 	p.Log.Trace(">> OFFER/"+p.protocolName, "offer", offer)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesSentOffer.Mark(1)
 	}
 	offerBytes, err := offer.MarshalSSZ()
@@ -524,7 +524,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 	}
 
 	p.Log.Trace("<< ACCEPT/"+p.protocolName, "id", target.ID(), "accept", accept)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedAccept.Mark(1)
 	}
 	isAdded := p.table.addFoundNode(target, true)
@@ -598,7 +598,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				conn, err = p.Utp.DialWithCid(connctx, target, libutp.ReceConnId(connId).SendId())
 				conncancel()
 				if err != nil {
-					if metrics.Enabled {
+					if metrics.Enabled() {
 						p.portalMetrics.utpOutFailConn.Inc(1)
 					}
 					p.Log.Error("failed to dial utp connection", "err", err)
@@ -607,7 +607,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 
 				err = conn.SetWriteDeadline(time.Now().Add(defaultUTPWriteTimeout))
 				if err != nil {
-					if metrics.Enabled {
+					if metrics.Enabled() {
 						p.portalMetrics.utpOutFailDeadline.Inc(1)
 					}
 					p.Log.Error("failed to set write deadline", "err", err)
@@ -617,14 +617,14 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				var written int
 				written, err = conn.Write(contentsPayload)
 				if err != nil {
-					if metrics.Enabled {
+					if metrics.Enabled() {
 						p.portalMetrics.utpOutFailWrite.Inc(1)
 					}
 					p.Log.Error("failed to write to utp connection", "err", err)
 					return
 				}
 				p.Log.Trace(">> CONTENT/"+p.protocolName, "id", target.ID(), "contents", contents, "size", written)
-				if metrics.Enabled {
+				if metrics.Enabled() {
 					p.portalMetrics.messagesSentContent.Mark(1)
 					p.portalMetrics.utpOutSuccess.Inc(1)
 				}
@@ -656,7 +656,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		}
 
 		p.Log.Trace("<< CONTENT/"+p.protocolName, "id", target.ID(), "content", content)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 		}
 		isAdded := p.table.addFoundNode(target, true)
@@ -674,7 +674,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		}
 
 		p.Log.Trace("<< CONTENT_CONNECTION_ID/"+p.protocolName, "id", target.ID(), "resp", common.Bytes2Hex(resp), "connIdMsg", connIdMsg)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 		}
 		isAdded := p.table.addFoundNode(target, true)
@@ -688,7 +688,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		conn, err := p.Utp.DialWithCid(connctx, target, libutp.ReceConnId(connId).SendId())
 		defer func() {
 			if conn == nil {
-				if metrics.Enabled {
+				if metrics.Enabled() {
 					p.portalMetrics.utpInFailConn.Inc(1)
 				}
 				return
@@ -705,7 +705,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 
 		err = conn.SetReadDeadline(time.Now().Add(defaultUTPReadTimeout))
 		if err != nil {
-			if metrics.Enabled {
+			if metrics.Enabled() {
 				p.portalMetrics.utpInFailDeadline.Inc(1)
 			}
 			return 0xff, nil, err
@@ -713,14 +713,14 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		// Read ALL the data from the connection until EOF and return it
 		data, err := io.ReadAll(conn)
 		if err != nil {
-			if metrics.Enabled {
+			if metrics.Enabled() {
 				p.portalMetrics.utpInFailRead.Inc(1)
 			}
 			p.Log.Error("failed to read from utp connection", "err", err)
 			return 0xff, nil, err
 		}
 		p.Log.Trace("<< CONTENT/"+p.protocolName, "id", target.ID(), "size", len(data), "data", data)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 			p.portalMetrics.utpInSuccess.Inc(1)
 		}
@@ -734,7 +734,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		}
 
 		p.Log.Trace("<< CONTENT_ENRS/"+p.protocolName, "id", target.ID(), "enrs", enrs)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 		}
 		isAdded := p.table.addFoundNode(target, true)
@@ -802,7 +802,7 @@ func (p *PortalProtocol) filterNodes(target *enode.Node, enrs [][]byte, distance
 	}
 
 	p.Log.Trace("<< NODES/"+p.protocolName, "id", target.ID(), "total", len(enrs), "verified", verified, "nodes", nodes)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedNodes.Mark(1)
 	}
 	return nodes
@@ -822,7 +822,7 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, er
 	}
 
 	p.Log.Trace("<< PONG_RESPONSE/"+p.protocolName, "id", target.ID(), "pong", pong)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedPong.Mark(1)
 	}
 
@@ -833,7 +833,7 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, er
 	}
 
 	p.Log.Trace("<< PONG_RESPONSE/"+p.protocolName, "id", target.ID(), "pong", pong, "customPayload", customPayload)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedPong.Mark(1)
 	}
 	isAdded := p.table.addFoundNode(target, true)
@@ -864,7 +864,7 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 		}
 
 		p.Log.Trace("<< PING/"+p.protocolName, "protocol", p.protocolName, "source", id, "pingRequest", pingRequest)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedPing.Mark(1)
 		}
 		resp, err := p.handlePing(id, pingRequest)
@@ -883,7 +883,7 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 		}
 
 		p.Log.Trace("<< FIND_NODES/"+p.protocolName, "protocol", p.protocolName, "source", id, "findNodesRequest", findNodesRequest)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedFindNodes.Mark(1)
 		}
 		resp, err := p.handleFindNodes(addr, findNodesRequest)
@@ -902,7 +902,7 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 		}
 
 		p.Log.Trace("<< FIND_CONTENT/"+p.protocolName, "protocol", p.protocolName, "source", id, "findContentRequest", findContentRequest)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedFindContent.Mark(1)
 		}
 		resp, err := p.handleFindContent(id, addr, findContentRequest)
@@ -921,7 +921,7 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 		}
 
 		p.Log.Trace("<< OFFER/"+p.protocolName, "protocol", p.protocolName, "source", id, "offerRequest", offerRequest)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedOffer.Mark(1)
 		}
 		resp, err := p.handleOffer(id, addr, offerRequest)
@@ -965,7 +965,7 @@ func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 	}
 
 	p.Log.Trace(">> PONG/"+p.protocolName, "protocol", p.protocolName, "source", id, "pong", pong)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesSentPong.Mark(1)
 	}
 	pongBytes, err := pong.MarshalSSZ()
@@ -1003,7 +1003,7 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 	}
 
 	p.Log.Trace(">> NODES/"+p.protocolName, "protocol", p.protocolName, "source", fromAddr, "nodes", nodesMsg)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesSentNodes.Mark(1)
 	}
 	nodesMsgBytes, err := nodesMsg.MarshalSSZ()
@@ -1055,7 +1055,7 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 		}
 
 		p.Log.Trace(">> CONTENT_ENRS/"+p.protocolName, "protocol", p.protocolName, "source", addr, "enrs", enrsMsg)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesSentContent.Mark(1)
 		}
 		var enrsMsgBytes []byte
@@ -1079,7 +1079,7 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 		}
 
 		p.Log.Trace(">> CONTENT_RAW/"+p.protocolName, "protocol", p.protocolName, "source", addr, "content", rawContentMsg)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesSentContent.Mark(1)
 		}
 
@@ -1125,7 +1125,7 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 					conn, err = p.Utp.AcceptWithCid(connectCtx, id, connectionId)
 					cancel()
 					if err != nil {
-						if metrics.Enabled {
+						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailConn.Inc(1)
 						}
 						p.Log.Error("failed to accept utp connection for handle find content", "connId", connectionId.SendId(), "err", err)
@@ -1134,7 +1134,7 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 
 					err = conn.SetWriteDeadline(time.Now().Add(defaultUTPWriteTimeout))
 					if err != nil {
-						if metrics.Enabled {
+						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailDeadline.Inc(1)
 						}
 						p.Log.Error("failed to set write deadline", "err", err)
@@ -1144,14 +1144,14 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 					var n int
 					n, err = conn.Write(content)
 					if err != nil {
-						if metrics.Enabled {
+						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailWrite.Inc(1)
 						}
 						p.Log.Error("failed to write content to utp connection", "err", err)
 						return
 					}
 
-					if metrics.Enabled {
+					if metrics.Enabled() {
 						p.portalMetrics.utpOutSuccess.Inc(1)
 					}
 					p.Log.Trace("wrote content size to utp connection", "n", n)
@@ -1167,7 +1167,7 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 		}
 
 		p.Log.Trace(">> CONTENT_CONNECTION_ID/"+p.protocolName, "protocol", p.protocolName, "source", addr, "connId", connIdMsg)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesSentContent.Mark(1)
 		}
 		var connIdMsgBytes []byte
@@ -1198,7 +1198,7 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 		}
 
 		p.Log.Trace(">> ACCEPT/"+p.protocolName, "protocol", p.protocolName, "source", addr, "accept", acceptMsg)
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.messagesSentAccept.Mark(1)
 		}
 		var acceptMsgBytes []byte
@@ -1257,7 +1257,7 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 					conn, err = p.Utp.AcceptWithCid(connectCtx, id, connectionId)
 					cancel()
 					if err != nil {
-						if metrics.Enabled {
+						if metrics.Enabled() {
 							p.portalMetrics.utpInFailConn.Inc(1)
 						}
 						p.Log.Error("failed to accept utp connection for handle offer", "connId", connectionId.SendId(), "err", err)
@@ -1266,7 +1266,7 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 
 					err = conn.SetReadDeadline(time.Now().Add(defaultUTPReadTimeout))
 					if err != nil {
-						if metrics.Enabled {
+						if metrics.Enabled() {
 							p.portalMetrics.utpInFailDeadline.Inc(1)
 						}
 						p.Log.Error("failed to set read deadline", "err", err)
@@ -1276,14 +1276,14 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 					var data []byte
 					data, err = io.ReadAll(conn)
 					if err != nil {
-						if metrics.Enabled {
+						if metrics.Enabled() {
 							p.portalMetrics.utpInFailRead.Inc(1)
 						}
 						p.Log.Error("failed to read from utp connection", "err", err)
 						return
 					}
 					p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", id, "size", len(data), "data", data)
-					if metrics.Enabled {
+					if metrics.Enabled() {
 						p.portalMetrics.messagesReceivedContent.Mark(1)
 					}
 
@@ -1293,7 +1293,7 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 						return
 					}
 
-					if metrics.Enabled {
+					if metrics.Enabled() {
 						p.portalMetrics.utpInSuccess.Inc(1)
 					}
 					return
@@ -1312,7 +1312,7 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 	}
 
 	p.Log.Trace(">> ACCEPT/"+p.protocolName, "protocol", p.protocolName, "source", addr, "accept", acceptMsg)
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.messagesSentAccept.Mark(1)
 	}
 	var acceptMsgBytes []byte
@@ -1331,7 +1331,7 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 func (p *PortalProtocol) handleOfferedContents(id enode.ID, keys [][]byte, payload []byte) error {
 	contents, err := decodeContents(payload)
 	if err != nil {
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.contentDecodedFalse.Inc(1)
 		}
 		return err
@@ -1340,7 +1340,7 @@ func (p *PortalProtocol) handleOfferedContents(id enode.ID, keys [][]byte, paylo
 	keyLen := len(keys)
 	contentLen := len(contents)
 	if keyLen != contentLen {
-		if metrics.Enabled {
+		if metrics.Enabled() {
 			p.portalMetrics.contentDecodedFalse.Inc(1)
 		}
 		return fmt.Errorf("content keys len %d doesn't match content values len %d", keyLen, contentLen)
@@ -1354,7 +1354,7 @@ func (p *PortalProtocol) handleOfferedContents(id enode.ID, keys [][]byte, paylo
 
 	p.contentQueue <- contentElement
 
-	if metrics.Enabled {
+	if metrics.Enabled() {
 		p.portalMetrics.contentDecodedTrue.Inc(1)
 	}
 	return nil

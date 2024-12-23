@@ -5,11 +5,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/optimism-java/shisui2/portalwire"
-	"github.com/optimism-java/shisui2/storage"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/tree"
+	"github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/storage"
 )
 
 const GenesisTime uint64 = 1606824023

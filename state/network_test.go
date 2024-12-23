@@ -7,9 +7,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/optimism-java/shisui2/history"
-	"github.com/optimism-java/shisui2/portalwire"
 	"github.com/stretchr/testify/require"
+	"github.com/zen-eth/shisui/history"
+	"github.com/zen-eth/shisui/portalwire"
 	"gopkg.in/yaml.v2"
 )
 

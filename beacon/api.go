@@ -1,7 +1,7 @@
 package beacon
 
 import (
-	"github.com/optimism-java/shisui2/portalwire"
+	"github.com/zen-eth/shisui/portalwire"
 )
 
 type API struct {

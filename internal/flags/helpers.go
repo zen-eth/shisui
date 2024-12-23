@@ -29,8 +29,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/mattn/go-isatty"
-	"github.com/optimism-java/shisui2/internal/version"
 	"github.com/urfave/cli/v2"
+	"github.com/zen-eth/shisui/internal/version"
 )
 
 // usecolor defines whether the CLI help should use colored output or normal dumb

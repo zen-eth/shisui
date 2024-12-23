@@ -8,10 +8,10 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/optimism-java/shisui2/portalwire"
-	"github.com/optimism-java/shisui2/storage"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/view"
+	"github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/storage"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"

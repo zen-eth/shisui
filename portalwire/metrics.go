@@ -27,7 +27,7 @@ const (
 )
 
 var (
-	bucketsCounter []metrics.Counter
+	bucketsCounter []*metrics.Counter
 )
 
 func init() {

@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/optimism-java/shisui2/history"
+	"github.com/zen-eth/shisui/history"
 )
 
 var errParameterNotImplemented = errors.New("parameter not implemented")
