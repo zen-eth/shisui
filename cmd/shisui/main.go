@@ -4,23 +4,18 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
 	"os/signal"
 	"path"
-	"path/filepath"
 	"slices"
-	"strings"
 	"syscall"
 	"time"
 
 	"os"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/discover"
@@ -61,6 +56,7 @@ type Config struct {
 	DataCapacity uint64
 	LogLevel     int
 	Networks     []string
+	Metrics      *metrics.Config
 }
 
 type Client struct {
@@ -146,21 +142,19 @@ func shisui(ctx *cli.Context) error {
 		return err
 	}
 
-	// Start metrics export if enabled
-	utils.SetupMetrics(ctx)
+	config, err := getPortalConfig(ctx)
+	if err != nil {
+		return nil
+	}
 
-	// Start system runtime metrics collection
-	go metrics.CollectProcessMetrics(3 * time.Second)
+	// Start metrics export if enabled
+	utils.SetupMetrics(config.Metrics)
+
 	go portalwire.CollectPortalMetrics(5*time.Second, ctx.StringSlice(utils.PortalNetworksFlag.Name), ctx.String(utils.PortalDataDirFlag.Name))
 
 	if metrics.Enabled() {
 		storageCapacity = metrics.NewRegisteredGauge("portal/storage_capacity", nil)
 		storageCapacity.Update(ctx.Int64(utils.PortalDataCapacityFlag.Name))
-	}
-
-	config, err := getPortalConfig(ctx)
-	if err != nil {
-		return nil
 	}
 
 	clientChan := make(chan *Client, 1)
@@ -527,159 +521,4 @@ func initState(config Config, server *rpc.Server, conn discover.UDPConn, localNo
 	client := rpc.DialInProc(server)
 	historyNetwork := state.NewStateNetwork(protocol, client)
 	return historyNetwork, historyNetwork.Start()
-}
-
-func getPortalConfig(ctx *cli.Context) (*Config, error) {
-	config := &Config{
-		Protocol: portalwire.DefaultPortalProtocolConfig(),
-	}
-
-	httpAddr := ctx.String(utils.PortalRPCListenAddrFlag.Name)
-	httpPort := ctx.String(utils.PortalRPCPortFlag.Name)
-	config.RpcAddr = net.JoinHostPort(httpAddr, httpPort)
-	config.DataDir = ctx.String(utils.PortalDataDirFlag.Name)
-	config.DataCapacity = ctx.Uint64(utils.PortalDataCapacityFlag.Name)
-	config.LogLevel = ctx.Int(utils.PortalLogLevelFlag.Name)
-	port := ctx.String(utils.PortalUDPPortFlag.Name)
-	if !strings.HasPrefix(port, ":") {
-		config.Protocol.ListenAddr = ":" + port
-	} else {
-		config.Protocol.ListenAddr = port
-	}
-
-	err := setPrivateKey(ctx, config)
-	if err != nil {
-		return config, err
-	}
-
-	natString := ctx.String(utils.PortalNATFlag.Name)
-	if natString != "" {
-		natInterface, err := nat.Parse(natString)
-		if err != nil {
-			return config, err
-		}
-		config.Protocol.NAT = natInterface
-	}
-
-	setPortalBootstrapNodes(ctx, config)
-	config.Networks = ctx.StringSlice(utils.PortalNetworksFlag.Name)
-	return config, nil
-}
-
-func setPrivateKey(ctx *cli.Context, config *Config) error {
-	var privateKey *ecdsa.PrivateKey
-	var err error
-	keyStr := ctx.String(utils.PortalPrivateKeyFlag.Name)
-	if keyStr != "" {
-		keyBytes, err := hexutil.Decode(keyStr)
-		if err != nil {
-			return err
-		}
-		privateKey, err = crypto.ToECDSA(keyBytes)
-		if err != nil {
-			return err
-		}
-	} else {
-		fullPath := filepath.Join(config.DataDir, privateKeyFileName)
-		if _, err := os.Stat(fullPath); err == nil {
-			log.Info("Loading private key from file", "datadir", config.DataDir, "file", privateKeyFileName)
-			privateKey, err = readPrivateKey(config, privateKeyFileName)
-			if err != nil {
-				return err
-			}
-		} else {
-			if os.IsNotExist(err) {
-				err := os.MkdirAll(config.DataDir, os.ModePerm)
-				if err != nil {
-					log.Error("Failed to create directory:", "err", err)
-				}
-				file, err := os.Create(fullPath)
-				if err != nil {
-					log.Error("Failed to create file:", "err", err)
-				}
-				defer func(file *os.File) {
-					err := file.Close()
-					if err != nil {
-						log.Error("Failed to close file:", "err", err)
-					}
-				}(file)
-			}
-			log.Info("Creating new private key")
-			privateKey, err = crypto.GenerateKey()
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	config.PrivateKey = privateKey
-	err = writePrivateKey(privateKey, config, privateKeyFileName)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func writePrivateKey(privateKey *ecdsa.PrivateKey, config *Config, fileName string) error {
-	keyEnc := hex.EncodeToString(crypto.FromECDSA(privateKey))
-
-	fullPath := filepath.Join(config.DataDir, fileName)
-	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	defer func(file *os.File) {
-		err = file.Close()
-		if err != nil {
-			log.Error("Failed to close file", "err", err)
-		}
-	}(file)
-
-	_, err = file.WriteString(keyEnc)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func readPrivateKey(config *Config, fileName string) (*ecdsa.PrivateKey, error) {
-	fullPath := filepath.Join(config.DataDir, fileName)
-
-	keyBytes, err := os.ReadFile(fullPath)
-	if err != nil {
-		return nil, err
-	}
-
-	keyEnc := string(keyBytes)
-	key, err := crypto.HexToECDSA(keyEnc)
-	if err != nil {
-		return nil, err
-	}
-
-	return key, nil
-}
-
-// setPortalBootstrapNodes creates a list of bootstrap nodes from the command line
-// flags, reverting to pre-configured ones if none have been specified.
-func setPortalBootstrapNodes(ctx *cli.Context, config *Config) {
-	urls := portalwire.PortalBootnodes
-	if ctx.IsSet(utils.PortalBootNodesFlag.Name) {
-		flag := ctx.String(utils.PortalBootNodesFlag.Name)
-		if flag == "none" {
-			return
-		}
-		urls = utils.SplitAndTrim(flag)
-	}
-
-	for _, url := range urls {
-		if url != "" {
-			node, err := enode.Parse(enode.ValidSchemes, url)
-			if err != nil {
-				log.Error("Bootstrap URL invalid", "enode", url, "err", err)
-				continue
-			}
-			config.Protocol.BootstrapNodes = append(config.Protocol.BootstrapNodes, node)
-		}
-	}
 }
