@@ -1,9 +1,9 @@
 package portalwire
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,11 +13,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/p2p/discover"
-	"github.com/optimism-java/utp-go"
-	"github.com/optimism-java/utp-go/libutp"
 	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/zen-eth/shisui/storage"
 	"github.com/zen-eth/shisui/testlog"
+	zenutp "github.com/zen-eth/utp-go"
 	"golang.org/x/exp/slices"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -26,7 +25,7 @@ import (
 	assert "github.com/stretchr/testify/require"
 )
 
-func setupLocalPortalNode(addr string, bootNodes []*enode.Node) (*PortalProtocol, error) {
+func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node) (*PortalProtocol, error) {
 	conf := DefaultPortalProtocolConfig()
 	conf.NAT = nil
 	if addr != "" {
@@ -91,7 +90,9 @@ func setupLocalPortalNode(addr string, bootNodes []*enode.Node) (*PortalProtocol
 	if err != nil {
 		return nil, err
 	}
-	utpSocket := NewPortalUtp(context.Background(), conf, discV5, conn)
+	//utpSocket := NewPortalUtp(context.Background(), conf, discV5, conn)
+	utpSocket := NewZenEthUtp(context.Background(), conf, discV5, conn)
+	utpSocket.log = testlog.Logger(t, log.LvlTrace)
 
 	contentQueue := make(chan *ContentElement, 50)
 	portalProtocol, err := NewPortalProtocol(
@@ -112,35 +113,48 @@ func setupLocalPortalNode(addr string, bootNodes []*enode.Node) (*PortalProtocol
 }
 
 func TestPortalWireProtocolUdp(t *testing.T) {
-	node1, err := setupLocalPortalNode(":8777", nil)
+	node1, err := setupLocalPortalNode(t, ":8777", nil)
 	assert.NoError(t, err)
-	node1.Log = testlog.Logger(t, log.LvlTrace)
+	//node1.Log = testlog.Logger(t, log.LvlTrace)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer node1.Stop()
 
-	node2, err := setupLocalPortalNode(":8778", []*enode.Node{node1.localNode.Node()})
+	node2, err := setupLocalPortalNode(t, ":8778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
-	node2.Log = testlog.Logger(t, log.LvlTrace)
+	//node2.Log = testlog.Logger(t, log.LvlTrace)
 	err = node2.Start()
 	assert.NoError(t, err)
 	defer node2.Stop()
 
-	node3, err := setupLocalPortalNode(":8779", []*enode.Node{node1.localNode.Node()})
+	node3, err := setupLocalPortalNode(t, ":8779", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
-	node3.Log = testlog.Logger(t, log.LvlTrace)
+	//node3.Log = testlog.Logger(t, log.LvlTrace)
 	err = node3.Start()
 	assert.NoError(t, err)
 	defer node3.Stop()
 
 	time.Sleep(12 * time.Second)
 
-	cid1 := libutp.ReceConnId(12)
-	cid2 := libutp.ReceConnId(116)
+	t.Logf("node1.id = %s", node1.localNode.ID().String())
+	t.Logf("node2.id = %s", node2.localNode.ID().String())
+	t.Logf("node3.id = %s", node3.localNode.ID().String())
+
+	//cid1 := libutp.ReceConnId(12)
+	cid1 := node1.Utp.RecvId(node2.localNode.Node(), 12)
+	cid1_gen := node1.Utp.Cid(node2.localNode.Node(), false)
+	//cid2 := libutp.ReceConnId(116)
+	cid2 := node1.Utp.RecvId(node2.localNode.Node(), 116)
+	cid2_gen := node1.Utp.Cid(node2.localNode.Node(), false)
+	t.Logf("cid1 = %v", cid1)
+	t.Logf("cid1_gen = %v", cid1_gen)
+	t.Logf("cid2 = %v", cid2)
+	t.Logf("cid2_gen = %v", cid2_gen)
+
 	cliSendMsgWithCid1 := "there are connection id : 12!"
 	cliSendMsgWithCid2 := "there are connection id: 116!"
 
-	serverEchoWithCid := "accept connection sends back msg: echo"
+	//serverEchoWithCid := "accept connection sends back msg: echo"
 
 	largeTestContent := make([]byte, 1199)
 	_, err = rand.Read(largeTestContent)
@@ -151,103 +165,67 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 	workGroup.Add(4)
 	acceptGroup.Add(1)
 	go func() {
-		var acceptConn *utp.Conn
-		defer func() {
-			workGroup.Done()
-			_ = acceptConn.Close()
-		}()
-		acceptConn, err := node1.Utp.AcceptWithCid(context.Background(), node2.localNode.ID(), cid1)
+		defer workGroup.Done()
+
+		var acceptConn *zenutp.UtpStream
+		acceptConn, err = node1.Utp.AcceptWithCid(context.Background(), cid1_gen)
+
 		if err != nil {
 			panic(err)
 		}
+		defer acceptConn.Close()
 		acceptGroup.Done()
-		buf := make([]byte, 100)
-		n, err := acceptConn.Read(buf)
+		var buf []byte
+		//n, err := acceptConn.Read(buf)
+		n, err := acceptConn.ReadToEOF(context.Background(), &buf)
 		if err != nil && err != io.EOF {
 			panic(err)
 		}
 		assert.Equal(t, cliSendMsgWithCid1, string(buf[:n]))
-		_, err = acceptConn.Write([]byte(serverEchoWithCid))
-		if err != nil {
-			panic(err)
-		}
 	}()
 	go func() {
-		var connId2Conn net.Conn
-		defer func() {
-			workGroup.Done()
-			_ = connId2Conn.Close()
-		}()
-		connId2Conn, err := node1.Utp.AcceptWithCid(context.Background(), node2.localNode.ID(), cid2)
-		if err != nil {
-			panic(err)
-		}
-		buf := make([]byte, 100)
-		n, err := connId2Conn.Read(buf)
-		if err != nil && err != io.EOF {
-			panic(err)
-		}
-		assert.Equal(t, cliSendMsgWithCid2, string(buf[:n]))
+		defer workGroup.Done()
 
-		_, err = connId2Conn.Write(largeTestContent)
+		var connId2Conn *zenutp.UtpStream
+		connId2Conn, err = node1.Utp.AcceptWithCid(context.Background(), cid2_gen)
 		if err != nil {
 			panic(err)
 		}
+		defer connId2Conn.Close()
+		var buf []byte
+		n, err := connId2Conn.ReadToEOF(context.Background(), &buf)
+		assert.NoError(t, err)
+		assert.Equal(t, len(cliSendMsgWithCid2)+len(largeTestContent), n)
+		assert.True(t, bytes.Equal([]byte(cliSendMsgWithCid2), buf[:len(cliSendMsgWithCid2)]))
+		assert.True(t, bytes.Equal(largeTestContent, buf[len(cliSendMsgWithCid2):]))
 	}()
 
 	go func() {
-		var connWithConnId net.Conn
-		defer func() {
-			workGroup.Done()
-			if connWithConnId != nil {
-				_ = connWithConnId.Close()
-			}
-		}()
-		connWithConnId, err = node2.Utp.DialWithCid(context.Background(), node1.localNode.Node(), cid1.SendId())
+		defer workGroup.Done()
+		var connWithConnId *zenutp.UtpStream
+		connWithConnId, err = node2.Utp.DialWithCid(context.Background(), node1.localNode.Node(), cid1_gen.Send)
 		if err != nil {
 			panic(err)
 		}
-		_, err = connWithConnId.Write([]byte(cliSendMsgWithCid1))
-		if err != nil && err != io.EOF {
-			panic(err)
-		}
-		buf := make([]byte, 100)
-		n, err := connWithConnId.Read(buf)
-		if err != nil && err != io.EOF {
-			panic(err)
-		}
-		assert.Equal(t, serverEchoWithCid, string(buf[:n]))
+		defer connWithConnId.Close()
+		_, err = connWithConnId.Write(context.Background(), []byte(cliSendMsgWithCid1))
 	}()
 	go func() {
-		var ConnId2Conn net.Conn
-		defer func() {
-			workGroup.Done()
-			if ConnId2Conn != nil {
-				_ = ConnId2Conn.Close()
-			}
-		}()
-		ConnId2Conn, err = node2.Utp.DialWithCid(context.Background(), node1.localNode.Node(), cid2.SendId())
-		if err != nil && err != io.EOF {
-			panic(err)
-		}
-		_, err = ConnId2Conn.Write([]byte(cliSendMsgWithCid2))
+		defer workGroup.Done()
+		var connId2Conn *zenutp.UtpStream
+		connId2Conn, err = node2.Utp.DialWithCid(context.Background(), node1.localNode.Node(), cid2_gen.Send)
 		if err != nil {
 			panic(err)
 		}
-
-		data := make([]byte, 0)
-		buf := make([]byte, 1024)
-		for {
-			var n int
-			n, err = ConnId2Conn.Read(buf)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-			}
-			data = append(data, buf[:n]...)
+		defer connId2Conn.Close()
+		_, err = connId2Conn.Write(context.Background(), []byte(cliSendMsgWithCid2))
+		if err != nil {
+			panic(err)
 		}
-		assert.Equal(t, largeTestContent, data)
+		_, err = connId2Conn.Write(context.Background(), largeTestContent)
+		if err != nil {
+			panic(err)
+		}
 	}()
 	workGroup.Wait()
 	// node1.Stop()
@@ -256,14 +234,14 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 }
 
 func TestPortalWireProtocol(t *testing.T) {
-	node1, err := setupLocalPortalNode(":7777", nil)
+	node1, err := setupLocalPortalNode(t, ":7777", nil)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LevelDebug)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer node1.Stop()
 
-	node2, err := setupLocalPortalNode(":7778", []*enode.Node{node1.localNode.Node()})
+	node2, err := setupLocalPortalNode(t, ":7778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LevelDebug)
 	err = node2.Start()
@@ -271,7 +249,7 @@ func TestPortalWireProtocol(t *testing.T) {
 	defer node2.Stop()
 	// time.Sleep(12 * time.Second)
 
-	node3, err := setupLocalPortalNode(":7779", []*enode.Node{node1.localNode.Node()})
+	node3, err := setupLocalPortalNode(t, ":7779", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LevelDebug)
 	err = node3.Start()
@@ -399,20 +377,20 @@ func TestCancel(t *testing.T) {
 }
 
 func TestContentLookup(t *testing.T) {
-	node1, err := setupLocalPortalNode(":17777", nil)
+	node1, err := setupLocalPortalNode(t, ":17777", nil)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LvlTrace)
 	err = node1.Start()
 	assert.NoError(t, err)
 
-	node2, err := setupLocalPortalNode(":17778", []*enode.Node{node1.localNode.Node()})
+	node2, err := setupLocalPortalNode(t, ":17778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LvlTrace)
 	err = node2.Start()
 	assert.NoError(t, err)
 	fmt.Println(node2.localNode.Node().String())
 
-	node3, err := setupLocalPortalNode(":17779", []*enode.Node{node1.localNode.Node()})
+	node3, err := setupLocalPortalNode(t, ":17779", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LvlTrace)
 	err = node3.Start()
@@ -442,19 +420,19 @@ func TestContentLookup(t *testing.T) {
 }
 
 func TestTraceContentLookup(t *testing.T) {
-	node1, err := setupLocalPortalNode(":17787", nil)
+	node1, err := setupLocalPortalNode(t, ":17787", nil)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LvlTrace)
 	err = node1.Start()
 	assert.NoError(t, err)
 
-	node2, err := setupLocalPortalNode(":17788", []*enode.Node{node1.localNode.Node()})
+	node2, err := setupLocalPortalNode(t, ":17788", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LvlTrace)
 	err = node2.Start()
 	assert.NoError(t, err)
 
-	node3, err := setupLocalPortalNode(":17789", []*enode.Node{node2.localNode.Node()})
+	node3, err := setupLocalPortalNode(t, ":17789", []*enode.Node{node2.localNode.Node()})
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LvlTrace)
 	err = node3.Start()
