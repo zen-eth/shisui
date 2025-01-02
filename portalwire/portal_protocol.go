@@ -201,8 +201,6 @@ type PortalProtocol struct {
 	BootstrapNodes []*enode.Node
 	conn           discover.UDPConn
 
-	//Utp       *PortalUtp
-	//connIdGen libutp.ConnIdGenerator
 	Utp *ZenEthUtp
 
 	validSchemes   enr.IdentityScheme
@@ -251,8 +249,6 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		NAT:            config.NAT,
 		clock:          config.clock,
 		Utp:            utp,
-		//Utp:            utp,
-		//connIdGen:      libutp.NewConnIdGenerator(),
 	}
 
 	for _, opt := range opts {
@@ -552,18 +548,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 
 	connId := binary.BigEndian.Uint16(accept.ConnectionId)
 	go func(ctx context.Context) {
-		//var conn net.Conn
 		var conn *zenutp.UtpStream
-		//defer func() {
-		//if conn == nil {
-		//	return
-		//}
-		//conn.Close()
-		//err := conn.Close()
-		//if err != nil {
-		//	p.Log.Error("failed to close connection", "err", err)
-		//}
-		//}()
 		for {
 			select {
 			case <-ctx.Done():
@@ -597,7 +582,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				var contentsPayload []byte
 				contentsPayload = encodeContents(contents)
 
-				connctx, conncancel := context.WithTimeout(ctx, defaultUTPConnectTimeout)
+				connctx, conncancel := context.WithTimeout(ctx, defaultUTPConnectTimeout+defaultUTPConnectTimeout)
 				defer conncancel()
 				conn, err = p.Utp.DialWithCid(connctx, target, connId)
 
@@ -613,6 +598,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				writeCtx, writeCancel := context.WithTimeout(ctx, defaultUTPWriteTimeout)
 				defer writeCancel()
 				written, err = conn.Write(writeCtx, contentsPayload)
+				conn.Close()
 				if err != nil {
 					if metrics.Enabled() {
 						p.portalMetrics.utpOutFailWrite.Inc(1)
@@ -620,7 +606,6 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 					p.Log.Error("failed to write to utp connection", "err", err)
 					return
 				}
-				conn.Close()
 				p.Log.Trace(">> CONTENT/"+p.protocolName, "id", target.ID(), "contents", contents, "size", written)
 				if metrics.Enabled() {
 					p.portalMetrics.messagesSentContent.Mark(1)
@@ -692,7 +677,6 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 				}
 				return
 			}
-			conn.Close()
 		}()
 		defer conncancel()
 		if err != nil {
@@ -704,6 +688,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		defer readCancel()
 		var data []byte
 		n, err := conn.ReadToEOF(readCtx, &data)
+		conn.Close()
 		if err != nil {
 			if metrics.Enabled() {
 				p.portalMetrics.utpInFailRead.Inc(1)
@@ -1091,12 +1076,9 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 
 		return talkRespBytes, nil
 	} else {
-		//connectionId := p.connIdGen.GenCid(id, false)
 		connectionId := p.Utp.CidFromId(id, addr, false)
 
-		//go func(bctx context.Context, connId *libutp.ConnId) {
 		go func(bctx context.Context, connId *zenutp.ConnectionId) {
-			//var conn *utp.Conn
 			var conn *zenutp.UtpStream
 			var connectCtx context.Context
 			var cancel context.CancelFunc
@@ -1121,6 +1103,7 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 					defer writeCancel()
 					var n int
 					n, err = conn.Write(writeCtx, content)
+					conn.Close()
 					if err != nil {
 						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailWrite.Inc(1)
@@ -1128,7 +1111,6 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 						p.Log.Error("failed to write content to utp connection", "err", err)
 						return
 					}
-					conn.Close()
 
 					if metrics.Enabled() {
 						p.portalMetrics.utpOutSuccess.Inc(1)
@@ -1210,25 +1192,14 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 
 	idBuffer := make([]byte, 2)
 	if contentKeyBitlist.Count() != 0 {
-		//connectionId := p.connIdGen.GenCid(id, false)
 		connectionId := p.Utp.CidFromId(id, addr, false)
 
-		//go func(bctx context.Context, connId *libutp.ConnId) {
 		go func(bctx context.Context, connId *zenutp.ConnectionId) {
-			//var conn *utp.Conn
 			var conn *zenutp.UtpStream
 			var connectCtx context.Context
 			var cancel context.CancelFunc
 			defer func() {
-				//p.connIdGen.Remove(connectionId)
-				if conn == nil {
-					return
-				}
-				conn.Close()
-				//err := conn.Close()
-				//if err != nil {
-				//	p.Log.Error("failed to close connection", "err", err)
-				//}
+				cancel()
 			}()
 			for {
 				select {
@@ -1237,7 +1208,6 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 				default:
 					p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
 					connectCtx, cancel = context.WithTimeout(bctx, defaultUTPConnectTimeout)
-					defer cancel()
 					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
 					if err != nil {
 						if metrics.Enabled() {
@@ -1253,6 +1223,7 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 					readCtx, readCancel := context.WithTimeout(bctx, defaultUTPReadTimeout)
 					defer readCancel()
 					n, err = conn.ReadToEOF(readCtx, &data)
+					conn.Close()
 					p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", id, "size", n, "data", data)
 					if metrics.Enabled() {
 						p.portalMetrics.messagesReceivedContent.Mark(1)
@@ -1272,7 +1243,6 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 			}
 		}(p.closeCtx, connectionId)
 
-		//binary.BigEndian.PutUint16(idBuffer, connectionId.SendId())
 		binary.BigEndian.PutUint16(idBuffer, connectionId.Send)
 	} else {
 		binary.BigEndian.PutUint16(idBuffer, uint16(0))
