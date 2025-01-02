@@ -260,6 +260,10 @@ github.com/yusufpapurcu/wmi v1.2.4 h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo
 github.com/yusufpapurcu/wmi v1.2.4/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=
 github.com/zen-eth/utp-go v0.0.0-20250102090243-8e0c7f1dd5e4 h1:olpyZl0/gI5aj+Tmkfpnza1+EpZ4PGf4zZz5s/0i9GE=
 github.com/zen-eth/utp-go v0.0.0-20250102090243-8e0c7f1dd5e4/go.mod h1:i/M5MmjMkd4AD8OfDYYyxkPIAB3DbWdC+CqnHdR735g=
+github.com/zen-eth/utp-go v0.0.0-20250102133400-6a88a9572ad1 h1:dRydhr4j9ZNg4R87HohNuOu+y5iDlnDMXv2iJ9HIIk0=
+github.com/zen-eth/utp-go v0.0.0-20250102133400-6a88a9572ad1/go.mod h1:i/M5MmjMkd4AD8OfDYYyxkPIAB3DbWdC+CqnHdR735g=
+github.com/zen-eth/utp-go v0.0.0-20250102151040-0f920f099435 h1:cXuikKm2RpEyJgoGR04lvaQ5sxvIWor8nW/fv8bn0v0=
+github.com/zen-eth/utp-go v0.0.0-20250102151040-0f920f099435/go.mod h1:i/M5MmjMkd4AD8OfDYYyxkPIAB3DbWdC+CqnHdR735g=
 go.uber.org/automaxprocs v1.6.0 h1:O3y2/QNTOdbF+e/dpXNNW7Rx2hZ4sTIPyybbxyNqTUs=
 go.uber.org/automaxprocs v1.6.0/go.mod h1:ifeIMSnPZuznNm6jmdzmU3/bfk01Fe2fotchwEFJ8r8=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
