@@ -272,7 +272,7 @@ func startPortalRpcServer(config Config, conn discover.UDPConn, addr string, cli
 	if err != nil {
 		return err
 	}
-	utp := portalwire.NewPortalUtp(context.Background(), config.Protocol, discV5, conn)
+	utp := portalwire.NewZenEthUtp(context.Background(), config.Protocol, discV5, conn)
 
 	var historyNetwork *history.Network
 	if slices.Contains(config.Networks, portalwire.History.Name()) {
@@ -401,7 +401,7 @@ func doPortMapping(natm nat.Interface, ln *enode.LocalNode, addr *net.UDPAddr) {
 	}()
 }
 
-func initHistory(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*history.Network, error) {
+func initHistory(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.ZenEthUtp) (*history.Network, error) {
 	networkName := portalwire.History.Name()
 	db, err := pebble.NewDB(config.DataDir, 16, 400, networkName)
 	if err != nil {
@@ -445,7 +445,7 @@ func initHistory(config Config, server *rpc.Server, conn discover.UDPConn, local
 	return historyNetwork, historyNetwork.Start()
 }
 
-func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*beacon.Network, error) {
+func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.ZenEthUtp) (*beacon.Network, error) {
 	dbPath := path.Join(config.DataDir, "beacon")
 	err := os.MkdirAll(dbPath, 0755)
 	if err != nil {
@@ -493,7 +493,7 @@ func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localN
 	return beaconNetwork, beaconNetwork.Start()
 }
 
-func initState(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.PortalUtp) (*state.Network, error) {
+func initState(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.ZenEthUtp) (*state.Network, error) {
 	networkName := portalwire.State.Name()
 	db, err := pebble.NewDB(config.DataDir, 16, 400, networkName)
 	if err != nil {
