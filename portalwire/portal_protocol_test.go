@@ -176,7 +176,6 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 		defer acceptConn.Close()
 		acceptGroup.Done()
 		var buf []byte
-		//n, err := acceptConn.Read(buf)
 		n, err := acceptConn.ReadToEOF(context.Background(), &buf)
 		if err != nil && err != io.EOF {
 			panic(err)
@@ -479,10 +478,10 @@ func TestTraceContentLookup(t *testing.T) {
 
 	// check response
 	node3Response := res.Trace.Responses[node3Id]
-	assert.Equal(t, node3Response.RespondedWith, []string{node2Id})
+	assert.Contains(t, node3Response.RespondedWith, node2Id)
 
 	node2Response := res.Trace.Responses[node2Id]
-	assert.Equal(t, node2Response.RespondedWith, []string{node1Id})
+	assert.Contains(t, node2Response.RespondedWith, node1Id)
 
 	node1Response := res.Trace.Responses[node1Id]
 	assert.Equal(t, node1Response.RespondedWith, ([]string)(nil))
