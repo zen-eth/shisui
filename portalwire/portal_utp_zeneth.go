@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover"
@@ -77,6 +79,7 @@ type discv5Conn struct {
 	logger  log.Logger
 	receive chan *packetItem
 	conn    *discover.UDPv5
+	closed  *atomic.Bool
 }
 
 func newDiscv5Conn(conn *discover.UDPv5, logger log.Logger) *discv5Conn {
@@ -84,6 +87,7 @@ func newDiscv5Conn(conn *discover.UDPv5, logger log.Logger) *discv5Conn {
 		conn:    conn,
 		logger:  logger,
 		receive: make(chan *packetItem, 1024),
+		closed:  &atomic.Bool{},
 	}
 }
 
@@ -95,6 +99,9 @@ func (c *discv5Conn) handleUtpTalkRequest(id enode.ID, addr *net.UDPAddr, data [
 }
 
 func (c *discv5Conn) ReadFrom(b []byte) (int, zenutp.ConnectionPeer, error) {
+	if c.closed.Load() {
+		return 0, nil, io.EOF
+	}
 	item, ok := <-c.receive
 	if ok {
 		copy(b, item.data)
@@ -104,11 +111,18 @@ func (c *discv5Conn) ReadFrom(b []byte) (int, zenutp.ConnectionPeer, error) {
 }
 
 func (c *discv5Conn) WriteTo(b []byte, dst zenutp.ConnectionPeer) (int, error) {
+	if c.closed.Load() {
+		return 0, nil
+	}
 	peer := dst.(*UtpPeer)
 	var node *enode.Node
 	if peer.node == nil {
 		addr := peer.addr.String()
 		node, _ = c.conn.GetCachedNode(addr)
+		if node == nil {
+			c.logger.Warn("not found in cache, will get from discv5 table", "addr", addr)
+			node = c.conn.GetNode(peer.id)
+		}
 		if node == nil {
 			c.logger.Warn("not found peer", "id", peer.id.String(), "addr", addr)
 			return 0, fmt.Errorf("not found target node id")
@@ -122,6 +136,7 @@ func (c *discv5Conn) WriteTo(b []byte, dst zenutp.ConnectionPeer) (int, error) {
 }
 
 func (c *discv5Conn) Close() error {
+	c.closed.Store(true)
 	close(c.receive)
 	return nil
 }
