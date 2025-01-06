@@ -180,6 +180,12 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Category: flags.PortalNetworkCategory,
 		Value:    cli.NewStringSlice(portalwire.History.Name()),
 	}
+	PortalDiscv5GnetFlag = &cli.BoolFlag{
+		Name:     "discv5.gnet",
+		Usage:    "Enable gnet on discv5, default is go udp connection",
+		Category: flags.PortalNetworkCategory,
+		Value:    false,
+	}
 )
 
 func SetupMetrics(cfg *metrics.Config) {
