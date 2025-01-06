@@ -19,6 +19,11 @@ func NewDiscV5API(discV5 *discover.UDPv5) *DiscV5API {
 	return &DiscV5API{discV5}
 }
 
+type PutContentResult struct {
+	PeerCount     int  `json:"peerCount"`
+	StoredLocally bool `json:"storedLocally"`
+}
+
 type NodeInfo struct {
 	NodeId string `json:"nodeId"`
 	Enr    string `json:"enr"`
@@ -530,6 +535,30 @@ func (p *PortalProtocolAPI) Gossip(contentKeyHex, contentHex string) (int, error
 	}
 	id := p.portalProtocol.Self().ID()
 	return p.portalProtocol.Gossip(&id, [][]byte{contentKey}, [][]byte{content})
+}
+
+func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutContentResult, error) {
+	contentKey, err := hexutil.Decode(contentKeyHex)
+	if err != nil {
+		return nil, err
+	}
+	content, err := hexutil.Decode(contentHex)
+	if err != nil {
+		return nil, err
+	}
+	shouldStore, err := p.portalProtocol.ShouldStore(contentKey, content)
+	if err != nil {
+		return nil, err
+	}
+	id := p.portalProtocol.Self().ID()
+	num, err := p.portalProtocol.Gossip(&id, [][]byte{contentKey}, [][]byte{content})
+	if err != nil {
+		return nil, err
+	}
+	return &PutContentResult{
+		PeerCount:     num,
+		StoredLocally: shouldStore,
+	}, nil
 }
 
 func (p *PortalProtocolAPI) TraceRecursiveFindContent(contentKeyHex string) (*TraceContentResult, error) {

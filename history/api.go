@@ -60,8 +60,8 @@ func (p *API) HistoryStore(contentKeyHex string, contextHex string) (bool, error
 	return p.Store(contentKeyHex, contextHex)
 }
 
-func (p *API) HistoryGossip(contentKeyHex, contentHex string) (int, error) {
-	return p.Gossip(contentKeyHex, contentHex)
+func (p *API) HistoryPutContent(contentKeyHex, contentHex string) (*portalwire.PutContentResult, error) {
+	return p.PutContent(contentKeyHex, contentHex)
 }
 
 func (p *API) HistoryTraceGetContent(contentKeyHex string) (*portalwire.TraceContentResult, error) {
