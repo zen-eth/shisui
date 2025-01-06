@@ -16,6 +16,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/optimism-java/utp-go v0.0.0-20241223124724-19352018cc52
+	github.com/panjf2000/gnet/v2 v2.6.3
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.32.3
 	github.com/protolambda/ztyp v0.2.2
@@ -81,7 +82,6 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/pion/dtls/v2 v2.2.7 // indirect
 	github.com/panjf2000/ants/v2 v2.10.0 // indirect
-	github.com/panjf2000/gnet/v2 v2.6.3 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/stun v0.6.1 // indirect

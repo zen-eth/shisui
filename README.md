@@ -75,6 +75,7 @@ curl -X POST http://127.0.0.1:8545 \
 * `--private.key` private key of p2p node, hex format without `0x` prifix
 * `--bootnodes` bootnode of p2p network with ENR format, use `none` to config empty bootnodes
 * `--networks` portal sub networks: history, beacon, state
+* `--discv5.gnet` enable gnet(windows does not support) as udp connection in discv5, default is false
 
 all the options above can be set with envs.
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"runtime"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/log"
@@ -30,6 +31,10 @@ func udpAddrToAddrPort(udpAddr *net.UDPAddr) (netip.AddrPort, error) {
 }
 
 func TestGnetConn_BasicOperations(t *testing.T) {
+	// gnet does not support windows
+	if runtime.GOOS == "windows" {
+		return
+	}
 	conn1, err := genGnetConn(":12345")
 	assert.NoError(t, err)
 	defer conn1.Close()
