@@ -166,8 +166,8 @@ github.com/onsi/ginkgo v1.14.0/go.mod h1:iSB4RoI2tjJc9BBv4NKIKWKya62Rps+oPG/Lv9k
 github.com/onsi/gomega v1.7.1/go.mod h1:XdKZgCCFLUoM/7CFJVPcG8C1xQ1AJ0vpAezJrB7JYyY=
 github.com/onsi/gomega v1.10.1 h1:o0+MgICZLuZ7xjH7Vx6zS/zcu93/BEp1VwkIW1mEXCE=
 github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1ybHNo=
-github.com/optimism-java/shisui v1.14.6-0.20241223065521-fe0986aca609 h1:JriowqbrQ7GB4OuhkA/blQYcICvR5a5TZU/gsBk+V+c=
-github.com/optimism-java/shisui v1.14.6-0.20241223065521-fe0986aca609/go.mod h1:iRpLj7SCldtgT/7/p8YZVwor0qCfukfyi12azji/bo0=
+github.com/optimism-java/shisui v1.14.6-0.20250106070523-fbaafaf98879 h1:PIfUi/RLKn0uGvyVY0f4pcG+c34TQbSc+qcj1JOsXHs=
+github.com/optimism-java/shisui v1.14.6-0.20250106070523-fbaafaf98879/go.mod h1:iRpLj7SCldtgT/7/p8YZVwor0qCfukfyi12azji/bo0=
 github.com/optimism-java/utp-go v0.0.0-20241223124724-19352018cc52 h1:5wq4o4t/umlNii796cEwNyhIT6KefKZv0uUEE6OJjvA=
 github.com/optimism-java/utp-go v0.0.0-20241223124724-19352018cc52/go.mod h1:dJZNMUlyNpjM2VkUEHhmFprLei6gCg3r7U9qj9MmJNQ=
 github.com/optimism-java/zrnt v0.32.4-0.20240415084906-d9dbf06b32f7 h1:ZTQWXQ8xblCRUXhZs3h5qrBMSAHe8iNH7BG7a7IVFlI=
