@@ -243,7 +243,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		storage:        storage,
 		toContentId:    defaultContentIdFunc,
 		contentQueue:   contentQueue,
-		offerQueue:     make(chan *OfferRequestWithNode, concurrentOffers),
+		offerQueue:     make(chan *OfferRequestWithNode, concurrentOffers*20),
 		conn:           conn,
 		DiscV5:         discV5,
 		NAT:            config.NAT,
