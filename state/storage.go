@@ -99,7 +99,7 @@ func (s *Storage) putAccountTrieNode(contentKey []byte, contentId []byte, conten
 	err = s.store.Put(contentId, contentId, contentValueBuf.Bytes())
 	if err != nil {
 		s.log.Error("failed to save data after validate", "type", contentKey[0], "key", contentKey[1:], "value", content)
-	} else if metrics.Enabled() {
+	} else if metrics.Enabled() && portalStorageMetrics != nil {
 		portalStorageMetrics.EntriesCount.Inc(1)
 		portalStorageMetrics.ContentStorageUsage.Inc(int64(len(content)))
 	}
@@ -136,7 +136,7 @@ func (s *Storage) putContractStorageTrieNode(contentKey []byte, contentId []byte
 	err = s.store.Put(contentId, contentId, contentValueBuf.Bytes())
 	if err != nil {
 		s.log.Error("failed to save data after validate", "type", contentKey[0], "key", contentKey[1:], "value", content)
-	} else if metrics.Enabled() {
+	} else if metrics.Enabled() && portalStorageMetrics != nil {
 		portalStorageMetrics.EntriesCount.Inc(1)
 		portalStorageMetrics.ContentStorageUsage.Inc(int64(len(content)))
 	}
@@ -169,7 +169,7 @@ func (s *Storage) putContractBytecode(contentKey []byte, contentId []byte, conte
 	err = s.store.Put(contentId, contentId, contentValueBuf.Bytes())
 	if err != nil {
 		s.log.Error("failed to save data after validate", "type", contentKey[0], "key", contentKey[1:], "value", content)
-	} else if metrics.Enabled() {
+	} else if metrics.Enabled() && portalStorageMetrics != nil {
 		portalStorageMetrics.EntriesCount.Inc(1)
 		portalStorageMetrics.ContentStorageUsage.Inc(int64(len(content)))
 	}
