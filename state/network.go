@@ -65,7 +65,6 @@ func (h *Network) processContentLoop(ctx context.Context) {
 		case contentElement := <-contentChan:
 			err := h.validateContents(contentElement.ContentKeys, contentElement.Contents)
 			if err != nil {
-				h.log.Error("validate content failed", "err", err)
 				continue
 			}
 
@@ -93,7 +92,7 @@ func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) erro
 		err := h.validateContent(contentKey, content)
 		if err != nil {
 			h.log.Error("content validate failed", "contentKey", hexutil.Encode(contentKey), "content", hexutil.Encode(content), "err", err)
-			return fmt.Errorf("content validate failed with content key %x and content %x", contentKey, content)
+			return err
 		}
 		contentId := h.portalProtocol.ToContentId(contentKey)
 		err = h.portalProtocol.Put(contentKey, contentId, content)
