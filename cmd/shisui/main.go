@@ -76,6 +76,7 @@ var (
 		utils.PortalBootNodesFlag,
 		utils.PortalPrivateKeyFlag,
 		utils.PortalNetworksFlag,
+		utils.PortalDiscv5GnetFlag,
 	}
 	historyRpcFlags = []cli.Flag{
 		utils.PortalRPCListenAddrFlag,
@@ -147,6 +148,12 @@ func shisui(ctx *cli.Context) error {
 		return nil
 	}
 
+	conn, err := newConn(ctx, config.Protocol.ListenAddr)
+
+	if err != nil {
+		return err
+	}
+
 	// Start metrics export if enabled
 	utils.SetupMetrics(config.Metrics)
 
@@ -159,17 +166,22 @@ func shisui(ctx *cli.Context) error {
 
 	clientChan := make(chan *Client, 1)
 	go handlerInterrupt(clientChan)
-
-	addr, err := net.ResolveUDPAddr("udp", config.Protocol.ListenAddr)
-	if err != nil {
-		return err
-	}
-	conn, err := net.ListenUDP("udp", addr)
-	if err != nil {
-		return err
-	}
-
 	return startPortalRpcServer(*config, conn, config.RpcAddr, clientChan)
+}
+
+func newConn(ctx *cli.Context, addrStr string) (discover.UDPConn, error) {
+	if useGnet := ctx.Bool(utils.PortalDiscv5GnetFlag.Name); useGnet {
+		conn := portalwire.NewGnetConn(log.New("discv5", "gnet"))
+		err := conn.ListenUDP(context.Background(), addrStr)
+		return conn, err
+	} else {
+		addr, err := net.ResolveUDPAddr("udp", addrStr)
+		if err != nil {
+			return nil, err
+		}
+		conn, err := net.ListenUDP("udp", addr)
+		return conn, err
+	}
 }
 
 func setDefaultLogger(logLevel int, logFormat string) error {
