@@ -108,4 +108,4 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250110084430-d73538ef2b5f
+replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250113075848-d0fa8579890f
