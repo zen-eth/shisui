@@ -6,6 +6,7 @@ import (
 )
 
 var (
+	ErrPathLengthNotMatch       = errors.New("the path length is not match")
 	ErrEmptyLeafKey             = errors.New("the leaf node has empty key")
 	ErrDifferentLeafPrefix      = errors.New("the leaf prifix path is different")
 	ErrEmptyExtensionPrefix     = errors.New("the extension node has empty prefix")
@@ -19,6 +20,9 @@ func DecodeTrieNode(hash, buf []byte) (node, error) {
 func TraverseTrieNode(node node, path []byte) ([]byte, []byte, error) {
 	switch v := node.(type) {
 	case *fullNode:
+		if len(path) == 0 {
+			return nil, nil, ErrPathLengthNotMatch
+		}
 		first := path[0]
 		remainingPath := path[1:]
 		return TraverseTrieNode(v.Children[first], remainingPath)
