@@ -1,8 +1,9 @@
 name: shisui release image
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - v*
 
 defaults:
   run:
@@ -16,16 +17,13 @@ permissions:
   contents: write
 
 env:
-  releaseBuild: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') }}
   REGISTRY: ghcr.io
-  TAG_NAME: ${{ github.ref | replace('refs/tags/', '') }}
 
 jobs:
   push_image_to_github:
     name: Push Docker image to Github
     runs-on: ubuntu-latest
     permissions: write-all
-    if: ${{ env.releaseBuild == 'true' }}  # Only run this job if releaseBuild is true
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -42,4 +40,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository }}:${{ env.TAG_NAME }}
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}:${{ github.ref }}
