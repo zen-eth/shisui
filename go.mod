@@ -61,6 +61,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/google/btree v1.1.3 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
@@ -102,6 +103,7 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
+	github.com/zen-eth/utp-go v0.0.0-20250107035711-993fa1882f57 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/net v0.29.0 // indirect
