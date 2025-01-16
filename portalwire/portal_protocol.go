@@ -1196,18 +1196,14 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 
 		go func(bctx context.Context, connId *zenutp.ConnectionId) {
 			var conn *zenutp.UtpStream
-			var connectCtx context.Context
-			var cancel context.CancelFunc
-			defer func() {
-				cancel()
-			}()
 			for {
 				select {
 				case <-bctx.Done():
 					return
 				default:
 					p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
-					connectCtx, cancel = context.WithTimeout(bctx, defaultUTPConnectTimeout)
+					connectCtx, cancel := context.WithTimeout(bctx, defaultUTPConnectTimeout)
+					defer cancel()
 					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
 					if err != nil {
 						if metrics.Enabled() {
@@ -1238,7 +1234,6 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 					if metrics.Enabled() {
 						p.portalMetrics.utpInSuccess.Inc(1)
 					}
-					return
 				}
 			}
 		}(p.closeCtx, connectionId)
