@@ -38,7 +38,7 @@ After building `shisui`, you can start the client by running
 Alternatively, you can run the docker image by running
 
 ```shell
-docker run -d -p 8545:8545 -p 9009:9009/udp -e SHISUI_NAT=stun ghcr.io/optimism-java/shisui:latest
+docker run -d -p 8545:8545 -p 9009:9009/udp -e SHISUI_NAT=stun ghcr.io/zen-eth/shisui:latest
 
 # if you know your exiIp, replace by -e SHISUI_NAT=extip:${your ip}
 ```
