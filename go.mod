@@ -24,6 +24,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834
 	github.com/urfave/cli/v2 v2.27.5
+	github.com/zen-eth/utp-go v0.0.0-20250107035711-993fa1882f57
 	go.uber.org/automaxprocs v1.6.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f
@@ -103,7 +104,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
-	github.com/zen-eth/utp-go v0.0.0-20250107035711-993fa1882f57 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/net v0.29.0 // indirect
@@ -113,4 +113,4 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250113075848-d0fa8579890f
+replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250116150122-427928fec8c2
