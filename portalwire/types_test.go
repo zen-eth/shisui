@@ -14,32 +14,47 @@ import (
 
 // https://github.com/ethereum/portal-network-specs/blob/master/portal-wire-test-vectors.md
 // we remove the message type here
-func TestPingMessage(t *testing.T) {
-	ping := &Ping{
-		EnrSeq:      1,
-		PayloadType: 0,
-		Payload:     hexutil.MustDecode("0x28000000feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff550000007472696e2f76302e312e312d62363166646335632f6c696e75782d7838365f36342f7275737463312e38312e3000000100ffff"),
+func TestPingPongMessage(t *testing.T) {
+	// Payload is come from ping_ext test
+	testcases := []struct {
+		EnrSeq      uint64
+		PayloadType uint16
+		Payload     []byte
+		Expected    string
+	}{
+		{
+			EnrSeq:      1,
+			PayloadType: 0,
+			Payload:     hexutil.MustDecode("0x28000000feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff550000007472696e2f76302e312e312d62363166646335632f6c696e75782d7838365f36342f7275737463312e38312e3000000100ffff"),
+			Expected:    "0x010000000000000000000e00000028000000feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff550000007472696e2f76302e312e312d62363166646335632f6c696e75782d7838365f36342f7275737463312e38312e3000000100ffff",
+		},
+		{
+			EnrSeq:      1,
+			PayloadType: 0,
+			Payload:     hexutil.MustDecode("0x28000000feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff2800000000000100ffff"),
+			Expected:    "0x010000000000000000000e00000028000000feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff2800000000000100ffff",
+		},
 	}
 
-	expected := "0x010000000000000000000e00000028000000feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff550000007472696e2f76302e312e312d62363166646335632f6c696e75782d7838365f36342f7275737463312e38312e3000000100ffff"
+	for _, tc := range testcases {
+		ping := &Ping{
+			EnrSeq:      tc.EnrSeq,
+			PayloadType: tc.PayloadType,
+			Payload:     tc.Payload,
+		}
+		data, err := ping.MarshalSSZ()
+		assert.NoError(t, err)
+		assert.Equal(t, tc.Expected, fmt.Sprintf("0x%x", data))
 
-	data, err := ping.MarshalSSZ()
-	assert.NoError(t, err)
-	assert.Equal(t, expected, fmt.Sprintf("0x%x", data))
-}
-
-func TestPongMessage(t *testing.T) {
-	pong := &Pong{
-		EnrSeq:      1,
-		PayloadType: 0,
-		Payload:     []byte("test"),
+		pong := &Pong{
+			EnrSeq:      tc.EnrSeq,
+			PayloadType: tc.PayloadType,
+			Payload:     tc.Payload,
+		}
+		data, err = pong.MarshalSSZ()
+		assert.NoError(t, err)
+		assert.Equal(t, tc.Expected, fmt.Sprintf("0x%x", data))
 	}
-
-	expected := "0x00010000000000000000000e00000028000000"
-
-	data, err := pong.MarshalSSZ()
-	assert.NoError(t, err)
-	assert.Equal(t, expected, fmt.Sprintf("0x%x", data))
 }
 
 func TestFindNodesMessage(t *testing.T) {
