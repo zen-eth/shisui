@@ -11,7 +11,7 @@ type API struct{}
 func (p *API) ClientVersion() string {
 	// TODO add version
 	info, _ := version.VCS()
-	name := "Shisui"
+	name := "shisui"
 	name += "/" + runtime.GOOS + "-" + runtime.GOARCH
 	name += "/" + runtime.Version()
 	name += "/" + info.Commit + "/" + info.Date

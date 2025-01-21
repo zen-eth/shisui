@@ -327,19 +327,13 @@ func (p *PortalProtocolAPI) Ping(enr string) (*PortalPongResp, error) {
 		return nil, err
 	}
 
-	pong, err := p.portalProtocol.pingInner(n)
-	if err != nil {
-		return nil, err
-	}
-
-	customPayload := &PingPongCustomData{}
-	err = customPayload.UnmarshalSSZ(pong.CustomPayload)
+	pong, radiusBytes, err := p.portalProtocol.pingInner(n)
 	if err != nil {
 		return nil, err
 	}
 
 	nodeRadius := new(uint256.Int)
-	err = nodeRadius.UnmarshalSSZ(customPayload.Radius)
+	err = nodeRadius.UnmarshalSSZ(radiusBytes)
 	if err != nil {
 		return nil, err
 	}

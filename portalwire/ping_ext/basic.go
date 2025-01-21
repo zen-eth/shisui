@@ -1,15 +1,17 @@
 package pingext
 
 import (
+	"bytes"
+
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/view"
 )
 
 const (
 	CustomPayloadExtensionsFormatPayloadLimit = 1100
-	MaxClientInfoByteLength = 200
-	MaxCapabilitiesLength = 400
-	MaxErrorByteLength = 300
+	MaxClientInfoByteLength                   = 200
+	MaxCapabilitiesLength                     = 400
+	MaxErrorByteLength                        = 300
 )
 
 type CustomPayloadExtensionsFormatPayload []byte
@@ -50,13 +52,12 @@ func (ci *ClientInfoBytes) FixedLength() uint64 {
 
 type CapabilitiesPayload []view.Uint16View
 
-
 func (c *CapabilitiesPayload) Deserialize(dr *codec.DecodingReader) error {
 	return dr.List(func() codec.Deserializable {
 		i := len(*c)
 		*c = append(*c, view.Uint16View(0))
 		return &(*c)[i]
-	}, uint64(view.Uint16Type.TypeByteLength()), uint64(MaxCapabilitiesLength))
+	}, view.Uint16Type.TypeByteLength(), uint64(MaxCapabilitiesLength))
 }
 
 func (c CapabilitiesPayload) Serialize(w *codec.EncodingWriter) error {
@@ -71,6 +72,17 @@ func (c CapabilitiesPayload) ByteLength() (out uint64) {
 
 func (c *CapabilitiesPayload) FixedLength() uint64 {
 	return 0
+}
+
+func (c CapabilitiesPayload) MarshalSSZ() ([]byte, error) {
+	var buf bytes.Buffer
+	err := c.Serialize(codec.NewEncodingWriter(&buf))
+	return buf.Bytes(), err
+}
+
+func (c *CapabilitiesPayload) UnmarshalSSZ(data []byte) error {
+	err := c.Deserialize(codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
+	return err
 }
 
 type ErrMessage []byte

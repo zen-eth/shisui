@@ -8,31 +8,20 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rlp"
 	ssz "github.com/ferranbt/fastssz"
-	"github.com/holiman/uint256"
 	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
-
-var maxUint256 = uint256.MustFromHex("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 
 // https://github.com/ethereum/portal-network-specs/blob/master/portal-wire-test-vectors.md
 // we remove the message type here
 func TestPingMessage(t *testing.T) {
-	dataRadius := maxUint256.Sub(maxUint256, uint256.NewInt(1))
-	reverseBytes, err := dataRadius.MarshalSSZ()
-	require.NoError(t, err)
-	customData := &PingPongCustomData{
-		Radius: reverseBytes,
-	}
-	dataBytes, err := customData.MarshalSSZ()
-	assert.NoError(t, err)
 	ping := &Ping{
-		EnrSeq:        1,
-		CustomPayload: dataBytes,
+		EnrSeq:      1,
+		PayloadType: 0,
+		Payload:     hexutil.MustDecode("0x28000000feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff550000007472696e2f76302e312e312d62363166646335632f6c696e75782d7838365f36342f7275737463312e38312e3000000100ffff"),
 	}
 
-	expected := "0x01000000000000000c000000feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	expected := "0x010000000000000000000e00000028000000feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff550000007472696e2f76302e312e312d62363166646335632f6c696e75782d7838365f36342f7275737463312e38312e3000000100ffff"
 
 	data, err := ping.MarshalSSZ()
 	assert.NoError(t, err)
@@ -40,21 +29,13 @@ func TestPingMessage(t *testing.T) {
 }
 
 func TestPongMessage(t *testing.T) {
-	dataRadius := maxUint256.Div(maxUint256, uint256.NewInt(2))
-	reverseBytes, err := dataRadius.MarshalSSZ()
-	require.NoError(t, err)
-	customData := &PingPongCustomData{
-		Radius: reverseBytes,
-	}
-
-	dataBytes, err := customData.MarshalSSZ()
-	assert.NoError(t, err)
 	pong := &Pong{
-		EnrSeq:        1,
-		CustomPayload: dataBytes,
+		EnrSeq:      1,
+		PayloadType: 0,
+		Payload:     []byte("test"),
 	}
 
-	expected := "0x01000000000000000c000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"
+	expected := "0x00010000000000000000000e00000028000000"
 
 	data, err := pong.MarshalSSZ()
 	assert.NoError(t, err)
