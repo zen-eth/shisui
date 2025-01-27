@@ -35,6 +35,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/tetratelabs/wabin/leb128"
+	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
 	zenutp "github.com/zen-eth/utp-go"
 )
@@ -166,24 +167,26 @@ type traceContentInfoResp struct {
 type PortalProtocolOption func(p *PortalProtocol)
 
 type PortalProtocolConfig struct {
-	BootstrapNodes  []*enode.Node
-	ListenAddr      string
-	NetRestrict     *netutil.Netlist
-	NodeRadius      *uint256.Int
-	RadiusCacheSize int
-	NodeDBPath      string
-	NAT             nat.Interface
-	clock           mclock.Clock
+	BootstrapNodes        []*enode.Node
+	ListenAddr            string
+	NetRestrict           *netutil.Netlist
+	NodeRadius            *uint256.Int
+	RadiusCacheSize       int
+	CapabilitiesCacheSize int
+	NodeDBPath            string
+	NAT                   nat.Interface
+	clock                 mclock.Clock
 }
 
 func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 	return &PortalProtocolConfig{
-		BootstrapNodes:  make([]*enode.Node, 0),
-		ListenAddr:      ":9009",
-		NetRestrict:     nil,
-		RadiusCacheSize: 32 * 1024 * 1024,
-		NodeDBPath:      "",
-		clock:           mclock.System{},
+		BootstrapNodes:        make([]*enode.Node, 0),
+		ListenAddr:            ":9009",
+		NetRestrict:           nil,
+		RadiusCacheSize:       32 * 1024 * 1024,
+		CapabilitiesCacheSize: 16 * 1024 * 1024,
+		NodeDBPath:            "",
+		clock:                 mclock.System{},
 	}
 }
 
@@ -203,12 +206,13 @@ type PortalProtocol struct {
 
 	Utp *ZenEthUtp
 
-	validSchemes   enr.IdentityScheme
-	radiusCache    *fastcache.Cache
-	closeCtx       context.Context
-	cancelCloseCtx context.CancelFunc
-	storage        storage.ContentStorage
-	toContentId    func(contentKey []byte) []byte
+	validSchemes      enr.IdentityScheme
+	radiusCache       *fastcache.Cache
+	capabilitiesCache *fastcache.Cache
+	closeCtx          context.Context
+	cancelCloseCtx    context.CancelFunc
+	storage           storage.ContentStorage
+	toContentId       func(contentKey []byte) []byte
 
 	contentQueue chan *ContentElement
 	offerQueue   chan *OfferRequestWithNode
@@ -218,6 +222,7 @@ type PortalProtocol struct {
 	NAT                 nat.Interface
 
 	portalMetrics *portalMetrics
+	PingExtions   pingext.PingExtension
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -229,26 +234,27 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 
 	protocol := &PortalProtocol{
-		protocolId:     string(protocolId),
-		protocolName:   protocolId.Name(),
-		Log:            log.New("protocol", protocolId.Name()),
-		PrivateKey:     privateKey,
-		NetRestrict:    config.NetRestrict,
-		BootstrapNodes: config.BootstrapNodes,
-		radiusCache:    fastcache.New(config.RadiusCacheSize),
-		closeCtx:       closeCtx,
-		cancelCloseCtx: cancelCloseCtx,
-		localNode:      localNode,
-		validSchemes:   enode.ValidSchemes,
-		storage:        storage,
-		toContentId:    defaultContentIdFunc,
-		contentQueue:   contentQueue,
-		offerQueue:     make(chan *OfferRequestWithNode, concurrentOffers*20),
-		conn:           conn,
-		DiscV5:         discV5,
-		NAT:            config.NAT,
-		clock:          config.clock,
-		Utp:            utp,
+		protocolId:        string(protocolId),
+		protocolName:      protocolId.Name(),
+		Log:               log.New("protocol", protocolId.Name()),
+		PrivateKey:        privateKey,
+		NetRestrict:       config.NetRestrict,
+		BootstrapNodes:    config.BootstrapNodes,
+		radiusCache:       fastcache.New(config.RadiusCacheSize),
+		capabilitiesCache: fastcache.New(config.CapabilitiesCacheSize),
+		closeCtx:          closeCtx,
+		cancelCloseCtx:    cancelCloseCtx,
+		localNode:         localNode,
+		validSchemes:      enode.ValidSchemes,
+		storage:           storage,
+		toContentId:       defaultContentIdFunc,
+		contentQueue:      contentQueue,
+		offerQueue:        make(chan *OfferRequestWithNode, concurrentOffers*20),
+		conn:              conn,
+		DiscV5:            discV5,
+		NAT:               config.NAT,
+		clock:             config.clock,
+		Utp:               utp,
 	}
 
 	for _, opt := range opts {
@@ -257,6 +263,17 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 
 	if metrics.Enabled() {
 		protocol.portalMetrics = newPortalMetrics(protocolId.Name())
+	}
+
+	switch protocolId.Name() {
+	case "history":
+		protocol.PingExtions = HistoryPingExtension{}
+	case "state":
+		protocol.PingExtions = StatePingExtension{}
+	case "beacon":
+		protocol.PingExtions = BeaconPingExtension{}
+	default:
+		protocol.PingExtions = DefaultPingExtension{}
 	}
 
 	return protocol, nil
@@ -353,7 +370,7 @@ func (p *PortalProtocol) setupDiscV5AndTable() error {
 }
 
 func (p *PortalProtocol) ping(node *enode.Node) (uint64, error) {
-	pong, err := p.pingInner(node)
+	pong, _, err := p.pingInner(node)
 	if err != nil {
 		return 0, err
 	}
@@ -361,33 +378,32 @@ func (p *PortalProtocol) ping(node *enode.Node) (uint64, error) {
 	return pong.EnrSeq, nil
 }
 
-func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, error) {
+func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, []byte, error) {
 	enrSeq := p.Self().Seq()
 	radiusBytes, err := p.Radius().MarshalSSZ()
 	if err != nil {
-		return nil, err
-	}
-	customPayload := &PingPongCustomData{
-		Radius: radiusBytes,
+		return nil, nil, err
 	}
 
-	customPayloadBytes, err := customPayload.MarshalSSZ()
+	payload := pingext.NewClientInfoAndCapabilitiesPayload(radiusBytes, p.PingExtions.Extensions())
+
+	data, err := payload.MarshalSSZ()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
 	pingRequest := &Ping{
-		EnrSeq:        enrSeq,
-		CustomPayload: customPayloadBytes,
+		EnrSeq:      enrSeq,
+		PayloadType: 0,
+		Payload:     data,
 	}
 
-	p.Log.Trace(">> PING/"+p.protocolName, "protocol", p.protocolName, "ip", p.Self().IP().String(), "source", p.Self().ID(), "target", node.ID(), "ping", pingRequest)
+	p.Log.Trace(">> PING/"+p.protocolName, "ip", p.Self().IP().String(), "source", p.Self().ID(), "target", node.ID(), "ping", pingRequest)
 	if metrics.Enabled() {
 		p.portalMetrics.messagesSentPing.Mark(1)
 	}
 	pingRequestBytes, err := pingRequest.MarshalSSZ()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	talkRequestBytes := make([]byte, 0, len(pingRequestBytes)+1)
@@ -397,7 +413,7 @@ func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, error) {
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	p.Log.Trace("<< PONG/"+p.protocolName, "source", p.Self().ID(), "target", node.ID(), "res", talkResp)
@@ -785,17 +801,17 @@ func (p *PortalProtocol) filterNodes(target *enode.Node, enrs [][]byte, distance
 	return nodes
 }
 
-func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, error) {
+func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []byte, error) {
 	if len(resp) == 0 {
-		return nil, ErrEmptyResp
+		return nil, nil, ErrEmptyResp
 	}
 	if resp[0] != PONG {
-		return nil, fmt.Errorf("invalid pong response")
+		return nil, nil, fmt.Errorf("invalid pong response")
 	}
 	pong := &Pong{}
 	err := pong.UnmarshalSSZ(resp[1:])
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	p.Log.Trace("<< PONG_RESPONSE/"+p.protocolName, "id", target.ID(), "pong", pong)
@@ -803,16 +819,15 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, er
 		p.portalMetrics.messagesReceivedPong.Mark(1)
 	}
 
-	customPayload := &PingPongCustomData{}
-	err = customPayload.UnmarshalSSZ(pong.CustomPayload)
+	if pong.PayloadType != pingext.ClientInfo {
+		return nil, nil, errors.New("pong payload type should be 0")
+	}
+	clientInfo := &pingext.ClientInfoAndCapabilitiesPayload{}
+	err = clientInfo.UnmarshalSSZ(pong.Payload)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	p.Log.Trace("<< PONG_RESPONSE/"+p.protocolName, "id", target.ID(), "pong", pong, "customPayload", customPayload)
-	if metrics.Enabled() {
-		p.portalMetrics.messagesReceivedPong.Mark(1)
-	}
 	isAdded := p.table.addFoundNode(target, true)
 	if isAdded {
 		log.Debug("Node added to bucket", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
@@ -820,8 +835,8 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, er
 		log.Debug("Node added to replacements list", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	}
 
-	p.radiusCache.Set([]byte(target.ID().String()), customPayload.Radius)
-	return pong, nil
+	p.radiusCache.Set([]byte(target.ID().String()), clientInfo.DataRadius[:])
+	return pong, clientInfo.DataRadius[:], nil
 }
 
 func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg []byte) []byte {
@@ -914,34 +929,34 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 }
 
 func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
-	pingCustomPayload := &PingPongCustomData{}
-	err := pingCustomPayload.UnmarshalSSZ(ping.CustomPayload)
-	if err != nil {
-		return nil, err
+	var pong Pong
+	var err error
+	if !p.PingExtions.IsSupported(ping.PayloadType) {
+		errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorNotSupported)
+		pong = p.createPong(pingext.Error, errPayload)
+	} else {
+		switch ping.PayloadType {
+		case pingext.ClientInfo:
+			pong, err = p.handleClientInfo(id, ping.Payload)
+			if err != nil {
+				return nil, err
+			}
+		case pingext.BasicRadius:
+			pong, err = p.handleBasicRadius()
+			if err != nil {
+				return nil, err
+			}
+		case pingext.HistoryRadius:
+			pong, err = p.handleHistoryRadius()
+			if err != nil {
+				return nil, err
+			}
+		case pingext.Error:
+			errBytes := pingext.GetErrorPayloadBytes(pingext.ErrorSystemError)
+			pong = p.createPong(ping.PayloadType, errBytes)
+		}
 	}
-
-	p.radiusCache.Set([]byte(id.String()), pingCustomPayload.Radius)
-
-	enrSeq := p.Self().Seq()
-	radiusBytes, err := p.Radius().MarshalSSZ()
-	if err != nil {
-		return nil, err
-	}
-	pongCustomPayload := &PingPongCustomData{
-		Radius: radiusBytes,
-	}
-
-	pongCustomPayloadBytes, err := pongCustomPayload.MarshalSSZ()
-	if err != nil {
-		return nil, err
-	}
-
-	pong := &Pong{
-		EnrSeq:        enrSeq,
-		CustomPayload: pongCustomPayloadBytes,
-	}
-
-	p.Log.Trace(">> PONG/"+p.protocolName, "protocol", p.protocolName, "source", id, "pong", pong)
+	p.Log.Trace(">> PONG/"+p.protocolName, "protocol", p.protocolName, "ping_type", ping.PayloadType, "source", id, "pong", pong)
 	if metrics.Enabled() {
 		p.portalMetrics.messagesSentPong.Mark(1)
 	}
@@ -956,6 +971,61 @@ func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 	talkRespBytes = append(talkRespBytes, pongBytes...)
 
 	return talkRespBytes, nil
+}
+
+func (p *PortalProtocol) handleClientInfo(id enode.ID, data []byte) (Pong, error) {
+	payload := &pingext.ClientInfoAndCapabilitiesPayload{}
+	err := payload.UnmarshalSSZ(data)
+	if err != nil {
+		errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
+		return p.createPong(pingext.Error, errPayload), nil
+	}
+	p.radiusCache.Set([]byte(id.String()), payload.DataRadius[:])
+	capBytes, err := payload.Capabilities.MarshalSSZ()
+	if err != nil {
+		p.Log.Error("failed to marshal capabilities", "err", err)
+	} else {
+		p.capabilitiesCache.Set([]byte(id.String()), capBytes)
+	}
+	radiusBytes, err := p.storage.Radius().MarshalSSZ()
+	if err != nil {
+		return Pong{}, err
+	}
+	pongPayload := pingext.NewClientInfoAndCapabilitiesPayload(radiusBytes, p.PingExtions.Extensions())
+	pongPayloadBytes, err := pongPayload.MarshalSSZ()
+	if err != nil {
+		return Pong{}, err
+	}
+	return p.createPong(pingext.ClientInfo, pongPayloadBytes), nil
+}
+
+func (p *PortalProtocol) handleBasicRadius() (Pong, error) {
+	radius, err := p.Radius().MarshalSSZ()
+	if err != nil {
+		return Pong{}, err
+	}
+	return p.createPong(pingext.BasicRadius, radius), nil
+}
+
+func (p *PortalProtocol) handleHistoryRadius() (Pong, error) {
+	radius, err := p.Radius().MarshalSSZ()
+	if err != nil {
+		return Pong{}, err
+	}
+	payload := pingext.NewHistoryRadiusPayload(radius, 0)
+	payloadBytes, err := payload.MarshalSSZ()
+	if err != nil {
+		return Pong{}, err
+	}
+	return p.createPong(pingext.HistoryRadius, payloadBytes), nil
+}
+
+func (p *PortalProtocol) createPong(payloadType uint16, payload []byte) Pong {
+	return Pong{
+		EnrSeq:      p.Self().Seq(),
+		PayloadType: payloadType,
+		Payload:     payload,
+	}
 }
 
 func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNodes) ([]byte, error) {

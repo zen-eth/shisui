@@ -5,7 +5,7 @@ import (
 )
 
 // note: We changed the generated file since fastssz issues which can't be passed by the CI, so we commented the go:generate line
-///go:generate sszgen --path types.go --exclude-objs Content,Enrs,ContentKV
+///go:generate sszgen --path types.go --exclude-objs Content,Enrs,ContentKV,ProtocolId
 
 // Message codes for the portal protocol.
 const (
@@ -69,13 +69,10 @@ type ContentKV struct {
 
 // Request messages for the portal protocol.
 type (
-	PingPongCustomData struct {
-		Radius []byte `ssz-size:"32"`
-	}
-
 	Ping struct {
-		EnrSeq        uint64
-		CustomPayload []byte `ssz-max:"2048"`
+		EnrSeq      uint64
+		PayloadType uint16
+		Payload     []byte `ssz-max:"1100"`
 	}
 
 	FindNodes struct {
@@ -94,8 +91,9 @@ type (
 // Response messages for the portal protocol.
 type (
 	Pong struct {
-		EnrSeq        uint64
-		CustomPayload []byte `ssz-max:"2048"`
+		EnrSeq      uint64
+		PayloadType uint16
+		Payload     []byte `ssz-max:"1100"`
 	}
 
 	Nodes struct {

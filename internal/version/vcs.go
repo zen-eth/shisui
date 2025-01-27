@@ -22,6 +22,7 @@
 package version
 
 import (
+	"runtime"
 	"runtime/debug"
 	"time"
 )
@@ -56,6 +57,18 @@ func VCS() (VCSInfo, bool) {
 		}
 	}
 	return VCSInfo{}, false
+}
+
+// "trin/v0.1.1-b61fdc5c/linux-x86_64/rustc1.81.0"
+// "Shisui/linux-amd64/go1.23.4/937d0954/2024-12-26"
+func ClientInfo() string {
+	info, _ := VCS()
+	name := "shisui"
+	// TODO replease with tag when a release is created
+	name += "/latest-" + info.Commit
+	name += "/" + runtime.GOOS + "-" + runtime.GOARCH
+	name += "/" + runtime.Version()
+	return name
 }
 
 // buildInfoVCS returns VCS information of the build.
