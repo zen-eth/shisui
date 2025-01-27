@@ -6,7 +6,7 @@ replace github.com/protolambda/zrnt v0.32.3 => github.com/optimism-java/zrnt v0.
 
 require (
 	github.com/VictoriaMetrics/fastcache v1.12.2
-	github.com/cockroachdb/pebble v1.1.3
+	github.com/cockroachdb/pebble v1.1.4
 	github.com/ethereum/go-ethereum v1.14.11
 	github.com/ferranbt/fastssz v0.1.4
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb
