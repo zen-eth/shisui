@@ -1,6 +1,6 @@
 module github.com/zen-eth/shisui
 
-go 1.23.1
+go 1.23.5
 
 replace github.com/protolambda/zrnt v0.32.3 => github.com/optimism-java/zrnt v0.32.4-0.20240415084906-d9dbf06b32f7
 
