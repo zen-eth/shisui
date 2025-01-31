@@ -256,6 +256,9 @@ func (p *PortalProtocolAPI) AddEnr(enr string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if n.IPAddr().BitLen() == 0 {
+		p.portalProtocol.Log.Warn("ip addr is empty, Enr may contains a multicast ip", "enr", enr)
+	}
 	p.portalProtocol.AddEnr(n)
 	return true, nil
 }
