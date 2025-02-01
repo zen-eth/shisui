@@ -47,12 +47,6 @@ func (p *PortalProtocol) setupPortMapping() {
 		p.localNode.SetStaticIP(ip)
 		go p.consumePortMappingRequests()
 
-	case nat.STUN:
-		// STUN doesn't block, set the IP right away.
-		ip, _ := p.NAT.ExternalIP()
-		p.localNode.SetStaticIP(ip)
-		go p.consumePortMappingRequests()
-
 	default:
 		go p.portMappingLoop()
 	}
