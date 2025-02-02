@@ -7,7 +7,7 @@ replace github.com/protolambda/zrnt v0.32.3 => github.com/optimism-java/zrnt v0.
 require (
 	github.com/VictoriaMetrics/fastcache v1.12.2
 	github.com/cockroachdb/pebble v1.1.4
-	github.com/ethereum/go-ethereum v1.14.11
+	github.com/ethereum/go-ethereum v1.14.13
 	github.com/ferranbt/fastssz v0.1.4
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb
 	github.com/hashicorp/go-bexpr v0.1.14
@@ -114,4 +114,4 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250201094631-79523ca21ca8
+replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250202143149-618559ee7533
