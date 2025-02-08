@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"os"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -12,6 +13,7 @@ import (
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/view"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // testcases from https://github.com/ethereum/portal-network-specs/blob/master/content-keys-test-vectors.md
@@ -92,4 +94,38 @@ func TestBlockNumber(t *testing.T) {
 	require.False(t, isOverflow)
 	u256Str := fmt.Sprint(u256Format)
 	require.Equal(t, u256Str, contentIdU256)
+}
+
+func TestHeaderWithProof(t *testing.T) {
+	file, err := os.ReadFile("./testdata/test_data_collection_of_forks_blocks.yaml")
+	require.NoError(t, err)
+	entries := make([]Entry, 0)
+	err = yaml.Unmarshal(file, &entries)
+	require.NoError(t, err)
+	for _, item := range entries {
+		keyBytes := hexutil.MustDecode(item.ContentKey)
+		// get the header with proof
+		if keyBytes[0] != 0 {
+			continue
+		}
+		headerWithProof := new(HeaderWithProof)
+		err := headerWithProof.UnmarshalSSZ(hexutil.MustDecode(item.ContentValue))
+		require.NoError(t, err)
+		switch headerWithProof.Proof[0] {
+		case 0:
+			continue
+		case 1:
+			proof := new(BlockProofHistoricalHashesAccumulator)
+			err = proof.UnmarshalSSZ(headerWithProof.Proof[1:])
+			require.NoError(t, err)
+		case 2:
+			proof := new(BlockProofHistoricalRoots)
+			err = proof.UnmarshalSSZ(headerWithProof.Proof[1:])
+			require.NoError(t, err)
+		case 3:
+			proof := new(BlockProofHistoricalSummaries)
+			err = proof.UnmarshalSSZ(headerWithProof.Proof[1:])
+			require.NoError(t, err)
+		}
+	}
 }
