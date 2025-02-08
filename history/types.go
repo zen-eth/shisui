@@ -242,3 +242,29 @@ func (p *PortalReceipts) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 func (p *PortalReceipts) GetTree() (*ssz.Node, error) {
 	return ssz.ProofTree(p)
 }
+
+type HeaderWithProof struct {
+	Header []byte `ssz-max:"8192"`
+	Proof  []byte `ssz-max:"1024"`
+}
+
+// Proof for EL BlockHeader before TheMerge / Paris
+type BlockProofHistoricalHashesAccumulator struct {
+	Proof [][]byte `ssz-size:"15,32"`
+}
+
+// Proof for EL BlockHeader from TheMerge until Capella
+type BlockProofHistoricalRoots struct {
+	BeaconBlockProof    [][]byte `ssz-size:"14,32"` // From TheMerge until Capella -> Bellatrix fork.
+	BeaconBlockRoot     []byte   `ssz-size:"32"`
+	ExecutionBlockProof [][]byte `ssz-size:"11,32"` // Proof that EL block_hash is in BeaconBlock -> BeaconBlockBody -> ExecutionPayload
+	Slot                uint64
+}
+
+// Proof for EL BlockHeader for Capella and onwards
+type BlockProofHistoricalSummaries struct {
+	BeaconBlockProof    [][]byte `ssz-size:"13,32"`
+	BeaconBlockRoot     []byte   `ssz-size:"32"`
+	ExecutionBlockProof [][]byte `ssz-size:"?,32" ssz-max:"12"` // Proof that EL block_hash is in BeaconBlock -> BeaconBlockBody -> ExecutionPayload
+	Slot                uint64
+}
