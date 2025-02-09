@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	ssz "github.com/ferranbt/fastssz"
+	"github.com/protolambda/ztyp/tree"
 )
 
 // note: We changed the generated file since fastssz issues which can't be passed by the CI, so we commented the go:generate line
@@ -255,10 +256,26 @@ type BlockProofHistoricalHashesAccumulator struct {
 
 // Proof for EL BlockHeader from TheMerge until Capella
 type BlockProofHistoricalRoots struct {
-	BeaconBlockProof    [][]byte `ssz-size:"14,32"` // From TheMerge until Capella -> Bellatrix fork.
-	BeaconBlockRoot     []byte   `ssz-size:"32"`
-	ExecutionBlockProof [][]byte `ssz-size:"11,32"` // Proof that EL block_hash is in BeaconBlock -> BeaconBlockBody -> ExecutionPayload
+	BeaconBlockProof    [][]byte `ssz-size:"14,32" yaml:"historical_roots_proof"` // From TheMerge until Capella -> Bellatrix fork.
+	BeaconBlockRoot     []byte   `ssz-size:"32" yaml:"beacon_block_root"`
+	ExecutionBlockProof [][]byte `ssz-size:"11,32" yaml:"beacon_block_proof"` // Proof that EL block_hash is in BeaconBlock -> BeaconBlockBody -> ExecutionPayload
 	Slot                uint64
+}
+
+func (b BlockProofHistoricalRoots) GetBeaconBlockProof() []tree.Root {
+	roots := make([]tree.Root, 0)
+	for _, proof := range b.BeaconBlockProof {
+		roots = append(roots, tree.Root(proof))
+	}
+	return roots
+}
+
+func (b BlockProofHistoricalRoots) GetExecutionBlockProof() []tree.Root {
+	roots := make([]tree.Root, 0)
+	for _, proof := range b.ExecutionBlockProof {
+		roots = append(roots, tree.Root(proof))
+	}
+	return roots
 }
 
 // Proof for EL BlockHeader for Capella and onwards
@@ -267,4 +284,20 @@ type BlockProofHistoricalSummaries struct {
 	BeaconBlockRoot     []byte   `ssz-size:"32"`
 	ExecutionBlockProof [][]byte `ssz-size:"?,32" ssz-max:"12"` // Proof that EL block_hash is in BeaconBlock -> BeaconBlockBody -> ExecutionPayload
 	Slot                uint64
+}
+
+func (b BlockProofHistoricalSummaries) GetBeaconBlockProof() []tree.Root {
+	roots := make([]tree.Root, 0)
+	for _, proof := range b.BeaconBlockProof {
+		roots = append(roots, tree.Root(proof))
+	}
+	return roots
+}
+
+func (b BlockProofHistoricalSummaries) GetExecutionBlockProof() []tree.Root {
+	roots := make([]tree.Root, 0)
+	for _, proof := range b.ExecutionBlockProof {
+		roots = append(roots, tree.Root(proof))
+	}
+	return roots
 }
