@@ -282,20 +282,7 @@ func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber 
 	if blockNumber >= shanghaiBlockNumber {
 		return errors.New("invalid historicalRootsBlockProof found for post-Shanghai header")
 	}
-	// BeaconBlock level:
-	// - 8 as there are 5 fields
-	// - 4 as index (pos) of field is 4
-	// let gen_index_top_level = (1 * 1 * 8 + 4)
-	// BeaconBlockBody level:
-	// - 16 as there are 10 fields
-	// - 9 as index (pos) of field is 9
-	// let gen_index_mid_level = (gen_index_top_level * 1 * 16 + 9)
-	// ExecutionPayload level:
-	// - 16 as there are 14 fields
-	// - 12 as pos of field is 12
-	// let gen_index = (gen_index_mid_level * 1 * 16 + 12) = 3228
-	var gIndex uint64 = 3228
-	if !merkle.VerifyMerkleBranch(headerHash, proof.GetExecutionBlockProof(), 11, gIndex, tree.Root(proof.BeaconBlockRoot)) {
+	if !VerifyBeaconBlock(headerHash[:], proof.GetExecutionBlockProof(), tree.Root(proof.BeaconBlockRoot)) {
 		return errors.New("merkle proof validation failed for BeaconBlockBodyProof")
 	}
 
