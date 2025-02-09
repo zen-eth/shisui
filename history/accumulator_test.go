@@ -97,15 +97,47 @@ func TestVerifyPostMergePreCapellaHeader(t *testing.T) {
 
 	require.Equal(t, hexutil.Encode(root[:]), "0x4df6b89755125d4f6c5575039a04e22301a5a49ee893c1d27e559e3eeab73da7")
 
-	file, err := os.ReadFile("./testdata/block_proofs_bellatrix/beacon_block_proof-15539558-cdf9ed89b0c43cda17398dc4da9cfc505e5ccd19f7c39e3b43474180f1051e01.yaml")
 	require.NoError(t, err)
-	proof := HistoricalRootsBlockProof{}
-	err = yaml.Unmarshal(file, &proof)
+	proof, err := parsePostMergePreCapellaHeader()
 	require.NoError(t, err)
 	// blockNumber and blockHash are from testfile
 	blockHash := hexutil.MustDecode("0xcdf9ed89b0c43cda17398dc4da9cfc505e5ccd19f7c39e3b43474180f1051e01")
-	err = acc.VerifyPostMergePreCapellaHeader(15539558, tree.Root(blockHash), &proof)
+	err = acc.VerifyPostMergePreCapellaHeader(15539558, tree.Root(blockHash), proof)
 	require.NoError(t, err)
+}
+
+func parsePostMergePreCapellaHeader() (*BlockProofHistoricalRoots, error) {
+	type Data struct {
+		BeaconBlockProof    []string `yaml:"historical_roots_proof"` // From TheMerge until Capella -> Bellatrix fork.
+		BeaconBlockRoot     string   `yaml:"beacon_block_root"`
+		ExecutionBlockProof []string `yaml:"beacon_block_proof"` // Proof that EL block_hash is in BeaconBlock -> BeaconBlockBody -> ExecutionPayload
+		Slot                uint64
+	}
+	file, err := os.ReadFile("./testdata/block_proofs_bellatrix/beacon_block_proof-15539558-cdf9ed89b0c43cda17398dc4da9cfc505e5ccd19f7c39e3b43474180f1051e01.yaml")
+	if err != nil {
+		return nil, err
+	}
+	data := Data{}
+	err = yaml.Unmarshal(file, &data)
+	if err != nil {
+		return nil, err
+	}
+	result := &BlockProofHistoricalRoots{}
+	result.BeaconBlockRoot = hexutil.MustDecode(data.BeaconBlockRoot)
+	result.Slot = data.Slot
+	beaconBlockProof := make([][]byte, 0)
+	for _, v := range data.BeaconBlockProof {
+		proof := hexutil.MustDecode(v)
+		beaconBlockProof = append(beaconBlockProof, proof)
+	}
+	result.BeaconBlockProof = beaconBlockProof
+	executionBlockProof := make([][]byte, 0)
+	for _, v := range data.ExecutionBlockProof {
+		proof := hexutil.MustDecode(v)
+		executionBlockProof = append(executionBlockProof, proof)
+	}
+	result.ExecutionBlockProof = executionBlockProof
+	return result, nil
 }
 
 // all test blocks are in the same epoch

@@ -15,6 +15,7 @@ import (
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/util/merkle"
 	"github.com/protolambda/ztyp/codec"
+	"github.com/protolambda/ztyp/tree"
 )
 
 const (
@@ -274,18 +275,28 @@ func NewHistoricalRootsAccumulator(spec *common.Spec) (HistoricalRootsAccumulato
 	return HistoricalRootsAccumulator{HistoricalRoots: *historicalRoots}, err
 }
 
-func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber uint64, headerHash common.Root, proof *HistoricalRootsBlockProof) error {
+func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber uint64, headerHash common.Root, proof *BlockProofHistoricalRoots) error {
 	if blockNumber <= mergeBlockNumber {
 		return errors.New("invalid historicalRootsBlockProof found for pre-merge header")
 	}
 	if blockNumber >= shanghaiBlockNumber {
 		return errors.New("invalid historicalRootsBlockProof found for post-Shanghai header")
 	}
-	if !merkle.VerifyMerkleBranch(headerHash, proof.BeaconBlockBodyProof[:], 8, 412, proof.BeaconBlockBodyRoot) {
+	// BeaconBlock level:
+	// - 8 as there are 5 fields
+	// - 4 as index (pos) of field is 4
+	// let gen_index_top_level = (1 * 1 * 8 + 4)
+	// BeaconBlockBody level:
+	// - 16 as there are 10 fields
+	// - 9 as index (pos) of field is 9
+	// let gen_index_mid_level = (gen_index_top_level * 1 * 16 + 9)
+	// ExecutionPayload level:
+	// - 16 as there are 14 fields
+	// - 12 as pos of field is 12
+	// let gen_index = (gen_index_mid_level * 1 * 16 + 12) = 3228
+	var gIndex uint64 = 3228
+	if !merkle.VerifyMerkleBranch(headerHash, proof.GetExecutionBlockProof(), 11, gIndex, tree.Root(proof.BeaconBlockRoot)) {
 		return errors.New("merkle proof validation failed for BeaconBlockBodyProof")
-	}
-	if !merkle.VerifyMerkleBranch(proof.BeaconBlockBodyRoot, proof.BeaconBlockHeaderProof[:], 3, 12, proof.BeaconBlockHeaderRoot) {
-		return errors.New("merkle proof validation failed for BeaconBlockHeaderProof")
 	}
 
 	blockRootIndex := proof.Slot % epochSize
@@ -293,7 +304,7 @@ func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber 
 	historicalRootIndex := proof.Slot / epochSize
 	historicalRoot := h.HistoricalRoots[historicalRootIndex]
 
-	if !merkle.VerifyMerkleBranch(proof.BeaconBlockHeaderRoot, proof.HistoricalRootsProof[:], 14, uint64(genIndex), historicalRoot) {
+	if !merkle.VerifyMerkleBranch(tree.Root(proof.BeaconBlockRoot), proof.GetBeaconBlockProof()[:], 14, genIndex, historicalRoot) {
 		return errors.New("merkle proof validation failed for HistoricalRootsProof")
 	}
 	return nil
