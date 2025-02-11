@@ -1,9 +1,7 @@
 package sqlite
 
 import (
-	"fmt"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -11,12 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	contentStorage "github.com/zen-eth/shisui/storage"
 )
-
-const nodeDataDir = "./unit_test"
-
-func clearNodeData() {
-	_ = os.Remove(fmt.Sprintf("%s/%s/%s", nodeDataDir, "history", sqliteName))
-}
 
 func genBytes(length int) []byte {
 	res := make([]byte, length)
@@ -26,8 +18,8 @@ func genBytes(length int) []byte {
 	return res
 }
 
-func newContentStorage(storageCapacityInMB uint64, nodeId enode.ID) (*ContentStorage, error) {
-	db, err := NewDB("./unit_test", "history")
+func newContentStorage(storageCapacityInMB uint64, nodeId enode.ID, dir string) (*ContentStorage, error) {
+	db, err := NewDB(dir, "history")
 	if err != nil {
 		return nil, err
 	}
@@ -43,9 +35,8 @@ func newContentStorage(storageCapacityInMB uint64, nodeId enode.ID) (*ContentSto
 
 func TestBasicStorage(t *testing.T) {
 	zeroNodeId := uint256.NewInt(0).Bytes32()
-	storage, err := newContentStorage(math.MaxUint32, zeroNodeId)
+	storage, err := newContentStorage(math.MaxUint32, zeroNodeId, t.TempDir())
 	assert.NoError(t, err)
-	defer clearNodeData()
 	defer storage.Close()
 
 	contentId := []byte("test")
@@ -79,9 +70,8 @@ func TestBasicStorage(t *testing.T) {
 
 func TestDBSize(t *testing.T) {
 	zeroNodeId := uint256.NewInt(0).Bytes32()
-	storage, err := newContentStorage(math.MaxUint32, zeroNodeId)
+	storage, err := newContentStorage(math.MaxUint32, zeroNodeId, t.TempDir())
 	assert.NoError(t, err)
-	defer clearNodeData()
 	defer storage.Close()
 
 	numBytes := 10000
@@ -140,9 +130,8 @@ func TestDBPruning(t *testing.T) {
 	storageCapacity := uint64(1)
 
 	zeroNodeId := uint256.NewInt(0).Bytes32()
-	storage, err := newContentStorage(storageCapacity, zeroNodeId)
+	storage, err := newContentStorage(storageCapacity, zeroNodeId, t.TempDir())
 	assert.NoError(t, err)
-	defer clearNodeData()
 	defer storage.Close()
 
 	furthestElement := uint256.NewInt(40)
@@ -207,9 +196,8 @@ func TestGetLargestDistance(t *testing.T) {
 	storageCapacity := uint64(1)
 
 	zeroNodeId := uint256.NewInt(0).Bytes32()
-	storage, err := newContentStorage(storageCapacity, zeroNodeId)
+	storage, err := newContentStorage(storageCapacity, zeroNodeId, t.TempDir())
 	assert.NoError(t, err)
-	defer clearNodeData()
 	defer storage.Close()
 
 	furthestElement := uint256.NewInt(40)
@@ -232,9 +220,8 @@ func TestSimpleForcePruning(t *testing.T) {
 	storageCapacity := uint64(100_000)
 
 	zeroNodeId := uint256.NewInt(0).Bytes32()
-	storage, err := newContentStorage(storageCapacity, zeroNodeId)
+	storage, err := newContentStorage(storageCapacity, zeroNodeId, t.TempDir())
 	assert.NoError(t, err)
-	defer clearNodeData()
 	defer storage.Close()
 
 	furthestElement := uint256.NewInt(40)
@@ -276,9 +263,8 @@ func TestForcePruning(t *testing.T) {
 	nodeId := uint256.MustFromHex("0x30994892f3e4889d99deb5340050510d1842778acc7a7948adffa475fed51d6e").Bytes()
 	content := genBytes(1000)
 
-	storage, err := newContentStorage(startCap, enode.ID(nodeId))
+	storage, err := newContentStorage(startCap, enode.ID(nodeId), t.TempDir())
 	assert.NoError(t, err)
-	defer clearNodeData()
 	defer storage.Close()
 
 	storage.storageCapacityInBytes = startCap
