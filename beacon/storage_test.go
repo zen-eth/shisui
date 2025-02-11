@@ -2,11 +2,9 @@ package beacon
 
 import (
 	"crypto/sha256"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -16,6 +14,7 @@ import (
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/stretchr/testify/require"
 	"github.com/zen-eth/shisui/storage"
+	"github.com/zen-eth/shisui/storage/pebble"
 )
 
 var zeroNodeId = uint256.NewInt(0).Bytes32()
@@ -29,7 +28,7 @@ func defaultContentIdFunc(contentKey []byte) []byte {
 
 func TestGetAndPut(t *testing.T) {
 	testDir := "./"
-	beaconStorage, err := genStorage(testDir)
+	beaconStorage, err := genStorage(testDir, t)
 	require.NoError(t, err)
 	defer clearNodeData(testDir)
 
@@ -53,12 +52,12 @@ func TestGetAndPut(t *testing.T) {
 	}
 }
 
-func genStorage(testDir string) (storage.ContentStorage, error) {
+func genStorage(testDir string, t *testing.T) (storage.ContentStorage, error) {
 	err := os.MkdirAll(testDir, 0755)
 	if err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite3", path.Join(testDir, dbName))
+	db, err := pebble.NewDB(t.TempDir(), 16, 16, "test")
 	if err != nil {
 		return nil, err
 	}

@@ -252,6 +252,17 @@ func (flcou *ForkedLightClientOptimisticUpdate) HashTreeRoot(spec *common.Spec, 
 	return h.HashTreeRoot(flcou.ForkDigest, spec.Wrap(flcou.LightClientOptimisticUpdate))
 }
 
+func (flcou *ForkedLightClientOptimisticUpdate) GetSignatureSlot() uint64 {
+	if flcou.ForkDigest == Bellatrix {
+		return uint64(flcou.LightClientOptimisticUpdate.(*altair.LightClientOptimisticUpdate).SignatureSlot)
+	} else if flcou.ForkDigest == Capella {
+		return uint64(flcou.LightClientOptimisticUpdate.(*capella.LightClientOptimisticUpdate).SignatureSlot)
+	} else if flcou.ForkDigest == Deneb {
+		return uint64(flcou.LightClientOptimisticUpdate.(*deneb.LightClientOptimisticUpdate).SignatureSlot)
+	}
+	return 0
+}
+
 type ForkedLightClientFinalityUpdate struct {
 	ForkDigest                common.ForkDigest
 	LightClientFinalityUpdate common.SpecObj
@@ -298,6 +309,17 @@ func (flcfu *ForkedLightClientFinalityUpdate) ByteLength(spec *common.Spec) uint
 
 func (flcfu *ForkedLightClientFinalityUpdate) HashTreeRoot(spec *common.Spec, h tree.HashFn) common.Root {
 	return h.HashTreeRoot(flcfu.ForkDigest, spec.Wrap(flcfu.LightClientFinalityUpdate))
+}
+
+func (flcfu *ForkedLightClientFinalityUpdate) GetBeaconSlot() uint64 {
+	if flcfu.ForkDigest == Bellatrix {
+		return uint64(flcfu.LightClientFinalityUpdate.(*altair.LightClientFinalityUpdate).FinalizedHeader.Slot)
+	} else if flcfu.ForkDigest == Capella {
+		return uint64(flcfu.LightClientFinalityUpdate.(*capella.LightClientFinalityUpdate).FinalizedHeader.Beacon.Slot)
+	} else if flcfu.ForkDigest == Deneb {
+		return uint64(flcfu.LightClientFinalityUpdate.(*deneb.LightClientFinalityUpdate).FinalizedHeader.Beacon.Slot)
+	}
+	return 0
 }
 
 type HistoricalSummariesProof struct {

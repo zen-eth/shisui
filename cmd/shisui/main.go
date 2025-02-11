@@ -3,12 +3,10 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
-	"database/sql"
 	"fmt"
 	"net"
 	"net/http"
 	"os/signal"
-	"path"
 	"slices"
 	"syscall"
 	"time"
@@ -446,22 +444,17 @@ func initHistory(config Config, server *rpc.Server, conn discover.UDPConn, local
 }
 
 func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.ZenEthUtp) (*beacon.Network, error) {
-	dbPath := path.Join(config.DataDir, "beacon")
-	err := os.MkdirAll(dbPath, 0755)
+	networkName := portalwire.Beacon.Name()
+	db, err := pebble.NewDB(config.DataDir, 16, 400, networkName)
 	if err != nil {
 		return nil, err
 	}
-	sqlDb, err := sql.Open("sqlite3", path.Join(dbPath, "beacon.sqlite"))
-	if err != nil {
-		return nil, err
-	}
-
 	contentStorage, err := beacon.NewBeaconStorage(storage.PortalStorageConfig{
 		StorageCapacityMB: config.DataCapacity,
 		NodeId:            localNode.ID(),
 		Spec:              configs.Mainnet,
 		NetworkName:       portalwire.Beacon.Name(),
-	}, sqlDb)
+	}, db)
 	if err != nil {
 		return nil, err
 	}
