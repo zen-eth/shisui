@@ -19,19 +19,16 @@ import (
 
 var zeroNodeId = uint256.NewInt(0).Bytes32()
 
-const dbName = "beacon.sqlite"
-
 func defaultContentIdFunc(contentKey []byte) []byte {
 	digest := sha256.Sum256(contentKey)
 	return digest[:]
 }
 
 func TestGetAndPut(t *testing.T) {
-	testDir := "./"
-	beaconStorage, err := genStorage(testDir, t)
+	beaconStorage, err := genStorage(t)
 	require.NoError(t, err)
-	defer clearNodeData(testDir)
 
+	defer beaconStorage.Close()
 	testData, err := getTestData()
 	require.NoError(t, err)
 
@@ -52,11 +49,7 @@ func TestGetAndPut(t *testing.T) {
 	}
 }
 
-func genStorage(testDir string, t *testing.T) (storage.ContentStorage, error) {
-	err := os.MkdirAll(testDir, 0755)
-	if err != nil {
-		return nil, err
-	}
+func genStorage(t *testing.T) (storage.ContentStorage, error) {
 	db, err := pebble.NewDB(t.TempDir(), 16, 16, "test")
 	if err != nil {
 		return nil, err
@@ -103,11 +96,4 @@ func getTestData() ([]entry, error) {
 		}
 	}
 	return entries, nil
-}
-
-func clearNodeData(nodeDataDir string) {
-	err := os.Remove(fmt.Sprintf("%s%s", nodeDataDir, dbName))
-	if err != nil {
-		fmt.Println(err)
-	}
 }
