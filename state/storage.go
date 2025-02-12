@@ -24,7 +24,6 @@ var _ storage.ContentStorage = &Storage{}
 
 type Storage struct {
 	store storage.ContentStorage
-	db    *pebble.DB
 	log   log.Logger
 }
 
@@ -33,15 +32,8 @@ var portalStorageMetrics *portalwire.PortalStorageMetrics
 func NewStateStorage(store storage.ContentStorage, db *pebble.DB) *Storage {
 	stateStorage := &Storage{
 		store: store,
-		db:    db,
 		log:   log.New("storage", "state"),
 	}
-
-	// var err error
-	// portalStorageMetrics, err = portalwire.NewPortalStorageMetrics("state", db)
-	// if err != nil {
-	// 	return nil
-	// }
 
 	return stateStorage
 }
