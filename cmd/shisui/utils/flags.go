@@ -186,6 +186,11 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Category: flags.PortalNetworkCategory,
 		Value:    false,
 	}
+	PortalTrustedBlockRootFlag = &cli.StringFlag{
+		Name:     "trusted.block.root",
+		Usage:    "Hex encoded block root from a trusted checkpoint",
+		Category: flags.PortalNetworkCategory,
+	}
 )
 
 func SetupMetrics(cfg *metrics.Config) {
