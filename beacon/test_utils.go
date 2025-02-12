@@ -72,7 +72,7 @@ func SetupBeaconNetwork(addr string, bootNodes []*enode.Node) (*Network, error) 
 		return nil, err
 	}
 
-	return NewBeaconNetwork(portalProtocol), nil
+	return NewBeaconNetwork(portalProtocol, nil), nil
 }
 
 func GetLightClientBootstrap(number uint8) (ForkedLightClientBootstrap, error) {

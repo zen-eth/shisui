@@ -36,7 +36,7 @@ type Network struct {
 	lightClient    *ConsensusLightClient
 }
 
-func NewBeaconNetwork(portalProtocol *portalwire.PortalProtocol) *Network {
+func NewBeaconNetwork(portalProtocol *portalwire.PortalProtocol, client *ConsensusLightClient) *Network {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Network{
@@ -45,11 +45,16 @@ func NewBeaconNetwork(portalProtocol *portalwire.PortalProtocol) *Network {
 		closeCtx:       ctx,
 		closeFunc:      cancel,
 		log:            log.New("sub-protocol", "beacon"),
+		lightClient:    client,
 	}
 }
 
 func (bn *Network) Start() error {
 	err := bn.portalProtocol.Start()
+	if err != nil {
+		return err
+	}
+	err = bn.lightClient.Start()
 	if err != nil {
 		return err
 	}

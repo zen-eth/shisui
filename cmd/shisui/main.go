@@ -482,7 +482,13 @@ func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localN
 		return nil, err
 	}
 
-	beaconNetwork := beacon.NewBeaconNetwork(protocol)
+	beaconConfig := beacon.DefaultConfig()
+	portalRpc := beacon.NewPortalLightApi(protocol, beaconConfig.Spec)
+	beaconClient, err := beacon.NewConsensusLightClient(portalRpc, &beaconConfig, beaconConfig.DefaultCheckpoint, log.New("beacon", "light-client"))
+	if err != nil {
+		return nil, err
+	}
+	beaconNetwork := beacon.NewBeaconNetwork(protocol, beaconClient)
 	return beaconNetwork, beaconNetwork.Start()
 }
 

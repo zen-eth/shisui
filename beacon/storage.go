@@ -95,8 +95,10 @@ func NewBeaconStorage(config storage.PortalStorageConfig, db *pebble.DB) (storag
 func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	switch storage.ContentType(contentKey[0]) {
 	case LightClientBootstrap, HistoricalSummaries:
-		data, close, err := bs.db.Get(contentId)
-		defer close.Close()
+		data, _, err := bs.db.Get(contentId)
+		if err != nil {
+			return nil, err
+		}
 		return data, err
 	case LightClientUpdate:
 		lightClientUpdateKey := new(LightClientUpdateKey)
@@ -108,11 +110,10 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 		start := lightClientUpdateKey.StartPeriod
 		for start < lightClientUpdateKey.StartPeriod+lightClientUpdateKey.Count {
 			key := bs.getUint64Bytes(start)
-			data, close, err := bs.db.Get(key)
+			data, _, err := bs.db.Get(key)
 			if err != nil {
 				return nil, err
 			}
-			defer close.Close()
 			update := new(ForkedLightClientUpdate)
 			err = update.Deserialize(bs.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 			if err != nil {

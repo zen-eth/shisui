@@ -176,7 +176,7 @@ type PortalProtocolConfig struct {
 	NodeDBPath            string
 	NAT                   nat.Interface
 	clock                 mclock.Clock
-	TrustedBlockRoot 			[]byte
+	TrustedBlockRoot      []byte
 }
 
 func DefaultPortalProtocolConfig() *PortalProtocolConfig {
@@ -188,7 +188,7 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 		CapabilitiesCacheSize: 16 * 1024 * 1024,
 		NodeDBPath:            "",
 		clock:                 mclock.System{},
-		TrustedBlockRoot: make([]byte, 0),
+		TrustedBlockRoot:      make([]byte, 0),
 	}
 }
 
