@@ -104,21 +104,29 @@ func NewConsensusLightClient(api ConsensusAPI, config *Config, checkpointBlockRo
 }
 
 func (c *ConsensusLightClient) Start() error {
-	err := c.Sync()
-	if err != nil {
-		return err
-	}
-	go func() {
-		for {
-			err := c.Advance()
-			if err != nil {
-				c.Logger.Warn("error advancing light client", "err", err)
-			}
-
-			duration := c.DurationUntilNextUpdate()
-			time.Sleep(duration)
+	counter := 0
+	for counter < 10 {
+		err := c.Sync()
+		if err != nil {
+			counter ++
+			time.Sleep(10 * time.Second)
+			c.Logger.Warn("error syncing light client", "err", err)
+			return err
 		}
-	}()
+		go func() {
+			for {
+				err := c.Advance()
+				if err != nil {
+					c.Logger.Warn("error advancing light client", "err", err)
+				}
+	
+				duration := c.DurationUntilNextUpdate()
+				time.Sleep(duration)
+			}
+		}()
+		break
+	}
+	
 	return nil
 }
 

@@ -97,7 +97,7 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	case LightClientBootstrap, HistoricalSummaries:
 		data, _, err := bs.db.Get(contentId)
 		if err != nil {
-			return nil, err
+			return nil, handleNotFound(err)
 		}
 		return data, err
 	case LightClientUpdate:
@@ -112,7 +112,7 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 			key := bs.getUint64Bytes(start)
 			data, _, err := bs.db.Get(key)
 			if err != nil {
-				return nil, err
+				return nil, handleNotFound(err)
 			}
 			update := new(ForkedLightClientUpdate)
 			err = update.Deserialize(bs.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
@@ -227,4 +227,11 @@ func (bs *Storage) getUint64Bytes(value uint64) []byte {
 	defer bs.bytePool.Put(buf)
 	binary.BigEndian.PutUint64(*buf, value)
 	return *buf
+}
+
+func handleNotFound(err error) error {
+	if err == pebble.ErrNotFound {
+		return storage.ErrContentNotFound
+	}
+	return err
 }

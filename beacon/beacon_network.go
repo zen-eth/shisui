@@ -54,10 +54,7 @@ func (bn *Network) Start() error {
 	if err != nil {
 		return err
 	}
-	err = bn.lightClient.Start()
-	if err != nil {
-		return err
-	}
+	go bn.lightClient.Start()
 	go bn.processContentLoop(bn.closeCtx)
 	bn.log.Debug("beacon network start successfully")
 	return nil
