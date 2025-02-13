@@ -120,6 +120,7 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 				return nil, err
 			}
 			res = append(res, *update)
+			start++
 		}
 		var buf bytes.Buffer
 		err = LightClientUpdateRange(res).Serialize(bs.spec, codec.NewEncodingWriter(&buf))

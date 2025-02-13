@@ -476,18 +476,19 @@ func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localN
 	}
 	portalApi := portalwire.NewPortalAPI(protocol)
 
-	beaconAPI := beacon.NewBeaconNetworkAPI(portalApi)
-	err = server.RegisterName("portal", beaconAPI)
-	if err != nil {
-		return nil, err
-	}
-
 	beaconConfig := beacon.DefaultConfig()
 	portalRpc := beacon.NewPortalLightApi(protocol, beaconConfig.Spec)
 	beaconClient, err := beacon.NewConsensusLightClient(portalRpc, &beaconConfig, beaconConfig.DefaultCheckpoint, log.New("beacon", "light-client"))
 	if err != nil {
 		return nil, err
 	}
+
+	beaconAPI := beacon.NewBeaconNetworkAPI(portalApi, beaconClient)
+	err = server.RegisterName("portal", beaconAPI)
+	if err != nil {
+		return nil, err
+	}
+
 	beaconNetwork := beacon.NewBeaconNetwork(protocol, beaconClient)
 	return beaconNetwork, beaconNetwork.Start()
 }
