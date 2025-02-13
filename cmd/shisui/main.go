@@ -76,6 +76,7 @@ var (
 		utils.PortalPrivateKeyFlag,
 		utils.PortalNetworksFlag,
 		utils.PortalDiscv5GnetFlag,
+		utils.PortalTrustedBlockRootFlag,
 	}
 	historyRpcFlags = []cli.Flag{
 		utils.PortalRPCListenAddrFlag,
@@ -478,7 +479,7 @@ func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localN
 	portalApi := portalwire.NewPortalAPI(protocol)
 
 	beaconConfig := beacon.DefaultConfig()
-	if config.Protocol.TrustedBlockRoot != nil {
+	if config.Protocol.TrustedBlockRoot != nil && len(config.Protocol.TrustedBlockRoot) > 0 {
 		beaconConfig.DefaultCheckpoint = common.Root(config.Protocol.TrustedBlockRoot)
 	}
 	portalRpc := beacon.NewPortalLightApi(protocol, beaconConfig.Spec)
