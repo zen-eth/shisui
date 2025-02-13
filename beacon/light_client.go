@@ -95,11 +95,6 @@ func NewConsensusLightClient(api ConsensusAPI, config *Config, checkpointBlockRo
 		InitialCheckpoint: checkpointBlockRoot,
 	}
 
-	// err := client.bootstrap()
-	// if err != nil {
-	// 	return nil, err
-	// }
-
 	return client, nil
 }
 
@@ -257,6 +252,7 @@ func (c *ConsensusLightClient) Advance() error {
 
 func (c *ConsensusLightClient) bootstrap() error {
 	forkedBootstrap, err := c.API.GetBootstrap(c.InitialCheckpoint)
+	c.Logger.Info("bootstrapping light client", "checkpoint", hexutil.Encode(c.InitialCheckpoint[:]))
 	if err != nil {
 		return err
 	}

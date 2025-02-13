@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/mattn/go-isatty"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/urfave/cli/v2"
 	"github.com/zen-eth/shisui/beacon"
@@ -477,6 +478,9 @@ func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localN
 	portalApi := portalwire.NewPortalAPI(protocol)
 
 	beaconConfig := beacon.DefaultConfig()
+	if config.Protocol.TrustedBlockRoot != nil {
+		beaconConfig.DefaultCheckpoint = common.Root(config.Protocol.TrustedBlockRoot)
+	}
 	portalRpc := beacon.NewPortalLightApi(protocol, beaconConfig.Spec)
 	beaconClient, err := beacon.NewConsensusLightClient(portalRpc, &beaconConfig, beaconConfig.DefaultCheckpoint, log.New("beacon", "light-client"))
 	if err != nil {
