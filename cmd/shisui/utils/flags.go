@@ -187,7 +187,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    false,
 	}
 	PortalTrustedBlockRootFlag = &cli.StringFlag{
-		Name:     "trusted.block.root",
+		Name:     "trusted-block-root",
 		Usage:    "Hex encoded block root from a trusted checkpoint",
 		Category: flags.PortalNetworkCategory,
 	}
