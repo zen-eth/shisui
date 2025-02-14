@@ -1,11 +1,15 @@
 package beacon
 
 import (
+	"errors"
+
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/zen-eth/shisui/portalwire"
 )
 
 type API struct {
 	*portalwire.PortalProtocolAPI
+	BeaconClient *ConsensusLightClient
 }
 
 func (p *API) BeaconRoutingTableInfo() *portalwire.RoutingTableInfo {
@@ -68,8 +72,25 @@ func (p *API) BeaconTraceGetContent(contentKeyHex string) (*portalwire.TraceCont
 	return p.TraceRecursiveFindContent(contentKeyHex)
 }
 
-func NewBeaconNetworkAPI(BeaconAPI *portalwire.PortalProtocolAPI) *API {
+func (p *API) BeaconFinalizedStateRoot() (string, error) {
+	header := p.BeaconClient.GetFinalityHeader()
+	if header == nil {
+		return "", errors.New("content not found")
+	}
+	return hexutil.Encode(header.StateRoot[:]), nil
+}
+
+func (p *API) BeaconOptimisticStateRoot() (string, error) {
+	header := p.BeaconClient.GetHeader()
+	if header == nil {
+		return "", errors.New("content not found")
+	}
+	return hexutil.Encode(header.StateRoot[:]), nil
+}
+
+func NewBeaconNetworkAPI(beaconAPI *portalwire.PortalProtocolAPI, client *ConsensusLightClient) *API {
 	return &API{
-		BeaconAPI,
+		beaconAPI,
+		client,
 	}
 }

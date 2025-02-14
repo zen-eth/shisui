@@ -14,6 +14,15 @@ import (
 
 const GenesisTime uint64 = 1606824023
 
+type ConsensusAPI interface {
+	GetBootstrap(blockRoot common.Root) (common.SpecObj, error)
+	GetUpdates(firstPeriod, count uint64) ([]common.SpecObj, error)
+	GetFinalityUpdate() (common.SpecObj, error)
+	GetOptimisticUpdate() (common.SpecObj, error)
+	ChainID() uint64
+	Name() string
+}
+
 var _ ConsensusAPI = &PortalLightApi{}
 
 type PortalLightApi struct {
@@ -21,8 +30,11 @@ type PortalLightApi struct {
 	spec           *common.Spec
 }
 
-func NewPortalLightApi() *PortalLightApi {
-	return &PortalLightApi{}
+func NewPortalLightApi(p *portalwire.PortalProtocol, spec *common.Spec) *PortalLightApi {
+	return &PortalLightApi{
+		portalProtocol: p,
+		spec:           spec,
+	}
 }
 
 // ChainID implements ConsensusAPI.
@@ -147,7 +159,7 @@ func (p *PortalLightApi) getContent(contentKey, contentId []byte) ([]byte, error
 	if err != nil && !errors.Is(err, storage.ErrContentNotFound) {
 		return nil, err
 	}
-	if res == nil {
+	if errors.Is(err, storage.ErrContentNotFound) {
 		// Get from remote
 		res, _, err = p.portalProtocol.ContentLookup(contentKey, contentId)
 		if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -68,7 +69,7 @@ type entry struct {
 }
 
 func getTestData() ([]entry, error) {
-	baseDir := "./testdata"
+	baseDir := "./testdata/types"
 	items, err := os.ReadDir(baseDir)
 	if err != nil {
 		return nil, err
@@ -78,6 +79,9 @@ func getTestData() ([]entry, error) {
 
 	for _, item := range items {
 		if !item.IsDir() {
+			if !strings.HasSuffix(item.Name(), ".json") {
+				continue
+			}
 			f, err := os.ReadFile(fmt.Sprintf("%s/%s", baseDir, item.Name()))
 			if err != nil {
 				return nil, err

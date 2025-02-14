@@ -92,7 +92,9 @@ func getClient(strictCheckpointAge bool, t *testing.T) (*ConsensusLightClient, e
 		return nil, err
 	}
 
-	return client, nil
+	err = client.bootstrap()
+
+	return client, err
 }
 
 func TestVerifyCheckpointAgeInvalid(t *testing.T) {

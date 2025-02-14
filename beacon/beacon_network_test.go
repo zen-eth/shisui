@@ -13,7 +13,7 @@ func TestLightClientBootstrapValidation(t *testing.T) {
 	require.NoError(t, err)
 	contentKey := make([]byte, 33)
 	contentKey[0] = byte(LightClientBootstrap)
-	bn := NewBeaconNetwork(nil)
+	bn := NewBeaconNetwork(nil, nil)
 	var buf bytes.Buffer
 	err = bootstrap.Serialize(bn.spec, codec.NewEncodingWriter(&buf))
 	require.NoError(t, err)
@@ -34,7 +34,7 @@ func TestLightClienUpdateValidation(t *testing.T) {
 	contentKey := make([]byte, 0)
 	contentKey = append(contentKey, byte(LightClientUpdate))
 	contentKey = append(contentKey, keyData...)
-	bn := NewBeaconNetwork(nil)
+	bn := NewBeaconNetwork(nil, nil)
 	var buf bytes.Buffer
 	err = updateRange.Serialize(bn.spec, codec.NewEncodingWriter(&buf))
 	require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestLightClientFinalityUpdateValidation(t *testing.T) {
 	contentKey := make([]byte, 0)
 	contentKey = append(contentKey, byte(LightClientFinalityUpdate))
 	contentKey = append(contentKey, keyData...)
-	bn := NewBeaconNetwork(nil)
+	bn := NewBeaconNetwork(nil, nil)
 	var buf bytes.Buffer
 	err = update.Serialize(bn.spec, codec.NewEncodingWriter(&buf))
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestLightClientOptimisticUpdateValidation(t *testing.T) {
 	contentKey := make([]byte, 0)
 	contentKey = append(contentKey, byte(LightClientOptimisticUpdate))
 	contentKey = append(contentKey, keyData...)
-	bn := NewBeaconNetwork(nil)
+	bn := NewBeaconNetwork(nil, nil)
 	var buf bytes.Buffer
 	err = update.Serialize(bn.spec, codec.NewEncodingWriter(&buf))
 	require.NoError(t, err)
@@ -94,7 +94,7 @@ func TestHistorySummariesWithProofValidation(t *testing.T) {
 	contentKey = append(contentKey, byte(HistoricalSummaries))
 	contentKey = append(contentKey, keyBuf.Bytes()...)
 
-	bn := NewBeaconNetwork(nil)
+	bn := NewBeaconNetwork(nil, nil)
 	var buf bytes.Buffer
 	err = historySummariesWithProof.Serialize(bn.spec, codec.NewEncodingWriter(&buf))
 	require.NoError(t, err)

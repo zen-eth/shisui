@@ -29,15 +29,6 @@ var (
 	ErrInvalidSignature              = errors.New("invalid sync committee signature")
 )
 
-type ConsensusAPI interface {
-	GetBootstrap(blockRoot common.Root) (common.SpecObj, error)
-	GetUpdates(firstPeriod, count uint64) ([]common.SpecObj, error)
-	GetFinalityUpdate() (common.SpecObj, error)
-	GetOptimisticUpdate() (common.SpecObj, error)
-	ChainID() uint64
-	Name() string
-}
-
 type LightClientStore struct {
 	FinalizedHeader               *common.BeaconBlockHeader
 	CurrentSyncCommittee          *common.SyncCommittee
@@ -54,26 +45,6 @@ type ConsensusLightClient struct {
 	LastCheckpoint    common.Root
 	Config            *Config
 	Logger            log.Logger
-}
-
-type Config struct {
-	ConsensusAPI         string
-	Port                 uint64
-	DefaultCheckpoint    common.Root
-	Checkpoint           common.Root
-	DataDir              string
-	Chain                ChainConfig
-	Spec                 *common.Spec
-	MaxCheckpointAge     uint64
-	Fallback             string
-	LoadExternalFallback bool
-	StrictCheckpointAge  bool
-}
-
-type ChainConfig struct {
-	ChainID     uint64
-	GenesisTime uint64
-	GenesisRoot common.Root
 }
 
 type GenericUpdate struct {
@@ -124,12 +95,33 @@ func NewConsensusLightClient(api ConsensusAPI, config *Config, checkpointBlockRo
 		InitialCheckpoint: checkpointBlockRoot,
 	}
 
-	err := client.bootstrap()
-	if err != nil {
-		return nil, err
+	return client, nil
+}
+
+func (c *ConsensusLightClient) Start() error {
+	counter := 0
+	for counter < 10 {
+		err := c.Sync()
+		if err != nil {
+			counter++
+			c.Logger.Warn("error syncing light client", "err", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		go func() {
+			for {
+				err := c.Advance()
+				if err != nil {
+					c.Logger.Warn("error advancing light client", "err", err)
+				}
+				duration := c.DurationUntilNextUpdate()
+				time.Sleep(duration)
+			}
+		}()
+		break
 	}
 
-	return client, nil
+	return nil
 }
 
 func (c *ConsensusLightClient) GetHeader() *common.BeaconBlockHeader {
@@ -259,6 +251,7 @@ func (c *ConsensusLightClient) Advance() error {
 
 func (c *ConsensusLightClient) bootstrap() error {
 	forkedBootstrap, err := c.API.GetBootstrap(c.InitialCheckpoint)
+	c.Logger.Info("bootstrapping light client", "checkpoint", hexutil.Encode(c.InitialCheckpoint[:]))
 	if err != nil {
 		return err
 	}
@@ -603,6 +596,20 @@ func (c *ConsensusLightClient) getParticipatingKeys(committee common.SyncCommitt
 		}
 	}
 	return res
+}
+
+func (c *ConsensusLightClient) DurationUntilNextUpdate() time.Duration {
+	currentSlot := c.expectedCurrentSlot()
+	nextSlot := currentSlot + 1
+	nextSlotTimestamp, err := c.slotTimestamp(nextSlot)
+	if err != nil {
+		c.Logger.Warn("failed to get next slot timestamp", "err is", err, "slot is", nextSlot)
+		return time.Duration(10)
+	}
+	now := time.Now().Unix()
+	timeToNextSlot := uint64(nextSlotTimestamp) - uint64(now)
+	nextUpdate := timeToNextSlot + 8
+	return time.Duration(nextUpdate) * time.Second
 }
 
 func FromLightClientUpdate(commonUpdate common.SpecObj) (*GenericUpdate, error) {

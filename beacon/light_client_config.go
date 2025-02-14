@@ -8,6 +8,38 @@ import (
 	"github.com/protolambda/zrnt/eth2/configs"
 )
 
+func DefaultConfig() Config {
+	baseConfig := Mainnet()
+	return Config{
+		ConsensusAPI:      baseConfig.API,
+		Port:              baseConfig.APIPort,
+		DefaultCheckpoint: baseConfig.DefaultCheckpoint,
+		Chain:             baseConfig.Chain,
+		Spec:              baseConfig.Spec,
+		MaxCheckpointAge:  baseConfig.MaxCheckpointAge,
+	}
+}
+
+type Config struct {
+	ConsensusAPI         string
+	Port                 uint64
+	DefaultCheckpoint    common.Root
+	Checkpoint           common.Root
+	DataDir              string
+	Chain                ChainConfig
+	Spec                 *common.Spec
+	MaxCheckpointAge     uint64
+	Fallback             string
+	LoadExternalFallback bool
+	StrictCheckpointAge  bool
+}
+
+type ChainConfig struct {
+	ChainID     uint64
+	GenesisTime uint64
+	GenesisRoot common.Root
+}
+
 const MainnetType = iota
 
 type BaseConfig struct {
