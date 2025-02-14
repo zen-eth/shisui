@@ -175,6 +175,7 @@ func setPortalBootstrapNodes(ctx *cli.Context, config *Config) {
 	urls := portalwire.PortalBootnodes
 	if ctx.IsSet(utils.PortalBootNodesFlag.Name) {
 		flag := ctx.String(utils.PortalBootNodesFlag.Name)
+		log.Info("get custom bootnodes", "bootnodes", flag)
 		if flag == "none" {
 			return
 		}

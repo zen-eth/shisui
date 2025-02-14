@@ -159,7 +159,7 @@ func (p *PortalLightApi) getContent(contentKey, contentId []byte) ([]byte, error
 	if err != nil && !errors.Is(err, storage.ErrContentNotFound) {
 		return nil, err
 	}
-	if res == nil {
+	if errors.Is(err, storage.ErrContentNotFound) {
 		// Get from remote
 		res, _, err = p.portalProtocol.ContentLookup(contentKey, contentId)
 		if err != nil {

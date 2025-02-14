@@ -1,6 +1,8 @@
 package beacon
 
 import (
+	"errors"
+
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/zen-eth/shisui/portalwire"
 )
@@ -72,11 +74,17 @@ func (p *API) BeaconTraceGetContent(contentKeyHex string) (*portalwire.TraceCont
 
 func (p *API) BeaconFinalizedStateRoot() (string, error) {
 	header := p.BeaconClient.GetFinalityHeader()
+	if header == nil {
+		return "", errors.New("content not found")
+	}
 	return hexutil.Encode(header.StateRoot[:]), nil
 }
 
 func (p *API) BeaconOptimisticStateRoot() (string, error) {
 	header := p.BeaconClient.GetHeader()
+	if header == nil {
+		return "", errors.New("content not found")
+	}
 	return hexutil.Encode(header.StateRoot[:]), nil
 }
 
