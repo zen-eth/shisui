@@ -103,10 +103,10 @@ func (c *ConsensusLightClient) Start() error {
 	for counter < 10 {
 		err := c.Sync()
 		if err != nil {
-			counter ++
-			time.Sleep(10 * time.Second)
+			counter++
 			c.Logger.Warn("error syncing light client", "err", err)
-			return err
+			time.Sleep(10 * time.Second)
+			continue
 		}
 		go func() {
 			for {
@@ -114,14 +114,13 @@ func (c *ConsensusLightClient) Start() error {
 				if err != nil {
 					c.Logger.Warn("error advancing light client", "err", err)
 				}
-	
 				duration := c.DurationUntilNextUpdate()
 				time.Sleep(duration)
 			}
 		}()
 		break
 	}
-	
+
 	return nil
 }
 
