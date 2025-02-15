@@ -95,8 +95,10 @@ func NewBeaconStorage(config storage.PortalStorageConfig, db *pebble.DB) (storag
 func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	switch storage.ContentType(contentKey[0]) {
 	case LightClientBootstrap, HistoricalSummaries:
-		data, close, err := bs.db.Get(contentId)
-		defer close.Close()
+		data, _, err := bs.db.Get(contentId)
+		if err != nil {
+			return nil, handleNotFound(err)
+		}
 		return data, err
 	case LightClientUpdate:
 		lightClientUpdateKey := new(LightClientUpdateKey)
@@ -108,17 +110,17 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 		start := lightClientUpdateKey.StartPeriod
 		for start < lightClientUpdateKey.StartPeriod+lightClientUpdateKey.Count {
 			key := bs.getUint64Bytes(start)
-			data, close, err := bs.db.Get(key)
+			data, _, err := bs.db.Get(key)
 			if err != nil {
-				return nil, err
+				return nil, handleNotFound(err)
 			}
-			defer close.Close()
 			update := new(ForkedLightClientUpdate)
 			err = update.Deserialize(bs.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 			if err != nil {
 				return nil, err
 			}
 			res = append(res, *update)
+			start++
 		}
 		var buf bytes.Buffer
 		err = LightClientUpdateRange(res).Serialize(bs.spec, codec.NewEncodingWriter(&buf))
@@ -226,4 +228,11 @@ func (bs *Storage) getUint64Bytes(value uint64) []byte {
 	defer bs.bytePool.Put(buf)
 	binary.BigEndian.PutUint64(*buf, value)
 	return *buf
+}
+
+func handleNotFound(err error) error {
+	if err == pebble.ErrNotFound {
+		return storage.ErrContentNotFound
+	}
+	return err
 }

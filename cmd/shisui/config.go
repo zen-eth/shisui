@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -36,6 +37,21 @@ func getPortalConfig(ctx *cli.Context) (*Config, error) {
 		config.Protocol.ListenAddr = ":" + port
 	} else {
 		config.Protocol.ListenAddr = port
+	}
+
+	trustedBlockRoot := ctx.String(utils.PortalTrustedBlockRootFlag.Name)
+	if trustedBlockRoot != "" {
+		if !(strings.HasPrefix(trustedBlockRoot, "0x") || strings.HasPrefix(trustedBlockRoot, "0X")) {
+			trustedBlockRoot = "0x" + trustedBlockRoot
+		}
+		if len(trustedBlockRoot) != 66 {
+			return config, errors.New("invalid trusted block root, must be 66 characters long")
+		}
+		data, err := hexutil.Decode(trustedBlockRoot)
+		if err != nil {
+			return config, err
+		}
+		config.Protocol.TrustedBlockRoot = data
 	}
 
 	err := setPrivateKey(ctx, config)
@@ -159,6 +175,7 @@ func setPortalBootstrapNodes(ctx *cli.Context, config *Config) {
 	urls := portalwire.PortalBootnodes
 	if ctx.IsSet(utils.PortalBootNodesFlag.Name) {
 		flag := ctx.String(utils.PortalBootNodesFlag.Name)
+		log.Info("get custom bootnodes", "bootnodes", flag)
 		if flag == "none" {
 			return
 		}
