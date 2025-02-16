@@ -8,6 +8,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/view"
 	"github.com/zen-eth/shisui/portalwire"
@@ -62,11 +63,12 @@ func (c *ContentKey) encode() []byte {
 }
 
 type Network struct {
-	portalProtocol    *portalwire.PortalProtocol
-	masterAccumulator *MasterAccumulator
-	closeCtx          context.Context
-	closeFunc         context.CancelFunc
-	log               log.Logger
+	portalProtocol             *portalwire.PortalProtocol
+	masterAccumulator          *MasterAccumulator
+	historicalRootsAccumulator *HistoricalRootsAccumulator
+	closeCtx                   context.Context
+	closeFunc                  context.CancelFunc
+	log                        log.Logger
 }
 
 func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAccumulator) *Network {
@@ -141,7 +143,7 @@ func (h *Network) GetBlockHeader(blockHash []byte) (*types.Header, error) {
 			h.log.Error("validateBlockHeaderBytes failed", "header", hexutil.Encode(headerWithProof.Header), "blockhash", hexutil.Encode(blockHash), "err", err)
 			continue
 		}
-		valid, err := h.verifyHeader(header, *headerWithProof.Proof)
+		valid, err := h.verifyHeader(header, headerWithProof.Proof)
 		if err != nil || !valid {
 			h.log.Error("verifyHeader failed", "err", err)
 			continue
@@ -255,8 +257,27 @@ func (h *Network) GetReceipts(blockHash []byte) ([]*types.Receipt, error) {
 	return nil, storage.ErrContentNotFound
 }
 
-func (h *Network) verifyHeader(header *types.Header, proof BlockHeaderProof) (bool, error) {
-	return h.masterAccumulator.VerifyHeader(*header, proof)
+func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error) {
+	if header.Number.Uint64() <= mergeBlockNumber {
+		return h.masterAccumulator.VerifyHeader(*header, proof)
+	} else if header.Number.Uint64() < shanghaiBlockNumber {
+		blockNumber := header.Number.Uint64()
+		headerHash := header.Hash()
+		blockProofHistoricalRoots := &BlockProofHistoricalRoots{}
+		err := blockProofHistoricalRoots.UnmarshalSSZ(proof)
+		if err != nil {
+			return false, err
+		}
+		err = h.historicalRootsAccumulator.VerifyPostMergePreCapellaHeader(blockNumber, common.Root(headerHash), blockProofHistoricalRoots)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	} // else if header.Number.Uint64() >= shanghaiBlockNumber {
+	// todo get HistoricalSummaries
+	// VerifyPostCapellaHeader()
+	// }
+	return false, errors.New("block number is not in range")
 }
 
 func ValidateBlockBodyBytes(bodyBytes []byte, header *types.Header) (*types.Body, error) {
@@ -502,7 +523,7 @@ func (h *Network) validateContent(contentKey []byte, content []byte) error {
 		if !bytes.Equal(header.Hash().Bytes(), contentKey[1:]) {
 			return ErrInvalidBlockHash
 		}
-		valid, err := h.verifyHeader(header, *headerWithProof.Proof)
+		valid, err := h.verifyHeader(header, headerWithProof.Proof)
 		if err != nil {
 			return err
 		}
@@ -547,7 +568,7 @@ func (h *Network) validateContent(contentKey []byte, content []byte) error {
 		if header.Number.Cmp(big.NewInt(int64(blockNumber))) != 0 {
 			return ErrInvalidBlockNumber
 		}
-		valid, err := h.verifyHeader(header, *headerWithProof.Proof)
+		valid, err := h.verifyHeader(header, headerWithProof.Proof)
 		if err != nil {
 			return err
 		}

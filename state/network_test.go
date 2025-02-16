@@ -40,10 +40,7 @@ type MockAPI struct {
 func (p *MockAPI) HistoryGetContent(contentKeyHex string) (*portalwire.ContentInfo, error) {
 	headerWithProof := &history.BlockHeaderWithProof{
 		Header: hexutil.MustDecode(p.header),
-		Proof: &history.BlockHeaderProof{
-			Selector: 0,
-			Proof:    [][]byte{},
-		},
+		Proof:  []byte{},
 	}
 	data, err := headerWithProof.MarshalSSZ()
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -28,7 +29,7 @@ func TestVerifyHeaderWithProofs(t *testing.T) {
 		head := types.Header{}
 		err := rlp.DecodeBytes(val.Header, &head)
 		assert.NoError(t, err)
-		valid, err := masterAcc.VerifyHeader(head, *val.Proof)
+		valid, err := masterAcc.VerifyHeader(head, val.Proof)
 		assert.NoError(t, err)
 		assert.True(t, valid)
 	}
@@ -200,4 +201,83 @@ func getHeader(number uint64) (*types.Header, error) {
 	head := &types.Header{}
 	err = rlp.Decode(reader, head)
 	return head, err
+}
+
+func TestFlatBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    [][]byte
+		expected []byte
+	}{
+		{
+			name:     "empty input",
+			input:    [][]byte{},
+			expected: []byte{},
+		},
+		{
+			name:     "single byte array",
+			input:    [][]byte{{1, 2, 3}},
+			expected: []byte{1, 2, 3},
+		},
+		{
+			name:     "multiple byte arrays",
+			input:    [][]byte{{1, 2}, {3, 4}, {5, 6}},
+			expected: []byte{1, 2, 3, 4, 5, 6},
+		},
+		{
+			name:     "arrays with different lengths",
+			input:    [][]byte{{1}, {2, 3, 4}, {5}},
+			expected: []byte{1, 2, 3, 4, 5},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := flatBytes(tt.input)
+			if !bytes.Equal(result, tt.expected) {
+				t.Errorf("flatBytes() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestToAccumulatorProof(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []byte
+		expected [][]byte
+	}{
+		{
+			name:     "empty input",
+			input:    []byte{},
+			expected: [][]byte{},
+		},
+		{
+			name:     "exactly 32 bytes",
+			input:    bytes.Repeat([]byte{1}, 32),
+			expected: [][]byte{bytes.Repeat([]byte{1}, 32)},
+		},
+		{
+			name:     "less than 32 bytes",
+			input:    []byte{1, 2, 3},
+			expected: [][]byte{append([]byte{1, 2, 3}, make([]byte, 29)...)},
+		},
+		{
+			name:  "more than 32 bytes",
+			input: bytes.Repeat([]byte{1}, 40),
+			expected: [][]byte{
+				bytes.Repeat([]byte{1}, 32),
+				append(bytes.Repeat([]byte{1}, 8), make([]byte, 24)...),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := toAccumulatorProof(tt.input)
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("toAccumulatorProof() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
 }
