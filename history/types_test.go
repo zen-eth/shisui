@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/view"
@@ -97,7 +99,7 @@ func TestBlockNumber(t *testing.T) {
 }
 
 func TestHeaderWithProof(t *testing.T) {
-	file, err := os.ReadFile("./testdata/test_data_collection_of_forks_blocks.yaml")
+	file, err := os.ReadFile("./testdata/header_with_proof.yaml")
 	require.NoError(t, err)
 	entries := make([]Entry, 0)
 	err = yaml.Unmarshal(file, &entries)
@@ -111,20 +113,20 @@ func TestHeaderWithProof(t *testing.T) {
 		headerWithProof := new(HeaderWithProof)
 		err := headerWithProof.UnmarshalSSZ(hexutil.MustDecode(item.ContentValue))
 		require.NoError(t, err)
-		switch headerWithProof.Proof[0] {
-		case 0:
-			continue
-		case 1:
-			proof := new(BlockProofHistoricalHashesAccumulator)
-			err = proof.UnmarshalSSZ(headerWithProof.Proof[1:])
-			require.NoError(t, err)
-		case 2:
-			proof := new(BlockProofHistoricalRoots)
-			err = proof.UnmarshalSSZ(headerWithProof.Proof[1:])
-			require.NoError(t, err)
-		case 3:
+		header := new(types.Header)
+		err = rlp.DecodeBytes(headerWithProof.Header, header)
+
+		if header.Number.Uint64() >= shanghaiBlockNumber {
 			proof := new(BlockProofHistoricalSummaries)
-			err = proof.UnmarshalSSZ(headerWithProof.Proof[1:])
+			err = proof.UnmarshalSSZ(headerWithProof.Proof[:])
+			require.NoError(t, err)
+		} else if header.Number.Uint64() >= mergeBlockNumber {
+			proof := new(BlockProofHistoricalRoots)
+			err = proof.UnmarshalSSZ(headerWithProof.Proof[:])
+			require.NoError(t, err)
+		} else {
+			proof := new(BlockProofHistoricalHashesAccumulator)
+			err = proof.UnmarshalSSZ(headerWithProof.Proof[:])
 			require.NoError(t, err)
 		}
 	}
