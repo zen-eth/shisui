@@ -86,6 +86,17 @@ const (
 	PersistOfferRequestKind   byte = 0x02
 )
 
+type OfferTraceType int
+
+const (
+	// Success indicates all accepted content keys in bitlist were transferred
+	Success OfferTraceType = iota
+	// Declined means peer is not interested in any of the offered content keys
+	Declined
+	// Failed indicates the offer failed, perhaps locally or from timeout/transfer failure
+	Failed
+)
+
 type ClientTag string
 
 func (c ClientTag) ENRKey() string { return "c" }
@@ -162,6 +173,12 @@ type traceContentInfoResp struct {
 	Flag        byte
 	Content     any
 	UtpTransfer bool
+}
+
+// OfferTrace Define the type that can hold any variant
+type OfferTrace struct {
+	Type        OfferTraceType
+	ContentKeys []byte // Only used for Success case
 }
 
 type PortalProtocolOption func(p *PortalProtocol)
