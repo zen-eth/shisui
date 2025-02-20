@@ -401,6 +401,8 @@ func TestContentLookup(t *testing.T) {
 		node3.Stop()
 	}()
 
+	time.Sleep(time.Second * 4)
+
 	contentKey := []byte{0x3, 0x4}
 	content := []byte{0x1, 0x2}
 	contentId := node1.toContentId(contentKey)

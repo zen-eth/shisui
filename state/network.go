@@ -188,7 +188,7 @@ func (h *Network) validateContractByteCode(contentKey []byte, content []byte) er
 }
 
 func (h *Network) getStateRoot(blockHash common.Bytes32) (common.Bytes32, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*4)
 	defer cancel()
 	contentKey := make([]byte, 0)
 	contentKey = append(contentKey, byte(history.BlockHeaderType))

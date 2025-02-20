@@ -89,8 +89,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestVerifyPostMergePreCapellaHeader(t *testing.T) {
-	acc, err := NewHistoricalRootsAccumulator(configs.Mainnet)
-	require.NoError(t, err)
+	acc := NewHistoricalRootsAccumulator(configs.Mainnet)
 	require.True(t, uint64(len(acc.HistoricalRoots)) < uint64(configs.Mainnet.HISTORICAL_ROOTS_LIMIT))
 
 	root := acc.HistoricalRoots.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
@@ -98,7 +97,6 @@ func TestVerifyPostMergePreCapellaHeader(t *testing.T) {
 
 	require.Equal(t, hexutil.Encode(root[:]), "0x4df6b89755125d4f6c5575039a04e22301a5a49ee893c1d27e559e3eeab73da7")
 
-	require.NoError(t, err)
 	proof, err := parsePostMergePreCapellaHeader()
 	require.NoError(t, err)
 	// blockNumber and blockHash are from testfile

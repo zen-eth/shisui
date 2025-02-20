@@ -258,11 +258,14 @@ type HistoricalRootsAccumulator struct {
 	HistoricalRoots HistoricalRoots
 }
 
-func NewHistoricalRootsAccumulator(spec *common.Spec) (HistoricalRootsAccumulator, error) {
+func NewHistoricalRootsAccumulator(spec *common.Spec) HistoricalRootsAccumulator {
 	historicalRoots := new(HistoricalRoots)
 	reader := codec.NewDecodingReader(bytes.NewReader(historicalRootsBytes), uint64(len(historicalRootsBytes)))
 	err := historicalRoots.Deserialize(spec, reader)
-	return HistoricalRootsAccumulator{HistoricalRoots: *historicalRoots}, err
+	if err != nil {
+		panic(err)
+	}
+	return HistoricalRootsAccumulator{HistoricalRoots: *historicalRoots}
 }
 
 func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber uint64, headerHash common.Root, proof *BlockProofHistoricalRoots) error {

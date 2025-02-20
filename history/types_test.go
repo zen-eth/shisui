@@ -115,7 +115,7 @@ func TestHeaderWithProof(t *testing.T) {
 		require.NoError(t, err)
 		header := new(types.Header)
 		err = rlp.DecodeBytes(headerWithProof.Header, header)
-
+		require.NoError(t, err)
 		if header.Number.Uint64() >= shanghaiBlockNumber {
 			proof := new(BlockProofHistoricalSummaries)
 			err = proof.UnmarshalSSZ(headerWithProof.Proof[:])

@@ -441,7 +441,8 @@ func initHistory(config Config, server *rpc.Server, conn discover.UDPConn, local
 	if err != nil {
 		return nil, err
 	}
-	historyNetwork := history.NewHistoryNetwork(protocol, &accumulator)
+	client := rpc.DialInProc(server)
+	historyNetwork := history.NewHistoryNetwork(protocol, &accumulator, client)
 	return historyNetwork, historyNetwork.Start()
 }
 
