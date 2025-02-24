@@ -92,6 +92,9 @@ func pruneDB(dbPath string) error {
 		}
 		switch headerWithProof.Proof[0] {
 		case 0:
+			if len(headerWithProof.Proof) != 1 {
+				continue
+			}
 			batch.Delete(iter.Key(), nil)
 			noneCount++
 		case 1:
