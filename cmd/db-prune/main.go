@@ -95,6 +95,9 @@ func pruneDB(dbPath string) error {
 			batch.Delete(iter.Key(), nil)
 			noneCount++
 		case 1:
+			if (len(headerWithProof.Proof) == 32 * 15) {
+				continue
+			}
 			headerWithProof.Proof = headerWithProof.Proof[1:]
 			newData, err := headerWithProof.MarshalSSZ();
 			if err != nil {
