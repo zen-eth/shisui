@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 
+	pebbledb "github.com/cockroachdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/urfave/cli/v2"
 	"github.com/zen-eth/shisui/history"
@@ -21,7 +22,7 @@ var BaseDirFlag = &cli.StringFlag{
 	Value:    "",
 }
 
-var BunberFlag = &cli.IntFlag{
+var NumberFlag = &cli.IntFlag{
 	Name:     "number",
 	Usage:    "the number of the db to prune",
 	Value: 0,
@@ -29,7 +30,7 @@ var BunberFlag = &cli.IntFlag{
 
 func init() {
 	app.Action = prune
-	app.Flags = []cli.Flag{BaseDirFlag}
+	app.Flags = []cli.Flag{BaseDirFlag, NumberFlag}
 	flags.AutoEnvVars(app.Flags, "SHISUI")
 
 	app.After = func(ctx *cli.Context) error {
@@ -54,7 +55,7 @@ func prune(ctx *cli.Context) error {
 	if baseDir == "" {
 		return fmt.Errorf("base dir is required")
 	}
-	number := ctx.Int(BunberFlag.Name)
+	number := ctx.Int(NumberFlag.Name)
 	if number == 0 {
 		return fmt.Errorf("number is required")
 	}
@@ -89,12 +90,11 @@ func pruneDB(dbPath string) error {
 		if err != nil {
 			continue
 		}
-		// none, should be deleted
-		if len(headerWithProof.Proof) == 2 {
+		switch headerWithProof.Proof[0] {
+		case 0:
 			batch.Delete(iter.Key(), nil)
 			noneCount++
-		}
-		if headerWithProof.Proof[0] == 1 {
+		case 1:
 			headerWithProof.Proof = headerWithProof.Proof[1:]
 			newData, err := headerWithProof.MarshalSSZ();
 			if err != nil {
@@ -104,6 +104,7 @@ func pruneDB(dbPath string) error {
 			preMergeCount++
 		}
 	}
+	batch.Commit(&pebbledb.WriteOptions{Sync: true})
 	fmt.Println()
 	fmt.Printf("db %s, noneCount %d, preMergeCount %d\n", dbPath, noneCount, preMergeCount)
 	return nil
