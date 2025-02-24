@@ -6,16 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/protolambda/zrnt/eth2/beacon/capella"
+	"github.com/protolambda/zrnt/eth2/beacon/common"
+	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/view"
+	"github.com/zen-eth/shisui/beacon"
 	"github.com/zen-eth/shisui/portalwire"
 	"github.com/zen-eth/shisui/storage"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -62,22 +68,28 @@ func (c *ContentKey) encode() []byte {
 }
 
 type Network struct {
-	portalProtocol    *portalwire.PortalProtocol
-	masterAccumulator *MasterAccumulator
-	closeCtx          context.Context
-	closeFunc         context.CancelFunc
-	log               log.Logger
+	portalProtocol             *portalwire.PortalProtocol
+	masterAccumulator          *MasterAccumulator
+	historicalRootsAccumulator *HistoricalRootsAccumulator
+	closeCtx                   context.Context
+	closeFunc                  context.CancelFunc
+	log                        log.Logger
+	client                     *rpc.Client
+	spec                       *common.Spec
 }
 
-func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAccumulator) *Network {
+func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAccumulator, client *rpc.Client) *Network {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	historicalRootsAccumulator := NewHistoricalRootsAccumulator(configs.Mainnet)
 	return &Network{
-		portalProtocol:    portalProtocol,
-		masterAccumulator: accu,
-		closeCtx:          ctx,
-		closeFunc:         cancel,
-		log:               log.New("sub-protocol", "history"),
+		portalProtocol:             portalProtocol,
+		masterAccumulator:          accu,
+		closeCtx:                   ctx,
+		closeFunc:                  cancel,
+		log:                        log.New("sub-protocol", "history"),
+		spec:                       configs.Mainnet,
+		historicalRootsAccumulator: &historicalRootsAccumulator,
 	}
 }
 
@@ -141,7 +153,7 @@ func (h *Network) GetBlockHeader(blockHash []byte) (*types.Header, error) {
 			h.log.Error("validateBlockHeaderBytes failed", "header", hexutil.Encode(headerWithProof.Header), "blockhash", hexutil.Encode(blockHash), "err", err)
 			continue
 		}
-		valid, err := h.verifyHeader(header, *headerWithProof.Proof)
+		valid, err := h.verifyHeader(header, headerWithProof.Proof)
 		if err != nil || !valid {
 			h.log.Error("verifyHeader failed", "err", err)
 			continue
@@ -255,8 +267,70 @@ func (h *Network) GetReceipts(blockHash []byte) ([]*types.Receipt, error) {
 	return nil, storage.ErrContentNotFound
 }
 
-func (h *Network) verifyHeader(header *types.Header, proof BlockHeaderProof) (bool, error) {
-	return h.masterAccumulator.VerifyHeader(*header, proof)
+func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error) {
+	if header.Number.Uint64() <= mergeBlockNumber {
+		return h.masterAccumulator.VerifyHeader(*header, proof)
+	} else if header.Number.Uint64() < shanghaiBlockNumber {
+		blockNumber := header.Number.Uint64()
+		headerHash := header.Hash()
+		blockProofHistoricalRoots := &BlockProofHistoricalRoots{}
+		err := blockProofHistoricalRoots.UnmarshalSSZ(proof)
+		if err != nil {
+			return false, err
+		}
+		err = h.historicalRootsAccumulator.VerifyPostMergePreCapellaHeader(blockNumber, common.Root(headerHash), blockProofHistoricalRoots)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	} else {
+		blockNumber := header.Number.Uint64()
+		summaries, err := h.getHistoricalSummaries(blockNumber)
+		if err != nil {
+			return false, err
+		}
+		headerHash := header.Hash()
+		blockProof := new(BlockProofHistoricalSummaries)
+		err = blockProof.UnmarshalSSZ(proof)
+		if err != nil {
+			return false, err
+		}
+		return VerifyPostCapellaHeader(headerHash[:], blockProof, *summaries), nil
+	}
+}
+
+func (h *Network) getHistoricalSummaries(blockNumber uint64) (*capella.HistoricalSummaries, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*4)
+	defer cancel()
+	epoch := GetEpochIndex(blockNumber)
+	key := beacon.HistoricalSummariesWithProofKey{
+		Epoch: epoch,
+	}
+	var buf bytes.Buffer
+	err := key.Serialize(codec.NewEncodingWriter(&buf))
+	if err != nil {
+		return nil, err
+	}
+	contentKey := make([]byte, 0)
+	contentKey = append(contentKey, byte(beacon.HistoricalSummaries))
+	contentKey = append(contentKey, buf.Bytes()...)
+
+	arg := hexutil.Encode(contentKey)
+	res := &portalwire.ContentInfo{}
+	err = h.client.CallContext(ctx, res, "beacon_historyGetContent", arg)
+	if err != nil {
+		return nil, err
+	}
+	data, err := hexutil.Decode(res.Content)
+	if err != nil {
+		return nil, err
+	}
+	proof := new(beacon.HistoricalSummariesWithProof)
+	err = proof.Deserialize(h.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
+	if err != nil {
+		return nil, err
+	}
+	return &proof.HistoricalSummaries, nil
 }
 
 func ValidateBlockBodyBytes(bodyBytes []byte, header *types.Header) (*types.Body, error) {
@@ -502,7 +576,7 @@ func (h *Network) validateContent(contentKey []byte, content []byte) error {
 		if !bytes.Equal(header.Hash().Bytes(), contentKey[1:]) {
 			return ErrInvalidBlockHash
 		}
-		valid, err := h.verifyHeader(header, *headerWithProof.Proof)
+		valid, err := h.verifyHeader(header, headerWithProof.Proof)
 		if err != nil {
 			return err
 		}
@@ -547,7 +621,7 @@ func (h *Network) validateContent(contentKey []byte, content []byte) error {
 		if header.Number.Cmp(big.NewInt(int64(blockNumber))) != 0 {
 			return ErrInvalidBlockNumber
 		}
-		valid, err := h.verifyHeader(header, *headerWithProof.Proof)
+		valid, err := h.verifyHeader(header, headerWithProof.Proof)
 		if err != nil {
 			return err
 		}

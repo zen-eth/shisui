@@ -1,21 +1,12 @@
 package history
 
 import (
-	"errors"
-
 	ssz "github.com/ferranbt/fastssz"
 	"github.com/protolambda/ztyp/tree"
 )
 
 // note: We changed the generated file since fastssz issues which can't be passed by the CI, so we commented the go:generate line
-///go:generate sszgen --path types.go --exclude-objs BlockHeaderProof,PortalReceipts
-
-type BlockHeaderProofType uint8
-
-const (
-	none             BlockHeaderProofType = 0
-	accumulatorProof BlockHeaderProofType = 1
-)
+///go:generate sszgen --path types.go --exclude-objs PortalReceipts
 
 type HeaderRecord struct {
 	BlockHash       []byte `ssz-size:"32"`
@@ -36,8 +27,8 @@ type PortalBlockBodyShanghai struct {
 }
 
 type BlockHeaderWithProof struct {
-	Header []byte            `ssz-max:"8192"`
-	Proof  *BlockHeaderProof `ssz-max:"512"`
+	Header []byte `ssz-max:"8192"`
+	Proof  []byte `ssz-max:"1024"`
 }
 
 type SSZProof struct {
@@ -47,81 +38,6 @@ type SSZProof struct {
 
 type MasterAccumulator struct {
 	HistoricalEpochs [][]byte `ssz-max:"1897,32" ssz-size:"?,32"`
-}
-
-// BlockHeaderProof is a ssz union type
-// Union[None, AccumulatorProof]
-type BlockHeaderProof struct {
-	Selector BlockHeaderProofType
-	Proof    [][]byte `ssz-size:"15,32"`
-}
-
-func (p *BlockHeaderProof) MarshalSSZ() ([]byte, error) {
-	return ssz.MarshalSSZ(p)
-}
-
-func (p *BlockHeaderProof) MarshalSSZTo(buf []byte) (dst []byte, err error) {
-	dst = buf
-	dst = append(dst, byte(p.Selector))
-	if p.Selector != none {
-		if len(p.Proof) != 15 {
-			err = ssz.ErrBytesLengthFn("proofs size should be", len(p.Proof), 15)
-			return
-		}
-		for _, item := range p.Proof {
-			if len(item) != 32 {
-				err = ssz.ErrBytesLengthFn("single proof size should be", len(item), 32)
-				return
-			}
-			dst = append(dst, item...)
-		}
-	}
-	return
-}
-
-func (p *BlockHeaderProof) UnmarshalSSZ(buf []byte) (err error) {
-	p.Selector = BlockHeaderProofType(buf[0])
-	if p.Selector == none {
-		return
-	}
-
-	if p.Selector != accumulatorProof {
-		return errors.New("unknown accumulatorProofType, shoud be 0x00 or 0x01")
-	}
-
-	proofBytes := buf[1:]
-
-	if len(proofBytes) != 32*15 {
-		return ssz.ErrBytesLengthFn("AccumulatorProof", len(proofBytes), 32*15)
-	}
-	proof := make([][]byte, 15)
-
-	for i := 0; i < 15; i++ {
-		proof[i] = proofBytes[i*32 : (i+1)*32]
-	}
-
-	p.Proof = proof
-	return
-}
-
-func (p *BlockHeaderProof) SizeSSZ() (size int) {
-	size = 0
-
-	// Field (0) 'Selector'
-	size += 1
-
-	if p.Selector == none {
-		return size
-	}
-
-	// Field (1) 'Proof'
-	size += 15 * 32
-
-	return size
-}
-
-func (p *BlockHeaderProof) HashTreeRootWith(_ ssz.HashWalker) (err error) {
-	panic("implement me")
 }
 
 type PortalReceipts struct {

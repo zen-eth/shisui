@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -20,7 +19,7 @@ import (
 
 const (
 	epochSize                  = 8192
-	mergeBlockNumber    uint64 = 15537394
+	mergeBlockNumber    uint64 = 15537394 // first POS block
 	shanghaiBlockNumber uint64 = 17_034_870
 	preMergeEpochs             = (mergeBlockNumber + epochSize - 1) / epochSize
 )
@@ -178,10 +177,7 @@ func BuildHeaderWithProof(header types.Header, epochAccumulator EpochAccumulator
 	}
 	return &BlockHeaderWithProof{
 		Header: rlpBytes,
-		Proof: &BlockHeaderProof{
-			Selector: accumulatorProof,
-			Proof:    proof,
-		},
+		Proof:  flatBytes(proof),
 	}, nil
 }
 
@@ -204,17 +200,11 @@ func (f MasterAccumulator) VerifyAccumulatorProof(header types.Header, proof Acc
 	return valid, nil
 }
 
-func (f MasterAccumulator) VerifyHeader(header types.Header, headerProof BlockHeaderProof) (bool, error) {
-	switch headerProof.Selector {
-	case accumulatorProof:
-		return f.VerifyAccumulatorProof(header, headerProof.Proof)
-	case none:
-		if header.Number.Uint64() <= mergeBlockNumber {
-			return false, ErrPreMergeHeaderMustWithProof
-		}
-		return true, nil
+func (f MasterAccumulator) VerifyHeader(header types.Header, proof []byte) (bool, error) {
+	if len(proof)%32 != 0 {
+		return false, errors.New("proof length is not 32 bytes")
 	}
-	return false, fmt.Errorf("unknown header proof selector %v", headerProof.Selector)
+	return f.VerifyAccumulatorProof(header, toAccumulatorProof(proof))
 }
 
 func (f MasterAccumulator) Contains(epochHash []byte) bool {
@@ -268,11 +258,14 @@ type HistoricalRootsAccumulator struct {
 	HistoricalRoots HistoricalRoots
 }
 
-func NewHistoricalRootsAccumulator(spec *common.Spec) (HistoricalRootsAccumulator, error) {
+func NewHistoricalRootsAccumulator(spec *common.Spec) HistoricalRootsAccumulator {
 	historicalRoots := new(HistoricalRoots)
 	reader := codec.NewDecodingReader(bytes.NewReader(historicalRootsBytes), uint64(len(historicalRootsBytes)))
 	err := historicalRoots.Deserialize(spec, reader)
-	return HistoricalRootsAccumulator{HistoricalRoots: *historicalRoots}, err
+	if err != nil {
+		panic(err)
+	}
+	return HistoricalRootsAccumulator{HistoricalRoots: *historicalRoots}
 }
 
 func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber uint64, headerHash common.Root, proof *BlockProofHistoricalRoots) error {
@@ -295,4 +288,43 @@ func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber 
 		return errors.New("merkle proof validation failed for HistoricalRootsProof")
 	}
 	return nil
+}
+
+func flatBytes(b [][]byte) []byte {
+	total := 0
+	for _, bytes := range b {
+		total += len(bytes)
+	}
+
+	result := make([]byte, total)
+	current := 0
+
+	for _, bytes := range b {
+		copy(result[current:], bytes)
+		current += len(bytes)
+	}
+	return result
+}
+
+func toAccumulatorProof(data []byte) [][]byte {
+	if len(data) == 0 {
+		return [][]byte{}
+	}
+
+	numChunks := (len(data) + 31) / 32
+	result := make([][]byte, numChunks)
+
+	for i := 0; i < numChunks; i++ {
+		start := i * 32
+		end := start + 32
+		if end > len(data) {
+			end = len(data)
+		}
+
+		chunk := make([]byte, 32)
+		copy(chunk, data[start:end])
+		result[i] = chunk
+	}
+
+	return result
 }
