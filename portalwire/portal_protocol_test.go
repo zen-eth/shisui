@@ -389,7 +389,7 @@ func TestContentLookup(t *testing.T) {
 	assert.NoError(t, err)
 	fmt.Println(node2.localNode.Node().String())
 
-	node3, err := setupLocalPortalNode(t, ":17779", []*enode.Node{node1.localNode.Node()})
+	node3, err := setupLocalPortalNode(t, ":17779", []*enode.Node{node1.localNode.Node(), node2.localNode.Node()})
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LvlTrace)
 	err = node3.Start()
