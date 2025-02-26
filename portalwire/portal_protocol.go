@@ -82,8 +82,9 @@ const (
 )
 
 const (
-	TransientOfferRequestKind byte = 0x01
-	PersistOfferRequestKind   byte = 0x02
+	TransientOfferRequestKind           byte = 0x01
+	PersistOfferRequestKind             byte = 0x02
+	TransientOfferRequestWithResultKind byte = 0x03
 )
 
 type OfferTraceType int
@@ -147,6 +148,11 @@ type ContentEntry struct {
 
 type TransientOfferRequest struct {
 	Contents []*ContentEntry
+}
+
+type TransientOfferRequestWithResult struct {
+	Content *ContentEntry
+	Result  chan *OfferTrace
 }
 
 type PersistOfferRequest struct {
@@ -568,16 +574,34 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 	var contentKeyLen int
 	if request.Kind == TransientOfferRequestKind {
 		contentKeyLen = len(request.Request.(*TransientOfferRequest).Contents)
+	} else if request.Kind == TransientOfferRequestWithResultKind {
+		contentKeyLen = 1
 	} else {
 		contentKeyLen = len(request.Request.(*PersistOfferRequest).ContentKeys)
 	}
 
+	var resultChan chan *OfferTrace
+	if request.Kind == TransientOfferRequestWithResultKind {
+		resultChan = request.Request.(*TransientOfferRequestWithResult).Result
+	} else {
+		resultChan = nil
+	}
 	contentKeyBitlist := bitfield.Bitlist(accept.ContentKeys)
 	if contentKeyBitlist.Len() != uint64(contentKeyLen) {
+		if resultChan != nil {
+			resultChan <- &OfferTrace{
+				Type: Failed,
+			}
+		}
 		return nil, fmt.Errorf("accepted content key bitlist has invalid size, expected %d, got %d", contentKeyLen, contentKeyBitlist.Len())
 	}
 
 	if contentKeyBitlist.Count() == 0 {
+		if resultChan != nil {
+			resultChan <- &OfferTrace{
+				Type: Declined,
+			}
+		}
 		return nil, nil
 	}
 
@@ -596,6 +620,9 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 						content = request.Request.(*TransientOfferRequest).Contents[index].Content
 						contents = append(contents, content)
 					}
+				} else if request.Kind == TransientOfferRequestWithResultKind {
+					content = request.Request.(*TransientOfferRequestWithResult).Content.Content
+					contents = append(contents, content)
 				} else {
 					for _, index := range contentKeyBitlist.BitIndices() {
 						contentKey := request.Request.(*PersistOfferRequest).ContentKeys[index]
@@ -625,6 +652,11 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 					if metrics.Enabled() {
 						p.portalMetrics.utpOutFailConn.Inc(1)
 					}
+					if resultChan != nil {
+						resultChan <- &OfferTrace{
+							Type: Failed,
+						}
+					}
 					p.Log.Error("failed to dial utp connection", "err", err)
 					return
 				}
@@ -638,6 +670,11 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 					if metrics.Enabled() {
 						p.portalMetrics.utpOutFailWrite.Inc(1)
 					}
+					if resultChan != nil {
+						resultChan <- &OfferTrace{
+							Type: Failed,
+						}
+					}
 					p.Log.Error("failed to write to utp connection", "err", err)
 					return
 				}
@@ -645,6 +682,12 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				if metrics.Enabled() {
 					p.portalMetrics.messagesSentContent.Mark(1)
 					p.portalMetrics.utpOutSuccess.Inc(1)
+				}
+				if resultChan != nil {
+					resultChan <- &OfferTrace{
+						Type:        Success,
+						ContentKeys: accept.ContentKeys,
+					}
 				}
 				return
 			}
@@ -1967,6 +2010,9 @@ func getContentKeys(request *OfferRequest) [][]byte {
 		}
 
 		return contentKeys
+	} else if request.Kind == TransientOfferRequestWithResultKind {
+		content := request.Request.(*TransientOfferRequestWithResult).Content
+		return [][]byte{content.ContentKey}
 	} else {
 		return request.Request.(*PersistOfferRequest).ContentKeys
 	}
