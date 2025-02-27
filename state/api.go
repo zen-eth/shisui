@@ -44,6 +44,10 @@ func (p *API) StateOffer(enr string, contentItems [][2]string) (string, error) {
 	return p.Offer(enr, contentItems)
 }
 
+func (p *API) StateTraceOffer(enr string, key string, value string) (interface{}, error) {
+	return p.TraceOffer(enr, key, value)
+}
+
 func (p *API) StateRecursiveFindNodes(nodeId string) ([]string, error) {
 	return p.RecursiveFindNodes(nodeId)
 }

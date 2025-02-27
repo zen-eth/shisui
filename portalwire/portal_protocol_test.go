@@ -356,6 +356,46 @@ func TestPortalWireProtocol(t *testing.T) {
 	assert.Equal(t, testGossipContent[0], contentElement.Contents[0])
 	assert.Equal(t, testGossipContentKeys[1], contentElement.ContentKeys[1])
 	assert.Equal(t, testGossipContent[1], contentElement.Contents[1])
+
+	testTraceEntry := &ContentEntry{
+		ContentKey: []byte("test_trace_entry"),
+		Content:    []byte("test_trace_entry_content"),
+	}
+
+	testTransientOfferRequestWithResult := &TransientOfferRequestWithResult{
+		Content: testTraceEntry,
+		Result:  make(chan *OfferTrace, 1),
+	}
+
+	traceOfferRequest := &OfferRequest{
+		Kind:    TransientOfferRequestWithResultKind,
+		Request: testTransientOfferRequestWithResult,
+	}
+
+	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest)
+	assert.NoError(t, err)
+
+	offerTrace := <-testTransientOfferRequestWithResult.Result
+	assert.Equal(t, Success, offerTrace.Type)
+	assert.Equal(t, uint64(1), bitfield.Bitlist(offerTrace.ContentKeys).Count())
+
+	testTransientOfferRequestWithResult1 := &TransientOfferRequestWithResult{
+		Content: testTraceEntry,
+		Result:  make(chan *OfferTrace, 1),
+	}
+
+	traceOfferRequest1 := &OfferRequest{
+		Kind:    TransientOfferRequestWithResultKind,
+		Request: testTransientOfferRequestWithResult1,
+	}
+
+	err = node3.storage.Put(nil, node3.toContentId(testTraceEntry.ContentKey), testTraceEntry.Content)
+	assert.NoError(t, err)
+	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest1)
+	assert.NoError(t, err)
+
+	offerTrace1 := <-testTransientOfferRequestWithResult1.Result
+	assert.Equal(t, Declined, offerTrace1.Type)
 }
 
 func TestCancel(t *testing.T) {
