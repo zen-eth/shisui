@@ -448,6 +448,44 @@ func (p *PortalProtocolAPI) Offer(enr string, contentItems [][2]string) (string,
 	return hexutil.Encode(accept), nil
 }
 
+func (p *PortalProtocolAPI) TraceOffer(enr string, key string, value string) (interface{}, error) {
+	n, err := enode.Parse(enode.ValidSchemes, enr)
+	if err != nil {
+		return nil, err
+	}
+
+	contentKey, err := hexutil.Decode(key)
+	if err != nil {
+		return nil, err
+	}
+	contentValue, err := hexutil.Decode(value)
+	if err != nil {
+		return nil, err
+	}
+
+	transientOfferRequestWithResult := &TransientOfferRequestWithResult{
+		Content: &ContentEntry{
+			ContentKey: contentKey,
+			Content:    contentValue,
+		},
+		Result: make(chan *OfferTrace, 1),
+	}
+
+	offerReq := &OfferRequest{
+		Kind:    TransientOfferRequestWithResultKind,
+		Request: transientOfferRequestWithResult,
+	}
+
+	_, err = p.portalProtocol.offer(n, offerReq)
+	if err != nil {
+		return nil, err
+	}
+
+	offerTrace := <-transientOfferRequestWithResult.Result
+
+	return ProcessOfferTrace(offerTrace)
+}
+
 func (p *PortalProtocolAPI) RecursiveFindNodes(nodeId string) ([]string, error) {
 	findNodes := p.portalProtocol.Lookup(enode.HexID(nodeId))
 
@@ -565,4 +603,24 @@ func (p *PortalProtocolAPI) TraceRecursiveFindContent(contentKeyHex string) (*Tr
 	}
 	contentId := p.portalProtocol.toContentId(contentKey)
 	return p.portalProtocol.TraceContentLookup(contentKey, contentId)
+}
+
+// SuccessResult represents a successful offer with content keys
+type SuccessResult struct {
+	Success string `json:"Success"`
+}
+
+func ProcessOfferTrace(trace *OfferTrace) (interface{}, error) {
+	switch trace.Type {
+	case Success:
+		return SuccessResult{
+			Success: hexutil.Encode(trace.ContentKeys),
+		}, nil
+	case Declined:
+		return "Declined", nil
+	case Failed:
+		return "Failed", nil
+	default:
+		return nil, errors.New("unknown trace type")
+	}
 }
