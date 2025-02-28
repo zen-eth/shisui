@@ -479,6 +479,8 @@ func TestTraceContentLookup(t *testing.T) {
 	err = node3.Start()
 	assert.NoError(t, err)
 
+	time.Sleep(time.Second * 12)
+
 	defer node1.Stop()
 	defer node2.Stop()
 	defer node3.Stop()
