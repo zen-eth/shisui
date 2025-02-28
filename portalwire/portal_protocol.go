@@ -1658,6 +1658,7 @@ func (p *PortalProtocol) collectTableNodes(rip net.IP, distances []uint, limit i
 
 func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bool, error) {
 	lookupContext, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	resChan := make(chan *traceContentInfoResp, alpha)
 	hasResult := int32(0)
@@ -1686,7 +1687,7 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 	if hasResult == 1 {
 		return result.Content, result.UtpTransfer, nil
 	}
-	defer cancel()
+
 	return nil, false, ContentNotFound
 }
 
