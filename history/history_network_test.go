@@ -314,6 +314,7 @@ func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 
 	localNode := enode.NewLocalNode(nodeDB, privKey)
 	localNode.SetFallbackIP(net.IP{127, 0, 0, 1})
+	localNode.SetFallbackUDP(addr1.Port)
 	localNode.Set(portalwire.Tag)
 
 	discV5, err := discover.ListenV5(conn, localNode, discCfg)

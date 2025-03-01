@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/holiman/uint256"
 )
@@ -45,7 +46,8 @@ type ContentStorage interface {
 }
 
 type MockStorage struct {
-	Db map[string][]byte
+	lock sync.RWMutex
+	Db   map[string][]byte
 }
 
 func NewMockStorage() ContentStorage {
@@ -55,6 +57,8 @@ func NewMockStorage() ContentStorage {
 }
 
 func (m *MockStorage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
 	if content, ok := m.Db[string(contentId)]; ok {
 		return content, nil
 	}
@@ -62,6 +66,8 @@ func (m *MockStorage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 }
 
 func (m *MockStorage) Put(contentKey []byte, contentId []byte, content []byte) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	m.Db[string(contentId)] = content
 	return nil
 }

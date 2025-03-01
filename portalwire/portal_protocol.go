@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"math/rand"
 	"net"
 	"slices"
 	"sort"
@@ -231,13 +230,15 @@ type PortalProtocol struct {
 
 	Utp *ZenEthUtp
 
-	validSchemes      enr.IdentityScheme
-	radiusCache       *fastcache.Cache
-	capabilitiesCache *fastcache.Cache
-	closeCtx          context.Context
-	cancelCloseCtx    context.CancelFunc
-	storage           storage.ContentStorage
-	toContentId       func(contentKey []byte) []byte
+	validSchemes            enr.IdentityScheme
+	radiusCache             *fastcache.Cache
+	radiusCacheRWLock       sync.RWMutex
+	capabilitiesCache       *fastcache.Cache
+	capabilitiesCacheRWLock sync.RWMutex
+	closeCtx                context.Context
+	cancelCloseCtx          context.CancelFunc
+	storage                 storage.ContentStorage
+	toContentId             func(contentKey []byte) []byte
 
 	contentQueue chan *ContentElement
 	offerQueue   chan *OfferRequestWithNode
@@ -351,6 +352,8 @@ func (p *PortalProtocol) AddEnr(n *enode.Node) {
 		return
 	}
 	id := n.ID().String()
+	p.radiusCacheRWLock.Lock()
+	defer p.radiusCacheRWLock.Unlock()
 	p.radiusCache.Set([]byte(id), MaxDistance)
 }
 
@@ -897,6 +900,8 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []
 		log.Debug("Node added to replacements list", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	}
 
+	p.radiusCacheRWLock.Lock()
+	defer p.radiusCacheRWLock.Unlock()
 	p.radiusCache.Set([]byte(target.ID().String()), clientInfo.DataRadius[:])
 	return pong, clientInfo.DataRadius[:], nil
 }
@@ -1042,12 +1047,16 @@ func (p *PortalProtocol) handleClientInfo(id enode.ID, data []byte) (Pong, error
 		errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
 		return p.createPong(pingext.Error, errPayload), nil
 	}
+	p.radiusCacheRWLock.Lock()
 	p.radiusCache.Set([]byte(id.String()), payload.DataRadius[:])
+	p.radiusCacheRWLock.Unlock()
 	capBytes, err := payload.Capabilities.MarshalSSZ()
 	if err != nil {
 		p.Log.Error("failed to marshal capabilities", "err", err)
 	} else {
+		p.capabilitiesCacheRWLock.Lock()
 		p.capabilitiesCache.Set([]byte(id.String()), capBytes)
+		p.capabilitiesCacheRWLock.Unlock()
 	}
 	radiusBytes, err := p.storage.Radius().MarshalSSZ()
 	if err != nil {
@@ -1886,7 +1895,9 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 
 	gossipNodes := make([]*enode.Node, 0)
 	for _, n := range closestLocalNodes {
+		p.radiusCacheRWLock.RLock()
 		radius, found := p.radiusCache.HasGet(nil, []byte(n.ID().String()))
+		p.radiusCacheRWLock.RUnlock()
 		if found {
 			p.Log.Debug("found closest local nodes", "nodeId", n.ID(), "addr", n.IPAddr().String())
 			nodeRadius := new(uint256.Int)
@@ -1911,7 +1922,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 	var finalGossipNodes []*enode.Node
 	if len(gossipNodes) > maxClosestNodes {
 		fartherNodes := gossipNodes[maxClosestNodes:]
-		rand.Shuffle(len(fartherNodes), func(i, j int) {
+		p.table.rand.Shuffle(len(fartherNodes), func(i, j int) {
 			fartherNodes[i], fartherNodes[j] = fartherNodes[j], fartherNodes[i]
 		})
 		finalGossipNodes = append(gossipNodes[:maxClosestNodes], fartherNodes[:min(maxFartherNodes, len(fartherNodes))]...)
@@ -1939,7 +1950,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 	return len(finalGossipNodes), nil
 }
 
-// if the content is not in range, return false; else store the content and return true
+// ShouldStore if the content is not in range, return false; else store the content and return true
 func (p *PortalProtocol) ShouldStore(contentKey []byte, content []byte) (bool, error) {
 	err := p.storage.Put(contentKey, p.toContentId(contentKey), content)
 	if errors.Is(err, storage.ErrInsufficientRadius) {

@@ -65,6 +65,7 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node) (*
 
 	localNode := enode.NewLocalNode(nodeDB, privKey)
 	localNode.SetFallbackIP(net.IP{127, 0, 0, 1})
+	localNode.SetFallbackUDP(addr1.Port)
 	localNode.Set(Tag)
 
 	if conf.NAT == nil {
