@@ -9,7 +9,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.4
 	github.com/ethereum/go-ethereum v1.15.4
 	github.com/ferranbt/fastssz v0.1.4
-	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb
+	github.com/golang/snappy v1.0.0
 	github.com/hashicorp/go-bexpr v0.1.14
 	github.com/holiman/uint256 v1.3.2
 	github.com/mattn/go-colorable v0.1.14
