@@ -23,7 +23,7 @@ require (
 	github.com/prysmaticlabs/go-bitfield v0.0.0-20240618144021-706c95b2dd15
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834
-	github.com/urfave/cli/v2 v2.27.5
+	github.com/urfave/cli/v2 v2.27.6
 	github.com/zen-eth/utp-go v0.0.0-20250302033357-a36020a99205
 	go.uber.org/automaxprocs v1.6.0
 	go.uber.org/zap v1.27.0
