@@ -247,8 +247,8 @@ type PortalProtocol struct {
 	clock               mclock.Clock
 	NAT                 nat.Interface
 
-	portalMetrics *portalMetrics
-	PingExtions   pingext.PingExtension
+	portalMetrics  *portalMetrics
+	PingExtensions pingext.PingExtension
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -293,13 +293,13 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 
 	switch protocolId.Name() {
 	case "history":
-		protocol.PingExtions = HistoryPingExtension{}
+		protocol.PingExtensions = HistoryPingExtension{}
 	case "state":
-		protocol.PingExtions = StatePingExtension{}
+		protocol.PingExtensions = StatePingExtension{}
 	case "beacon":
-		protocol.PingExtions = BeaconPingExtension{}
+		protocol.PingExtensions = BeaconPingExtension{}
 	default:
-		protocol.PingExtions = DefaultPingExtension{}
+		protocol.PingExtensions = DefaultPingExtension{}
 	}
 
 	return protocol, nil
@@ -412,7 +412,7 @@ func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, []byte, error) {
 		return nil, nil, err
 	}
 
-	payload := pingext.NewClientInfoAndCapabilitiesPayload(radiusBytes, p.PingExtions.Extensions())
+	payload := pingext.NewClientInfoAndCapabilitiesPayload(radiusBytes, p.PingExtensions.Extensions())
 
 	data, err := payload.MarshalSSZ()
 	if err != nil {
@@ -997,7 +997,7 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 	var pong Pong
 	var err error
-	if !p.PingExtions.IsSupported(ping.PayloadType) {
+	if !p.PingExtensions.IsSupported(ping.PayloadType) {
 		errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorNotSupported)
 		pong = p.createPong(pingext.Error, errPayload)
 	} else {
@@ -1061,7 +1061,7 @@ func (p *PortalProtocol) handleClientInfo(id enode.ID, data []byte) (Pong, error
 	if err != nil {
 		return Pong{}, err
 	}
-	pongPayload := pingext.NewClientInfoAndCapabilitiesPayload(radiusBytes, p.PingExtions.Extensions())
+	pongPayload := pingext.NewClientInfoAndCapabilitiesPayload(radiusBytes, p.PingExtensions.Extensions())
 	pongPayloadBytes, err := pongPayload.MarshalSSZ()
 	if err != nil {
 		return Pong{}, err

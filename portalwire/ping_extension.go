@@ -2,7 +2,7 @@ package portalwire
 
 import pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 
-var defaultPingExtentions = []uint16{pingext.ClientInfo, pingext.Error}
+var defaultPingExtensions = []uint16{pingext.ClientInfo, pingext.Error}
 
 var _ pingext.PingExtension = DefaultPingExtension{}
 
@@ -10,7 +10,7 @@ type DefaultPingExtension struct{}
 
 func (h DefaultPingExtension) IsSupported(ext uint16) bool {
 	supported := false
-	for _, e := range defaultPingExtentions {
+	for _, e := range defaultPingExtensions {
 		if e == ext {
 			supported = true
 			break
@@ -20,17 +20,17 @@ func (h DefaultPingExtension) IsSupported(ext uint16) bool {
 }
 
 func (h DefaultPingExtension) Extensions() []uint16 {
-	return defaultPingExtentions
+	return defaultPingExtensions
 }
 
-var historySupportedExtentions = []uint16{pingext.ClientInfo, pingext.HistoryRadius, pingext.Error}
+var historySupportedExtensions = []uint16{pingext.ClientInfo, pingext.HistoryRadius, pingext.Error}
 var _ pingext.PingExtension = HistoryPingExtension{}
 
 type HistoryPingExtension struct{}
 
 func (h HistoryPingExtension) IsSupported(ext uint16) bool {
 	supported := false
-	for _, e := range historySupportedExtentions {
+	for _, e := range historySupportedExtensions {
 		if e == ext {
 			supported = true
 			break
@@ -40,7 +40,7 @@ func (h HistoryPingExtension) IsSupported(ext uint16) bool {
 }
 
 func (h HistoryPingExtension) Extensions() []uint16 {
-	return historySupportedExtentions
+	return historySupportedExtensions
 }
 
 var stateSupportedExtentions = []uint16{pingext.ClientInfo, pingext.BasicRadius, pingext.Error}
@@ -63,13 +63,13 @@ func (h StatePingExtension) Extensions() []uint16 {
 	return stateSupportedExtentions
 }
 
-var beaconSupportedExtentions = []uint16{pingext.ClientInfo, pingext.BasicRadius, pingext.Error}
+var beaconSupportedExtensions = []uint16{pingext.ClientInfo, pingext.BasicRadius, pingext.Error}
 
 type BeaconPingExtension struct{}
 
 func (h BeaconPingExtension) IsSupported(ext uint16) bool {
 	supported := false
-	for _, e := range beaconSupportedExtentions {
+	for _, e := range beaconSupportedExtensions {
 		if e == ext {
 			supported = true
 			break
@@ -79,5 +79,5 @@ func (h BeaconPingExtension) IsSupported(ext uint16) bool {
 }
 
 func (h BeaconPingExtension) Extensions() []uint16 {
-	return beaconSupportedExtentions
+	return beaconSupportedExtensions
 }
