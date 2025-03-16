@@ -57,6 +57,7 @@ type Config struct {
 	PingInterval            time.Duration // speed of node liveness check
 	RefreshInterval         time.Duration // used in bucket refresh
 	NoFindnodeLivenessCheck bool          // turns off validation of table nodes in FINDNODE handler
+	DisableInitCheck        bool          // disables init check in table
 
 	// The options below are useful in very specific cases, like in unit tests.
 	V5ProtocolID *[6]byte

@@ -361,7 +361,12 @@ func (tab *Table) loop() {
 	defer reseedRandTimer.Stop()
 
 	// Start initial refresh.
-	go tab.doRefresh(refreshDone)
+	if tab.cfg.DisableInitCheck {
+		// disable init table check
+		close(refreshDone)
+	} else {
+		go tab.doRefresh(refreshDone)
+	}
 
 loop:
 	for {

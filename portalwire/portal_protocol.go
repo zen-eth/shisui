@@ -327,8 +327,7 @@ func (p *PortalProtocol) Start() error {
 		go p.offerWorker()
 	}
 
-	// wait for both initialization processes to complete
-	p.DiscV5.WaitInit()
+	// wait for initialization processes to complete
 	p.table.waitInit()
 	return nil
 }
