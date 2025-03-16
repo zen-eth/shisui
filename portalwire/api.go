@@ -93,14 +93,21 @@ func (d *DiscV5API) NodeInfo() *NodeInfo {
 
 func (d *DiscV5API) RoutingTableInfo() *RoutingTableInfo {
 	n := d.DiscV5.LocalNode().Node()
-	bucketNodes := d.DiscV5.RoutingTableInfo()
+	bucketNodes := d.DiscV5.Nodes()
+
+	stringBuckets := make([][]string, len(bucketNodes))
+	for i, b := range bucketNodes {
+		stringBuckets[i] = make([]string, len(b))
+		for j, node := range b {
+			stringBuckets[i][j] = "0x" + node.Node.ID().String()
+		}
+	}
 
 	return &RoutingTableInfo{
-		Buckets:     bucketNodes,
+		Buckets:     stringBuckets,
 		LocalNodeId: "0x" + n.ID().String(),
 	}
 }
-
 func (d *DiscV5API) AddEnr(enr string) (bool, error) {
 	n, err := enode.Parse(enode.ValidSchemes, enr)
 	if err != nil {
@@ -161,7 +168,7 @@ func (d *DiscV5API) Ping(enr string) (*DiscV5PongResp, error) {
 		return nil, err
 	}
 
-	pong, err := d.DiscV5.PingWithResp(n)
+	pong, err := d.DiscV5.Ping(n)
 	if err != nil {
 		return nil, err
 	}

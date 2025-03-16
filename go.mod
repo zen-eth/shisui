@@ -2,7 +2,7 @@ module github.com/zen-eth/shisui
 
 go 1.24.0
 
-replace github.com/protolambda/zrnt v0.32.3 => github.com/optimism-java/zrnt v0.32.4-0.20240415084906-d9dbf06b32f7
+replace github.com/protolambda/zrnt v0.34.1 => github.com/optimism-java/zrnt v0.32.4-0.20240415084906-d9dbf06b32f7
 
 require (
 	github.com/VictoriaMetrics/fastcache v1.12.2
@@ -18,7 +18,7 @@ require (
 	github.com/optimism-java/utp-go v0.0.0-20241223124724-19352018cc52
 	github.com/panjf2000/gnet/v2 v2.7.2
 	github.com/protolambda/bls12-381-util v0.1.0
-	github.com/protolambda/zrnt v0.32.3
+	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
 	github.com/prysmaticlabs/go-bitfield v0.0.0-20240618144021-706c95b2dd15
 	github.com/stretchr/testify v1.10.0
@@ -114,4 +114,4 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250304133838-2a423ddb9c25
+replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250316075122-8f1f4efd69cc
