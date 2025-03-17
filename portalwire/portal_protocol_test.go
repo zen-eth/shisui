@@ -141,16 +141,14 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 	t.Logf("node2.id = %s", node2.localNode.ID().String())
 	t.Logf("node3.id = %s", node3.localNode.ID().String())
 
-	//cid1 := libutp.ReceConnId(12)
-	cid1 := node1.Utp.RecvId(node2.localNode.Node(), 12)
 	cid1_gen := node1.Utp.Cid(node2.localNode.Node(), false)
-	//cid2 := libutp.ReceConnId(116)
-	cid2 := node1.Utp.RecvId(node2.localNode.Node(), 116)
 	cid2_gen := node1.Utp.Cid(node2.localNode.Node(), false)
-	t.Logf("cid1 = %v", cid1)
+
 	t.Logf("cid1_gen = %v", cid1_gen)
-	t.Logf("cid2 = %v", cid2)
+	t.Logf("cid1_gen_hash = %s", cid1_gen.Hash())
+
 	t.Logf("cid2_gen = %v", cid2_gen)
+	t.Logf("cid2_gen_hash = %s", cid2_gen.Hash())
 
 	cliSendMsgWithCid1 := "there are connection id : 12!"
 	cliSendMsgWithCid2 := "there are connection id: 116!"
@@ -167,10 +165,7 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 	acceptGroup.Add(1)
 	go func() {
 		defer workGroup.Done()
-
-		var acceptConn *zenutp.UtpStream
-		acceptConn, err = node1.Utp.AcceptWithCid(context.Background(), cid1_gen)
-
+		acceptConn, err := node1.Utp.AcceptWithCid(context.Background(), cid1_gen)
 		if err != nil {
 			panic(err)
 		}
@@ -185,9 +180,7 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 	}()
 	go func() {
 		defer workGroup.Done()
-
-		var connId2Conn *zenutp.UtpStream
-		connId2Conn, err = node1.Utp.AcceptWithCid(context.Background(), cid2_gen)
+		connId2Conn, err := node1.Utp.AcceptWithCid(context.Background(), cid2_gen)
 		if err != nil {
 			panic(err)
 		}
@@ -203,17 +196,19 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 	go func() {
 		defer workGroup.Done()
 		var connWithConnId *zenutp.UtpStream
-		connWithConnId, err = node2.Utp.DialWithCid(context.Background(), node1.localNode.Node(), cid1_gen.Send)
+		connWithConnId, err := node2.Utp.DialWithCid(context.Background(), node1.localNode.Node(), cid1_gen.Send)
 		if err != nil {
 			panic(err)
 		}
 		defer connWithConnId.Close()
 		_, err = connWithConnId.Write(context.Background(), []byte(cliSendMsgWithCid1))
+		if err != nil {
+			panic(err)
+		}
 	}()
 	go func() {
 		defer workGroup.Done()
-		var connId2Conn *zenutp.UtpStream
-		connId2Conn, err = node2.Utp.DialWithCid(context.Background(), node1.localNode.Node(), cid2_gen.Send)
+		connId2Conn, err := node2.Utp.DialWithCid(context.Background(), node1.localNode.Node(), cid2_gen.Send)
 		if err != nil {
 			panic(err)
 		}
@@ -228,9 +223,6 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 		}
 	}()
 	workGroup.Wait()
-	// node1.Stop()
-	// node2.Stop()
-	// node3.Stop()
 }
 
 func TestPortalWireProtocol(t *testing.T) {

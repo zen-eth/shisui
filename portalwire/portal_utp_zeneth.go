@@ -49,6 +49,7 @@ func newUtpPeer(dst *enode.Node) *UtpPeer {
 		id:   dst.ID(),
 		node: dst,
 		addr: &addrPort,
+		hash: dst.ID().String(),
 	}
 }
 
@@ -56,13 +57,11 @@ func newUtpPeerFromId(id enode.ID, addr *netip.AddrPort) *UtpPeer {
 	return &UtpPeer{
 		id:   id,
 		addr: addr,
+		hash: id.String(),
 	}
 }
 
 func (p *UtpPeer) Hash() string {
-	if p.hash == "" {
-		p.hash = p.id.String()
-	}
 	return p.hash
 }
 
@@ -93,7 +92,7 @@ func newDiscv5Conn(conn *discover.UDPv5, logger log.Logger) *discv5Conn {
 
 func (c *discv5Conn) handleUtpTalkRequest(id enode.ID, addr *net.UDPAddr, data []byte) []byte {
 	addrPort := netip.AddrPortFrom(netutil.IPToAddr(addr.IP), uint16(addr.Port))
-	peer := &UtpPeer{id: id, addr: &addrPort}
+	peer := newUtpPeerFromId(id, &addrPort)
 	c.receive <- &packetItem{peer, data}
 	return UTP_TALKRESPONSE
 }
@@ -203,18 +202,10 @@ func (p *ZenEthUtp) CidFromId(id enode.ID, addr *net.UDPAddr, isInitiator bool) 
 
 func (p *ZenEthUtp) RecvId(dst *enode.Node, connId uint16) *zenutp.ConnectionId {
 	peer := newUtpPeer(dst)
-	return &zenutp.ConnectionId{
-		Peer: peer,
-		Recv: connId + 1,
-		Send: connId,
-	}
+	return zenutp.NewConnectionId(peer, connId+1, connId)
 }
 
 func (p *ZenEthUtp) SendId(dst *enode.Node, connId uint16) *zenutp.ConnectionId {
 	peer := newUtpPeer(dst)
-	return &zenutp.ConnectionId{
-		Peer: peer,
-		Recv: connId,
-		Send: connId + 1,
-	}
+	return zenutp.NewConnectionId(peer, connId, connId+1)
 }
