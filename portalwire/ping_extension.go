@@ -43,14 +43,14 @@ func (h HistoryPingExtension) Extensions() []uint16 {
 	return historySupportedExtensions
 }
 
-var stateSupportedExtentions = []uint16{pingext.ClientInfo, pingext.BasicRadius, pingext.Error}
+var stateSupportedExtensions = []uint16{pingext.ClientInfo, pingext.BasicRadius, pingext.Error}
 var _ pingext.PingExtension = StatePingExtension{}
 
 type StatePingExtension struct{}
 
 func (h StatePingExtension) IsSupported(ext uint16) bool {
 	supported := false
-	for _, e := range stateSupportedExtentions {
+	for _, e := range stateSupportedExtensions {
 		if e == ext {
 			supported = true
 			break
@@ -60,7 +60,7 @@ func (h StatePingExtension) IsSupported(ext uint16) bool {
 }
 
 func (h StatePingExtension) Extensions() []uint16 {
-	return stateSupportedExtentions
+	return stateSupportedExtensions
 }
 
 var beaconSupportedExtensions = []uint16{pingext.ClientInfo, pingext.BasicRadius, pingext.Error}

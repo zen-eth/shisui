@@ -457,7 +457,7 @@ func TestContentLookup(t *testing.T) {
 
 	nonExist := []byte{0x2, 0x4}
 	res, _, err = node1.ContentLookup(nonExist, node1.toContentId(nonExist))
-	assert.Equal(t, ContentNotFound, err)
+	assert.Equal(t, ErrContentNotFound, err)
 	assert.Nil(t, res)
 }
 

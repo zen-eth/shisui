@@ -40,7 +40,6 @@ import (
 )
 
 const (
-
 	// TalkResp message is a response message so the session is established and a
 	// regular discv5 packet is assumed for size calculation.
 	// Regular message = IV + header + message
@@ -75,6 +74,8 @@ const (
 	// incoming directions.
 	concurrentOffers = 50
 
+	offerQueueSize = concurrentOffers * 20
+
 	lookupRequestLimit = 3 // max requests against a single node during lookup
 
 	maxPacketSize = 1280
@@ -103,12 +104,6 @@ func (c ClientTag) ENRKey() string { return "c" }
 
 const Tag ClientTag = "shisui"
 
-var ErrNilContentKey = errors.New("content key cannot be nil")
-
-var ContentNotFound = storage.ErrContentNotFound
-
-var ErrEmptyResp = errors.New("empty resp")
-
 var MaxDistance = hexutil.MustDecode("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 
 var PortalBootnodes = []string{
@@ -129,6 +124,10 @@ var PortalBootnodes = []string{
 }
 
 var (
+	ErrNilContentKey   = errors.New("content key cannot be nil")
+	ErrContentNotFound = storage.ErrContentNotFound
+	ErrEmptyResp       = errors.New("empty resp")
+
 	errClosed  = errors.New("socket closed")
 	errTimeout = errors.New("RPC timeout")
 	errLowPort = errors.New("low port")
@@ -186,7 +185,7 @@ type OfferTrace struct {
 	ContentKeys []byte // Only used for Success case
 }
 
-type PortalProtocolOption func(p *PortalProtocol)
+type SetPortalProtocolOption func(p *PortalProtocol)
 
 type PortalProtocolConfig struct {
 	BootstrapNodes        []*enode.Node
@@ -256,7 +255,7 @@ func defaultContentIdFunc(contentKey []byte) []byte {
 	return digest[:]
 }
 
-func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *ZenEthUtp, storage storage.ContentStorage, contentQueue chan *ContentElement, opts ...PortalProtocolOption) (*PortalProtocol, error) {
+func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *ZenEthUtp, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 
 	protocol := &PortalProtocol{
@@ -275,7 +274,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		storage:           storage,
 		toContentId:       defaultContentIdFunc,
 		contentQueue:      contentQueue,
-		offerQueue:        make(chan *OfferRequestWithNode, concurrentOffers*20),
+		offerQueue:        make(chan *OfferRequestWithNode, offerQueueSize),
 		conn:              conn,
 		DiscV5:            discV5,
 		NAT:               config.NAT,
@@ -283,8 +282,8 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		Utp:               utp,
 	}
 
-	for _, opt := range opts {
-		opt(protocol)
+	for _, setOpt := range setOpts {
+		setOpt(protocol)
 	}
 
 	if metrics.Enabled() {
@@ -340,6 +339,7 @@ func (p *PortalProtocol) Stop() {
 		p.Utp.Stop()
 	}
 }
+
 func (p *PortalProtocol) RoutingTableInfo() [][]string {
 	return p.table.nodeIds()
 }
@@ -364,7 +364,7 @@ func (p *PortalProtocol) setupUDPListening() error {
 	laddr := p.conn.LocalAddr().(*net.UDPAddr)
 	p.localNode.SetFallbackUDP(laddr.Port)
 	p.Log.Debug("UDP listener up", "addr", laddr)
-	// TODO: NAT
+
 	if !laddr.IP.IsLoopback() && !laddr.IP.IsPrivate() {
 		p.portMappingRegister <- &portMapping{
 			protocol: "UDP",
@@ -433,10 +433,7 @@ func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, []byte, error) {
 		return nil, nil, err
 	}
 
-	talkRequestBytes := make([]byte, 0, len(pingRequestBytes)+1)
-	talkRequestBytes = append(talkRequestBytes, PING)
-	talkRequestBytes = append(talkRequestBytes, pingRequestBytes...)
-
+	talkRequestBytes := append([]byte{PING}, pingRequestBytes...)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 
 	if err != nil {
@@ -452,36 +449,31 @@ func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, []byte, error) {
 }
 
 func (p *PortalProtocol) findNodes(node *enode.Node, distances []uint) ([]*enode.Node, error) {
-	if p.localNode.ID().String() == node.ID().String() {
+	if p.localNode.ID() == node.ID() {
 		return make([]*enode.Node, 0), nil
 	}
 
-	distancesBytes := make([][2]byte, len(distances))
+	encodedDistances := make([][2]byte, len(distances))
 	for i, distance := range distances {
-		copy(distancesBytes[i][:], ssz.MarshalUint16(make([]byte, 0), uint16(distance)))
+		ssz.MarshalUint16(encodedDistances[i][:], uint16(distance))
 	}
 
 	findNodes := &FindNodes{
-		Distances: distancesBytes,
+		Distances: encodedDistances,
 	}
 
-	p.Log.Trace(">> FIND_NODES/"+p.protocolName, "id", node.ID(), "findNodes", findNodes)
+	p.Log.Trace(">> FIND_NODES/"+p.protocolName, "protocol", p.protocolName, "id", node.ID(), "findNodes", findNodes)
 	if metrics.Enabled() {
 		p.portalMetrics.messagesSentFindNodes.Mark(1)
 	}
 	findNodesBytes, err := findNodes.MarshalSSZ()
 	if err != nil {
-		p.Log.Error("failed to marshal find nodes request", "err", err)
 		return nil, err
 	}
 
-	talkRequestBytes := make([]byte, 0, len(findNodesBytes)+1)
-	talkRequestBytes = append(talkRequestBytes, FINDNODES)
-	talkRequestBytes = append(talkRequestBytes, findNodesBytes...)
-
+	talkRequestBytes := append([]byte{FINDNODES}, findNodesBytes...)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
-		p.Log.Error("failed to send find nodes request", "ip", node.IP().String(), "port", node.UDP(), "err", err)
 		return nil, err
 	}
 
@@ -499,17 +491,12 @@ func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte,
 	}
 	findContentBytes, err := findContent.MarshalSSZ()
 	if err != nil {
-		p.Log.Error("failed to marshal find content request", "err", err)
 		return 0xff, nil, err
 	}
 
-	talkRequestBytes := make([]byte, 0, len(findContentBytes)+1)
-	talkRequestBytes = append(talkRequestBytes, FINDCONTENT)
-	talkRequestBytes = append(talkRequestBytes, findContentBytes...)
-
+	talkRequestBytes := append([]byte{FINDCONTENT}, findContentBytes...)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
-		p.Log.Error("failed to send find content request", "ip", node.IP().String(), "port", node.UDP(), "err", err)
 		return 0xff, nil, err
 	}
 
@@ -523,23 +510,18 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest) ([]
 		ContentKeys: contentKeys,
 	}
 
-	p.Log.Trace(">> OFFER/"+p.protocolName, "offer", offer)
+	p.Log.Trace(">> OFFER/"+p.protocolName, "id", node.ID(), "offer", offer)
 	if metrics.Enabled() {
 		p.portalMetrics.messagesSentOffer.Mark(1)
 	}
 	offerBytes, err := offer.MarshalSSZ()
 	if err != nil {
-		p.Log.Error("failed to marshal offer request", "err", err)
 		return nil, err
 	}
 
-	talkRequestBytes := make([]byte, 0, len(offerBytes)+1)
-	talkRequestBytes = append(talkRequestBytes, OFFER)
-	talkRequestBytes = append(talkRequestBytes, offerBytes...)
-
+	talkRequestBytes := append([]byte{OFFER}, offerBytes...)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
-		p.Log.Error("failed to send offer request", "err", err)
 		return nil, err
 	}
 
@@ -764,7 +746,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		}
 
 		// Read ALL the data from the connection until EOF and return it
-		readCtx, readCancel := context.WithTimeout(p.closeCtx, defaultUTPConnectTimeout)
+		readCtx, readCancel := context.WithTimeout(p.closeCtx, defaultUTPReadTimeout)
 		defer readCancel()
 		var data []byte
 		n, err := conn.ReadToEOF(readCtx, &data)
@@ -1148,11 +1130,11 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 
 	var content []byte
 	content, err = p.storage.Get(contentKey, contentId)
-	if err != nil && !errors.Is(err, ContentNotFound) {
+	if err != nil && !errors.Is(err, ErrContentNotFound) {
 		return nil, err
 	}
 
-	if errors.Is(err, ContentNotFound) {
+	if errors.Is(err, ErrContentNotFound) {
 		closestNodes := p.findNodesCloseToContent(contentId, portalFindnodesResultLimit)
 		for i, n := range closestNodes {
 			if n.ID() == id {
@@ -1696,7 +1678,7 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 		return result.Content, result.UtpTransfer, nil
 	}
 
-	return nil, false, ContentNotFound
+	return nil, false, ErrContentNotFound
 }
 
 func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*TraceContentResult, error) {
