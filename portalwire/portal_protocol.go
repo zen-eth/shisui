@@ -455,7 +455,7 @@ func (p *PortalProtocol) findNodes(node *enode.Node, distances []uint) ([]*enode
 
 	encodedDistances := make([][2]byte, len(distances))
 	for i, distance := range distances {
-		ssz.MarshalUint16(encodedDistances[i][:], uint16(distance))
+		copy(encodedDistances[i][:], ssz.MarshalUint16(make([]byte, 0), uint16(distance)))
 	}
 
 	findNodes := &FindNodes{
@@ -628,7 +628,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				var contentsPayload []byte
 				contentsPayload = encodeContents(contents)
 
-				connctx, conncancel := context.WithTimeout(ctx, defaultUTPConnectTimeout+defaultUTPConnectTimeout)
+				connctx, conncancel := context.WithTimeout(ctx, defaultUTPConnectTimeout)
 				defer conncancel()
 				conn, err = p.Utp.DialWithCid(connctx, target, connId)
 
