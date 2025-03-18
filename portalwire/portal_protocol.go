@@ -406,7 +406,6 @@ func (p *PortalProtocol) ping(node *enode.Node) (uint64, error) {
 }
 
 func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, []byte, error) {
-	enrSeq := p.Self().Seq()
 	radiusBytes, err := p.Radius().MarshalSSZ()
 	if err != nil {
 		return nil, nil, err
@@ -418,10 +417,15 @@ func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	return p.pingInnerWithPayload(node, pingext.ClientInfo, data)
+}
+
+func (p *PortalProtocol) pingInnerWithPayload(node *enode.Node, payloadType uint16, payload []byte) (*Pong, []byte, error) {
+	enrSeq := p.Self().Seq()
 	pingRequest := &Ping{
 		EnrSeq:      enrSeq,
-		PayloadType: 0,
-		Payload:     data,
+		PayloadType: payloadType,
+		Payload:     payload,
 	}
 
 	p.Log.Trace(">> PING/"+p.protocolName, "ip", p.Self().IP().String(), "source", p.Self().ID(), "target", node.ID(), "ping", pingRequest)
