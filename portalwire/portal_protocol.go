@@ -455,7 +455,7 @@ func (p *PortalProtocol) findNodes(node *enode.Node, distances []uint) ([]*enode
 
 	encodedDistances := make([][2]byte, len(distances))
 	for i, distance := range distances {
-		copy(encodedDistances[i][:], ssz.MarshalUint16(make([]byte, 0), uint16(distance)))
+		binary.LittleEndian.PutUint16(encodedDistances[i][:], uint16(distance))
 	}
 
 	findNodes := &FindNodes{
