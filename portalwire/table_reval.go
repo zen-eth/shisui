@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -78,6 +79,8 @@ func (tr *tableRevalidation) nodeEndpointChanged(tab *Table, n *tableNode) {
 // to schedule a timer. However, run can be called at any time.
 func (tr *tableRevalidation) run(tab *Table, now mclock.AbsTime) (nextTime mclock.AbsTime) {
 	reval := func(list *revalidationList) {
+		list.mutex.RLock()
+		defer list.mutex.RUnlock()
 		if list.nextTime <= now {
 			if n := list.get(now, &tab.rand, tr.activeReq); n != nil {
 				tr.startRequest(tab, n)
@@ -196,6 +199,7 @@ func (tr *tableRevalidation) moveToList(dest *revalidationList, n *tableNode, no
 
 // revalidationList holds a list nodes and the next revalidation time.
 type revalidationList struct {
+	mutex sync.RWMutex
 	nodes    []*tableNode
 	nextTime mclock.AbsTime
 	interval time.Duration
@@ -218,6 +222,8 @@ func (list *revalidationList) get(now mclock.AbsTime, rand randomSource, exclude
 }
 
 func (list *revalidationList) schedule(now mclock.AbsTime, rand randomSource) {
+	list.mutex.Lock()
+	defer list.mutex.Unlock()
 	list.nextTime = now.Add(time.Duration(rand.Int63n(int64(list.interval))))
 }
 
