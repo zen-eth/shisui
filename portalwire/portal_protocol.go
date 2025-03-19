@@ -452,6 +452,37 @@ func (p *PortalProtocol) pingInnerWithPayload(node *enode.Node, payloadType uint
 	return p.processPong(node, talkResp)
 }
 
+func (p *PortalProtocol) genPayloadByType(payloadType uint16) ([]byte, error) {
+	radiusBytes, err := p.Radius().MarshalSSZ()
+	if err != nil {
+		return nil, err
+	}
+	var data []byte
+	switch payloadType {
+	case pingext.ClientInfo:
+		payload := pingext.NewClientInfoAndCapabilitiesPayload(radiusBytes, p.PingExtensions.Extensions())
+
+		data, err = payload.MarshalSSZ()
+		if err != nil {
+			return nil, err
+		}
+
+	case pingext.BasicRadius:
+		payload := pingext.NewBasicRadiusPayload(radiusBytes)
+		data, err = payload.MarshalSSZ()
+		if err != nil {
+			return nil, err
+		}
+	case pingext.HistoryRadius:
+		payload := pingext.NewHistoryRadiusPayload(radiusBytes, 0)
+		data, err = payload.MarshalSSZ()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return data, nil
+}
+
 func (p *PortalProtocol) findNodes(node *enode.Node, distances []uint) ([]*enode.Node, error) {
 	if p.localNode.ID() == node.ID() {
 		return make([]*enode.Node, 0), nil

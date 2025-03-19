@@ -6,7 +6,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/holiman/uint256"
 	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 )
 
@@ -337,33 +336,37 @@ func (p *PortalProtocolAPI) Ping(enr string, payloadType *uint16, payload *strin
 	if payloadType == nil && payload != nil {
 		return nil, pingext.ErrPayloadRequired{}
 	}
-	if payloadType != nil {
-		if !p.portalProtocol.PingExtensions.IsSupported(*payloadType) {
-			return nil, pingext.ErrPayloadTypeIsNotSupported{}
-		}
-	}
+
 	n, err := enode.Parse(enode.ValidSchemes, enr)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := pingext.JsonTypeToSszBytes(*payloadType, []byte(*payload))
+	var data []byte
 
-	if err != nil {
-		return nil, err
+	if payloadType != nil {
+		if !p.portalProtocol.PingExtensions.IsSupported(*payloadType) {
+			return nil, pingext.ErrPayloadTypeIsNotSupported{}
+		}
+		if payload == nil {
+			data, err = p.portalProtocol.genPayloadByType(*payloadType)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			data, err = pingext.JsonTypeToSszBytes(*payloadType, []byte(*payload))
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
-	pong, radiusBytes, err := p.portalProtocol.pingInnerWithPayload(n, *payloadType, data)
+	pong, _, err := p.portalProtocol.pingInnerWithPayload(n, *payloadType, data)
 	if err != nil {
 		return nil, err
 	}
 
 	jsonRes, err := pingext.SszBytesToJson(pong.PayloadType, pong.Payload)
-	if err != nil {
-		return nil, err
-	}
-	nodeRadius := new(uint256.Int)
-	err = nodeRadius.UnmarshalSSZ(radiusBytes)
 	if err != nil {
 		return nil, err
 	}
