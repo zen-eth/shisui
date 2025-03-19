@@ -54,7 +54,7 @@ func (p ErrPayloadRequired) ErrorCode() int {
 // parse from json and return the ssz payload
 func JsonTypeToSszBytes(payloadType uint16, payload []byte) ([]byte, error) {
 	switch payloadType {
-	case 0:
+	case ClientInfo:
 		data := new(ClientInfoAndCapabilitiesPayloadJson)
 		err := json.Unmarshal(payload, data)
 		if err != nil {
@@ -71,7 +71,7 @@ func JsonTypeToSszBytes(payloadType uint16, payload []byte) ([]byte, error) {
 			return nil, err
 		}
 		return payloadBytes, nil
-	case 1:
+	case BasicRadius:
 		data := new(BasicRadiusPayloadJson)
 		err := json.Unmarshal(payload, data)
 		if err != nil {
@@ -87,7 +87,7 @@ func JsonTypeToSszBytes(payloadType uint16, payload []byte) ([]byte, error) {
 			return nil, err
 		}
 		return payloadBytes, nil
-	case 2:
+	case HistoryRadius:
 		data := new(HistoryRadiusPayloadJson)
 		err := json.Unmarshal(payload, data)
 		if err != nil {
@@ -110,7 +110,7 @@ func JsonTypeToSszBytes(payloadType uint16, payload []byte) ([]byte, error) {
 
 func SszBytesToJson(payloadType uint16, payload []byte) (interface{}, error) {
 	switch payloadType {
-	case 0:
+	case ClientInfo:
 		clientInfo := new(ClientInfoAndCapabilitiesPayload)
 		err := clientInfo.UnmarshalSSZ(payload)
 		if err != nil {
@@ -125,7 +125,7 @@ func SszBytesToJson(payloadType uint16, payload []byte) (interface{}, error) {
 			DataRadius:   hexutil.Encode(clientInfo.DataRadius[:]),
 			Capabilities: uint16Slice,
 		}, nil
-	case 1:
+	case BasicRadius:
 		clientInfo := new(BasicRadiusPayload)
 		err := clientInfo.UnmarshalSSZ(payload)
 		if err != nil {
@@ -134,7 +134,7 @@ func SszBytesToJson(payloadType uint16, payload []byte) (interface{}, error) {
 		return BasicRadiusPayloadJson{
 			DataRadius: hexutil.Encode(clientInfo.DataRadius[:]),
 		}, nil
-	case 2:
+	case HistoryRadius:
 		clientInfo := new(HistoryRadiusPayload)
 		err := clientInfo.UnmarshalSSZ(payload)
 		if err != nil {
@@ -144,6 +144,34 @@ func SszBytesToJson(payloadType uint16, payload []byte) (interface{}, error) {
 			DataRadius:           hexutil.Encode(clientInfo.DataRadius[:]),
 			EphemeralHeaderCount: uint16(clientInfo.EphemeralHeaderCount),
 		}, nil
+	default:
+		return nil, ErrPayloadTypeIsNotSupported{}
+	}
+}
+
+func GetDataRadiusByType(payloadType uint16, payload []byte) ([]byte, error) {
+	switch payloadType {
+	case ClientInfo:
+		clientInfo := new(ClientInfoAndCapabilitiesPayload)
+		err := clientInfo.UnmarshalSSZ(payload)
+		if err != nil {
+			return nil, err
+		}
+		return clientInfo.DataRadius[:], nil
+	case BasicRadius:
+		clientInfo := new(BasicRadiusPayload)
+		err := clientInfo.UnmarshalSSZ(payload)
+		if err != nil {
+			return nil, err
+		}
+		return clientInfo.DataRadius[:], nil
+	case HistoryRadius:
+		clientInfo := new(HistoryRadiusPayload)
+		err := clientInfo.UnmarshalSSZ(payload)
+		if err != nil {
+			return nil, err
+		}
+		return clientInfo.DataRadius[:], nil
 	default:
 		return nil, ErrPayloadTypeIsNotSupported{}
 	}

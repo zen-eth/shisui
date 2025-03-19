@@ -899,12 +899,7 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []
 	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedPong.Mark(1)
 	}
-
-	if pong.PayloadType != pingext.ClientInfo {
-		return nil, nil, errors.New("pong payload type should be 0")
-	}
-	clientInfo := &pingext.ClientInfoAndCapabilitiesPayload{}
-	err = clientInfo.UnmarshalSSZ(pong.Payload)
+	dataRadius, err := pingext.GetDataRadiusByType(pong.PayloadType, pong.Payload)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -915,11 +910,10 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []
 	} else {
 		log.Debug("Node added to replacements list", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	}
-
 	p.radiusCacheRWLock.Lock()
 	defer p.radiusCacheRWLock.Unlock()
-	p.radiusCache.Set([]byte(target.ID().String()), clientInfo.DataRadius[:])
-	return pong, clientInfo.DataRadius[:], nil
+	p.radiusCache.Set([]byte(target.ID().String()), dataRadius)
+	return pong, dataRadius, nil
 }
 
 func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg []byte) []byte {

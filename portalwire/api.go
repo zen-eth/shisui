@@ -343,21 +343,24 @@ func (p *PortalProtocolAPI) Ping(enr string, payloadType *uint16, payload *strin
 	}
 
 	var data []byte
+	var defaultType uint16 = 0
 
-	if payloadType != nil {
-		if !p.portalProtocol.PingExtensions.IsSupported(*payloadType) {
-			return nil, pingext.ErrPayloadTypeIsNotSupported{}
+	if payloadType == nil {
+		payloadType = &defaultType
+	}
+
+	if !p.portalProtocol.PingExtensions.IsSupported(*payloadType) {
+		return nil, pingext.ErrPayloadTypeIsNotSupported{}
+	}
+	if payload == nil {
+		data, err = p.portalProtocol.genPayloadByType(*payloadType)
+		if err != nil {
+			return nil, err
 		}
-		if payload == nil {
-			data, err = p.portalProtocol.genPayloadByType(*payloadType)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			data, err = pingext.JsonTypeToSszBytes(*payloadType, []byte(*payload))
-			if err != nil {
-				return nil, err
-			}
+	} else {
+		data, err = pingext.JsonTypeToSszBytes(*payloadType, []byte(*payload))
+		if err != nil {
+			return nil, err
 		}
 	}
 
