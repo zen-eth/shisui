@@ -185,8 +185,8 @@ github.com/onsi/ginkgo v1.14.0/go.mod h1:iSB4RoI2tjJc9BBv4NKIKWKya62Rps+oPG/Lv9k
 github.com/onsi/gomega v1.7.1/go.mod h1:XdKZgCCFLUoM/7CFJVPcG8C1xQ1AJ0vpAezJrB7JYyY=
 github.com/onsi/gomega v1.10.1 h1:o0+MgICZLuZ7xjH7Vx6zS/zcu93/BEp1VwkIW1mEXCE=
 github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1ybHNo=
-github.com/optimism-java/shisui v1.14.6-0.20250316084923-b39f81b66dd2 h1:Be9sNzeZBEz+Nju++JztbVgWgSNUjS2ufzQrdbgyYh0=
-github.com/optimism-java/shisui v1.14.6-0.20250316084923-b39f81b66dd2/go.mod h1:T51fW+c+6Xm7G7G1HA7rpj9I6+TQ/BsLJoIMrpDnO74=
+github.com/optimism-java/shisui v1.14.6-0.20250321035612-8261fd8160f2 h1:4qcFDEjqGKmSrl6pdyWhThLlxlgcMde5ax8V7lYJsAU=
+github.com/optimism-java/shisui v1.14.6-0.20250321035612-8261fd8160f2/go.mod h1:+S9k+jFzlyVTNcYGvqFhzN/SFhI6vA+aOY4T5tLSPL0=
 github.com/optimism-java/utp-go v0.0.0-20241223124724-19352018cc52 h1:5wq4o4t/umlNii796cEwNyhIT6KefKZv0uUEE6OJjvA=
 github.com/optimism-java/utp-go v0.0.0-20241223124724-19352018cc52/go.mod h1:dJZNMUlyNpjM2VkUEHhmFprLei6gCg3r7U9qj9MmJNQ=
 github.com/optimism-java/zrnt v0.32.4-0.20240415084906-d9dbf06b32f7 h1:ZTQWXQ8xblCRUXhZs3h5qrBMSAHe8iNH7BG7a7IVFlI=
