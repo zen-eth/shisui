@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"net"
-	"net/http"
 	"os/signal"
 	"slices"
 	"syscall"
@@ -13,29 +11,17 @@ import (
 
 	"os"
 
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/discover"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/nat"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/mattn/go-isatty"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/protolambda/zrnt/eth2/beacon/common"
-	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/urfave/cli/v2"
-	"github.com/zen-eth/shisui/beacon"
 	"github.com/zen-eth/shisui/cmd/shisui/utils"
-	"github.com/zen-eth/shisui/ethapi"
-	"github.com/zen-eth/shisui/history"
 	"github.com/zen-eth/shisui/internal/debug"
 	"github.com/zen-eth/shisui/internal/flags"
+	"github.com/zen-eth/shisui/portal"
 	"github.com/zen-eth/shisui/portalwire"
-	"github.com/zen-eth/shisui/state"
-	"github.com/zen-eth/shisui/storage"
-	"github.com/zen-eth/shisui/storage/pebble"
-	"github.com/zen-eth/shisui/web3"
 	"go.uber.org/automaxprocs/maxprocs"
 )
 
@@ -46,25 +32,6 @@ var (
 const (
 	privateKeyFileName = "clientKey"
 )
-
-type Config struct {
-	Protocol     *portalwire.PortalProtocolConfig
-	PrivateKey   *ecdsa.PrivateKey
-	RpcAddr      string
-	DataDir      string
-	DataCapacity uint64
-	LogLevel     int
-	Networks     []string
-	Metrics      *metrics.Config
-}
-
-type Client struct {
-	DiscV5API      *portalwire.DiscV5API
-	HistoryNetwork *history.Network
-	BeaconNetwork  *beacon.Network
-	StateNetwork   *state.Network
-	Server         *http.Server
-}
 
 var app = flags.NewApp("the go-portal-network command line interface")
 
@@ -149,7 +116,6 @@ func shisui(ctx *cli.Context) error {
 	}
 
 	conn, err := newConn(ctx, config.Protocol.ListenAddr)
-
 	if err != nil {
 		return err
 	}
@@ -164,9 +130,34 @@ func shisui(ctx *cli.Context) error {
 		storageCapacity.Update(ctx.Int64(utils.PortalDataCapacityFlag.Name))
 	}
 
-	clientChan := make(chan *Client, 1)
-	go handlerInterrupt(clientChan)
-	return startPortalRpcServer(*config, conn, config.RpcAddr, clientChan)
+	portalConfig := &portal.Config{
+		Protocol:     config.Protocol,
+		PrivateKey:   config.PrivateKey,
+		RpcAddr:      config.RpcAddr,
+		DataDir:      config.DataDir,
+		DataCapacity: config.DataCapacity,
+		LogLevel:     config.LogLevel,
+		Networks:     config.Networks,
+		Metrics:      config.Metrics,
+	}
+
+	node, err := portal.NewNode(portalConfig, conn)
+	if err != nil {
+		return err
+	}
+
+	// Handle graceful shutdown
+	go handleInterrupt(node)
+
+	// Start the node
+	if err = node.Start(); err != nil {
+		log.Error("Failed to start node", "err", err)
+		os.Exit(1)
+	}
+
+	node.Wait()
+
+	return nil
 }
 
 func newConn(ctx *cli.Context, addrStr string) (discover.UDPConn, error) {
@@ -206,7 +197,7 @@ func setDefaultLogger(logLevel int, logFormat string) error {
 	return nil
 }
 
-func handlerInterrupt(clientChan <-chan *Client) {
+func handleInterrupt(node *portal.Node) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(interrupt)
@@ -214,329 +205,9 @@ func handlerInterrupt(clientChan <-chan *Client) {
 	<-interrupt
 	log.Warn("Closing Shisui gracefully (type CTRL-C again to force quit)")
 
-	go func() {
-		if len(clientChan) == 0 {
-			log.Warn("Waiting for the client to start...")
-		}
-		c := <-clientChan
-		c.closePortalRpcServer()
-	}()
+	// Gracefully shutdown the node
+	node.Stop()
 
 	<-interrupt
 	os.Exit(1)
-}
-
-func (cli *Client) closePortalRpcServer() {
-	if cli.HistoryNetwork != nil {
-		log.Info("Closing history network...")
-		cli.HistoryNetwork.Stop()
-	}
-	if cli.BeaconNetwork != nil {
-		log.Info("Closing beacon network...")
-		cli.BeaconNetwork.Stop()
-	}
-	if cli.StateNetwork != nil {
-		log.Info("Closing state network...")
-		cli.StateNetwork.Stop()
-	}
-	log.Info("Closing Database...")
-	cli.DiscV5API.DiscV5.LocalNode().Database().Close()
-	log.Info("Closing UDPv5 protocol...")
-	cli.DiscV5API.DiscV5.Close()
-	log.Info("Closing servers...")
-	err := cli.Server.Close()
-	if err != nil {
-		log.Error("Failed to close server", "err", err)
-	}
-	os.Exit(1)
-}
-
-func startPortalRpcServer(config Config, conn discover.UDPConn, addr string, clientChan chan<- *Client) error {
-	client := &Client{}
-
-	discV5, localNode, err := initDiscV5(config, conn)
-	if err != nil {
-		return err
-	}
-
-	server := rpc.NewServer()
-	discV5API := portalwire.NewDiscV5API(discV5)
-	err = server.RegisterName("discv5", discV5API)
-	if err != nil {
-		return err
-	}
-	client.DiscV5API = discV5API
-
-	api := &web3.API{}
-	err = server.RegisterName("web3", api)
-	if err != nil {
-		return err
-	}
-	utp := portalwire.NewZenEthUtp(context.Background(), config.Protocol, discV5, conn)
-
-	var historyNetwork *history.Network
-	if slices.Contains(config.Networks, portalwire.History.Name()) {
-		historyNetwork, err = initHistory(config, server, conn, localNode, discV5, utp)
-		if err != nil {
-			return err
-		}
-		client.HistoryNetwork = historyNetwork
-	}
-
-	var beaconNetwork *beacon.Network
-	if slices.Contains(config.Networks, portalwire.Beacon.Name()) {
-		beaconNetwork, err = initBeacon(config, server, conn, localNode, discV5, utp)
-		if err != nil {
-			return err
-		}
-		client.BeaconNetwork = beaconNetwork
-	}
-
-	var stateNetwork *state.Network
-	if slices.Contains(config.Networks, portalwire.State.Name()) {
-		stateNetwork, err = initState(config, server, conn, localNode, discV5, utp)
-		if err != nil {
-			return err
-		}
-		client.StateNetwork = stateNetwork
-	}
-
-	ethApi := &ethapi.API{
-		History: historyNetwork,
-		// static configuration of ChainId, currently only mainnet implemented
-		ChainID: core.DefaultGenesisBlock().Config.ChainID,
-	}
-	err = server.RegisterName("eth", ethApi)
-	if err != nil {
-		return err
-	}
-
-	httpServer := &http.Server{
-		Addr:    addr,
-		Handler: server,
-	}
-	client.Server = httpServer
-
-	clientChan <- client
-	return httpServer.ListenAndServe()
-}
-
-func initDiscV5(config Config, conn discover.UDPConn) (*discover.UDPv5, *enode.LocalNode, error) {
-	discCfg := discover.Config{
-		PrivateKey:  config.PrivateKey,
-		NetRestrict: config.Protocol.NetRestrict,
-		Bootnodes:   config.Protocol.BootstrapNodes,
-		Log:         log.New("protocol", "discV5"),
-	}
-
-	nodeDB, err := enode.OpenDB(config.Protocol.NodeDBPath)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	localNode := enode.NewLocalNode(nodeDB, config.PrivateKey)
-
-	localNode.Set(portalwire.Tag)
-	listenerAddr := conn.LocalAddr().(*net.UDPAddr)
-	natConf := config.Protocol.NAT
-	if natConf != nil && !listenerAddr.IP.IsLoopback() {
-		doPortMapping(natConf, localNode, listenerAddr)
-	}
-
-	discV5, err := discover.ListenV5(conn, localNode, discCfg)
-	if err != nil {
-		return nil, nil, err
-	}
-	return discV5, localNode, nil
-}
-
-func doPortMapping(natm nat.Interface, ln *enode.LocalNode, addr *net.UDPAddr) {
-	const (
-		protocol = "udp"
-		name     = "ethereum discovery"
-	)
-
-	var (
-		intport    = addr.Port
-		extaddr    = &net.UDPAddr{IP: addr.IP, Port: addr.Port}
-		mapTimeout = nat.DefaultMapTimeout
-	)
-	addMapping := func() {
-		// Get the external address.
-		var err error
-		extaddr.IP, err = natm.ExternalIP()
-		if err != nil {
-			log.Debug("Couldn't get external IP", "err", err)
-			return
-		}
-		// Create the mapping.
-		p, err := natm.AddMapping(protocol, extaddr.Port, intport, name, mapTimeout)
-		if err != nil {
-			log.Debug("Couldn't add port mapping", "err", err)
-			return
-		}
-		if p != uint16(extaddr.Port) {
-			extaddr.Port = int(p)
-			log.Info("NAT mapped alternative port")
-		} else {
-			log.Info("NAT mapped port")
-		}
-		// Update IP/port information of the local node.
-		ln.SetStaticIP(extaddr.IP)
-		ln.SetFallbackUDP(extaddr.Port)
-	}
-
-	// Perform mapping once, synchronously.
-	log.Info("Attempting port mapping")
-	addMapping()
-
-	// Refresh the mapping periodically.
-	go func() {
-		refresh := time.NewTimer(mapTimeout)
-		defer refresh.Stop()
-		for range refresh.C {
-			addMapping()
-			refresh.Reset(mapTimeout)
-		}
-	}()
-}
-
-func initHistory(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.ZenEthUtp) (*history.Network, error) {
-	networkName := portalwire.History.Name()
-	db, err := pebble.NewDB(config.DataDir, 16, 400, networkName)
-	if err != nil {
-		return nil, err
-	}
-	contentStorage, err := pebble.NewStorage(storage.PortalStorageConfig{
-		StorageCapacityMB: config.DataCapacity,
-		NodeId:            localNode.ID(),
-		NetworkName:       networkName,
-	}, db)
-	if err != nil {
-		return nil, err
-	}
-	contentQueue := make(chan *portalwire.ContentElement, 50)
-
-	protocol, err := portalwire.NewPortalProtocol(
-		config.Protocol,
-		portalwire.History,
-		config.PrivateKey,
-		conn,
-		localNode,
-		discV5,
-		utp,
-		contentStorage,
-		contentQueue)
-
-	if err != nil {
-		return nil, err
-	}
-	historyAPI := portalwire.NewPortalAPI(protocol)
-	historyNetworkAPI := history.NewHistoryNetworkAPI(historyAPI)
-	err = server.RegisterName("portal", historyNetworkAPI)
-	if err != nil {
-		return nil, err
-	}
-	accumulator, err := history.NewMasterAccumulator()
-	if err != nil {
-		return nil, err
-	}
-	client := rpc.DialInProc(server)
-	historyNetwork := history.NewHistoryNetwork(protocol, &accumulator, client)
-	return historyNetwork, historyNetwork.Start()
-}
-
-func initBeacon(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.ZenEthUtp) (*beacon.Network, error) {
-	networkName := portalwire.Beacon.Name()
-	db, err := pebble.NewDB(config.DataDir, 16, 400, networkName)
-	if err != nil {
-		return nil, err
-	}
-	contentStorage, err := beacon.NewBeaconStorage(storage.PortalStorageConfig{
-		StorageCapacityMB: config.DataCapacity,
-		NodeId:            localNode.ID(),
-		Spec:              configs.Mainnet,
-		NetworkName:       portalwire.Beacon.Name(),
-	}, db)
-	if err != nil {
-		return nil, err
-	}
-	contentQueue := make(chan *portalwire.ContentElement, 50)
-
-	protocol, err := portalwire.NewPortalProtocol(
-		config.Protocol,
-		portalwire.Beacon,
-		config.PrivateKey,
-		conn,
-		localNode,
-		discV5,
-		utp,
-		contentStorage,
-		contentQueue)
-
-	if err != nil {
-		return nil, err
-	}
-	portalApi := portalwire.NewPortalAPI(protocol)
-
-	beaconConfig := beacon.DefaultConfig()
-	if len(config.Protocol.TrustedBlockRoot) > 0 {
-		beaconConfig.DefaultCheckpoint = common.Root(config.Protocol.TrustedBlockRoot)
-	}
-	portalRpc := beacon.NewPortalLightApi(protocol, beaconConfig.Spec)
-	beaconClient, err := beacon.NewConsensusLightClient(portalRpc, &beaconConfig, beaconConfig.DefaultCheckpoint, log.New("beacon", "light-client"))
-	if err != nil {
-		return nil, err
-	}
-
-	beaconAPI := beacon.NewBeaconNetworkAPI(portalApi, beaconClient)
-	err = server.RegisterName("portal", beaconAPI)
-	if err != nil {
-		return nil, err
-	}
-
-	beaconNetwork := beacon.NewBeaconNetwork(protocol, beaconClient)
-	return beaconNetwork, beaconNetwork.Start()
-}
-
-func initState(config Config, server *rpc.Server, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *portalwire.ZenEthUtp) (*state.Network, error) {
-	networkName := portalwire.State.Name()
-	db, err := pebble.NewDB(config.DataDir, 16, 400, networkName)
-	if err != nil {
-		return nil, err
-	}
-	contentStorage, err := pebble.NewStorage(storage.PortalStorageConfig{
-		StorageCapacityMB: config.DataCapacity,
-		NodeId:            localNode.ID(),
-		NetworkName:       networkName,
-	}, db)
-	if err != nil {
-		return nil, err
-	}
-	stateStore := state.NewStateStorage(contentStorage, db)
-	contentQueue := make(chan *portalwire.ContentElement, 50)
-
-	protocol, err := portalwire.NewPortalProtocol(
-		config.Protocol,
-		portalwire.State,
-		config.PrivateKey,
-		conn,
-		localNode,
-		discV5,
-		utp,
-		stateStore,
-		contentQueue)
-
-	if err != nil {
-		return nil, err
-	}
-	api := portalwire.NewPortalAPI(protocol)
-	stateNetworkAPI := state.NewStateNetworkAPI(api)
-	err = server.RegisterName("portal", stateNetworkAPI)
-	if err != nil {
-		return nil, err
-	}
-	client := rpc.DialInProc(server)
-	historyNetwork := state.NewStateNetwork(protocol, client)
-	return historyNetwork, historyNetwork.Start()
 }

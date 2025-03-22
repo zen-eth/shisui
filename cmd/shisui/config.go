@@ -17,11 +17,12 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/urfave/cli/v2"
 	"github.com/zen-eth/shisui/cmd/shisui/utils"
+	"github.com/zen-eth/shisui/portal"
 	"github.com/zen-eth/shisui/portalwire"
 )
 
-func getPortalConfig(ctx *cli.Context) (*Config, error) {
-	config := &Config{
+func getPortalConfig(ctx *cli.Context) (*portal.Config, error) {
+	config := &portal.Config{
 		Protocol: portalwire.DefaultPortalProtocolConfig(),
 		Metrics:  &metrics.DefaultConfig,
 	}
@@ -75,7 +76,7 @@ func getPortalConfig(ctx *cli.Context) (*Config, error) {
 	return config, nil
 }
 
-func setPrivateKey(ctx *cli.Context, config *Config) error {
+func setPrivateKey(ctx *cli.Context, config *portal.Config) error {
 	var privateKey *ecdsa.PrivateKey
 	var err error
 	keyStr := ctx.String(utils.PortalPrivateKeyFlag.Name)
@@ -129,7 +130,7 @@ func setPrivateKey(ctx *cli.Context, config *Config) error {
 	return nil
 }
 
-func writePrivateKey(privateKey *ecdsa.PrivateKey, config *Config, fileName string) error {
+func writePrivateKey(privateKey *ecdsa.PrivateKey, config *portal.Config, fileName string) error {
 	keyEnc := hex.EncodeToString(crypto.FromECDSA(privateKey))
 
 	fullPath := filepath.Join(config.DataDir, fileName)
@@ -152,7 +153,7 @@ func writePrivateKey(privateKey *ecdsa.PrivateKey, config *Config, fileName stri
 	return nil
 }
 
-func readPrivateKey(config *Config, fileName string) (*ecdsa.PrivateKey, error) {
+func readPrivateKey(config *portal.Config, fileName string) (*ecdsa.PrivateKey, error) {
 	fullPath := filepath.Join(config.DataDir, fileName)
 
 	keyBytes, err := os.ReadFile(fullPath)
@@ -171,7 +172,7 @@ func readPrivateKey(config *Config, fileName string) (*ecdsa.PrivateKey, error) 
 
 // setPortalBootstrapNodes creates a list of bootstrap nodes from the command line
 // flags, reverting to pre-configured ones if none have been specified.
-func setPortalBootstrapNodes(ctx *cli.Context, config *Config) {
+func setPortalBootstrapNodes(ctx *cli.Context, config *portal.Config) {
 	urls := portalwire.PortalBootnodes
 	if ctx.IsSet(utils.PortalBootNodesFlag.Name) {
 		flag := ctx.String(utils.PortalBootNodesFlag.Name)
@@ -194,7 +195,7 @@ func setPortalBootstrapNodes(ctx *cli.Context, config *Config) {
 	}
 }
 
-func applyMetricConfig(ctx *cli.Context, cfg *Config) {
+func applyMetricConfig(ctx *cli.Context, cfg *portal.Config) {
 	if ctx.IsSet(utils.MetricsEnabledFlag.Name) {
 		cfg.Metrics.Enabled = ctx.Bool(utils.MetricsEnabledFlag.Name)
 	}
