@@ -79,6 +79,7 @@ func (tr *tableRevalidation) nodeEndpointChanged(tab *Table, n *tableNode) {
 // to schedule a timer. However, run can be called at any time.
 func (tr *tableRevalidation) run(tab *Table, now mclock.AbsTime) (nextTime mclock.AbsTime) {
 	reval := func(list *revalidationList) {
+		// nextTime locked for reading, unlock in the end of function or before schedule to prevent deadlock
 		list.ntLock.RLock()
 		if list.nextTime <= now {
 			if n := list.get(now, &tab.rand, tr.activeReq); n != nil {
@@ -86,10 +87,12 @@ func (tr *tableRevalidation) run(tab *Table, now mclock.AbsTime) (nextTime mcloc
 			}
 			// Update nextTime regardless if any requests were started because
 			// current value has passed.
+			// unlock before schedule to prevent deadlock with write lock, return to prevent double unlock
 			list.ntLock.RUnlock()
 			list.schedule(now, &tab.rand)
 			return
 		}
+		// in case of false if verification, unlock nextTime
 		list.ntLock.RUnlock()
 	}
 	reval(&tr.fast)
