@@ -32,8 +32,8 @@ func (p *API) BeaconLookupEnr(nodeId string) (string, error) {
 	return p.LookupEnr(nodeId)
 }
 
-func (p *API) BeaconPing(enr string) (*portalwire.PortalPongResp, error) {
-	return p.Ping(enr)
+func (p *API) BeaconPing(enr string, payloadType *uint16, payload *string) (*portalwire.PortalPongResp, error) {
+	return p.Ping(enr, payloadType, payload)
 }
 
 func (p *API) BeaconFindNodes(enr string, distances []uint) ([]string, error) {
