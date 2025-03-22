@@ -479,6 +479,8 @@ func (p *PortalProtocol) genPayloadByType(payloadType uint16) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+	default:
+		return nil, fmt.Errorf("payload type %d is not supported", payloadType)
 	}
 	return data, nil
 }
