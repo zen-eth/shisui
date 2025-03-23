@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/core"
@@ -130,26 +132,40 @@ func NewNode(config *Config, conn discover.UDPConn) (*Node, error) {
 
 // Start starts all node services
 func (n *Node) Start() error {
-	// Start all network services
-	if n.historyNetwork != nil {
-		if err := n.historyNetwork.Start(); err != nil {
-			return err
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var startErr error
+
+	startNetwork := func(start func() error, name string) {
+		defer wg.Done()
+		if err := start(); err != nil {
+			mu.Lock()
+			startErr = fmt.Errorf("failed to start %s network: %w", name, err)
+			mu.Unlock()
 		}
+	}
+
+	if n.historyNetwork != nil {
+		wg.Add(1)
+		go startNetwork(n.historyNetwork.Start, "history")
 	}
 
 	if n.beaconNetwork != nil {
-		if err := n.beaconNetwork.Start(); err != nil {
-			return err
-		}
+		wg.Add(1)
+		go startNetwork(n.beaconNetwork.Start, "beacon")
 	}
 
 	if n.stateNetwork != nil {
-		if err := n.stateNetwork.Start(); err != nil {
-			return err
-		}
+		wg.Add(1)
+		go startNetwork(n.stateNetwork.Start, "state")
 	}
 
-	// Start HTTP server
+	wg.Wait()
+
+	if startErr != nil {
+		return startErr
+	}
+
 	go func() {
 		if err := n.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("HTTP server error", "err", err)
@@ -161,24 +177,45 @@ func (n *Node) Start() error {
 
 // Stop gracefully stops all node services
 func (n *Node) Stop() {
+	var wg sync.WaitGroup
+
 	if n.historyNetwork != nil {
-		log.Info("Closing history network...")
-		n.historyNetwork.Stop()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Closing history network...")
+			n.historyNetwork.Stop()
+		}()
 	}
 
 	if n.beaconNetwork != nil {
-		log.Info("Closing beacon network...")
-		n.beaconNetwork.Stop()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Closing beacon network...")
+			n.beaconNetwork.Stop()
+		}()
 	}
 
 	if n.stateNetwork != nil {
-		log.Info("Closing state network...")
-		n.stateNetwork.Stop()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Closing state network...")
+			n.stateNetwork.Stop()
+		}()
 	}
+
+	wg.Wait()
 
 	if n.localNode != nil && n.localNode.Database() != nil {
 		log.Info("Closing Database...")
 		n.localNode.Database().Close()
+	}
+
+	if n.utp != nil {
+		log.Info("Closing UTP protocol...")
+		n.utp.Stop()
 	}
 
 	if n.discV5 != nil {

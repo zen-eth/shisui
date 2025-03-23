@@ -119,21 +119,21 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 	//node1.Log = testlog.Logger(t, log.LvlTrace)
 	err = node1.Start()
 	assert.NoError(t, err)
-	defer node1.Stop()
+	defer stopNode(node1)
 
 	node2, err := setupLocalPortalNode(t, ":8778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	//node2.Log = testlog.Logger(t, log.LvlTrace)
 	err = node2.Start()
 	assert.NoError(t, err)
-	defer node2.Stop()
+	defer stopNode(node2)
 
 	node3, err := setupLocalPortalNode(t, ":8779", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	//node3.Log = testlog.Logger(t, log.LvlTrace)
 	err = node3.Start()
 	assert.NoError(t, err)
-	defer node3.Stop()
+	defer stopNode(node3)
 
 	time.Sleep(12 * time.Second)
 
@@ -239,14 +239,14 @@ func TestPortalWireProtocol(t *testing.T) {
 	node1.Log = testlog.Logger(t, log.LevelDebug)
 	err = node1.Start()
 	assert.NoError(t, err)
-	defer node1.Stop()
+	defer stopNode(node1)
 
 	node2, err := setupLocalPortalNode(t, ":7778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LevelDebug)
 	err = node2.Start()
 	assert.NoError(t, err)
-	defer node2.Stop()
+	defer stopNode(node2)
 	// time.Sleep(12 * time.Second)
 
 	node3, err := setupLocalPortalNode(t, ":7779", []*enode.Node{node1.localNode.Node()})
@@ -254,7 +254,7 @@ func TestPortalWireProtocol(t *testing.T) {
 	node3.Log = testlog.Logger(t, log.LevelDebug)
 	err = node3.Start()
 	assert.NoError(t, err)
-	defer node3.Stop()
+	defer stopNode(node3)
 
 	time.Sleep(12 * time.Second)
 
@@ -437,9 +437,9 @@ func TestContentLookup(t *testing.T) {
 	assert.NoError(t, err)
 
 	defer func() {
-		node1.Stop()
-		node2.Stop()
-		node3.Stop()
+		stopNode(node1)
+		stopNode(node2)
+		stopNode(node3)
 	}()
 
 	time.Sleep(time.Second * 12)
@@ -482,9 +482,9 @@ func TestTraceContentLookup(t *testing.T) {
 
 	time.Sleep(time.Second * 12)
 
-	defer node1.Stop()
-	defer node2.Stop()
-	defer node3.Stop()
+	defer stopNode(node1)
+	defer stopNode(node2)
+	defer stopNode(node3)
 
 	contentKey := []byte{0x3, 0x4}
 	content := []byte{0x1, 0x2}
@@ -530,4 +530,10 @@ func TestTraceContentLookup(t *testing.T) {
 
 	node1Response := res.Trace.Responses[node1Id]
 	assert.Equal(t, node1Response.RespondedWith, ([]string)(nil))
+}
+
+func stopNode(node *PortalProtocol) {
+	node.Stop()
+	node.Utp.Stop()
+	node.DiscV5.Close()
 }

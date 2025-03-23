@@ -71,7 +71,11 @@ func TestReceiptsAndBody(t *testing.T) {
 func testReceiptsAndBody(entryMap map[string]contentEntry, t *testing.T) {
 	historyNetwork, err := genHistoryNetwork(":7893", nil)
 	require.NoError(t, err)
-	defer historyNetwork.Stop()
+	defer func() {
+		historyNetwork.Stop()
+		historyNetwork.portalProtocol.Utp.Stop()
+		historyNetwork.portalProtocol.DiscV5.Close()
+	}()
 
 	headerEntry := entryMap["header"]
 	// validateContents will store the content
