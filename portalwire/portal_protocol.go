@@ -334,10 +334,6 @@ func (p *PortalProtocol) Start() error {
 func (p *PortalProtocol) Stop() {
 	p.cancelCloseCtx()
 	p.table.close()
-	p.DiscV5.Close()
-	if p.Utp != nil {
-		p.Utp.Stop()
-	}
 }
 
 func (p *PortalProtocol) RoutingTableInfo() [][]string {

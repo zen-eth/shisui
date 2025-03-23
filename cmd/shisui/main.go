@@ -130,30 +130,17 @@ func shisui(ctx *cli.Context) error {
 		storageCapacity.Update(ctx.Int64(utils.PortalDataCapacityFlag.Name))
 	}
 
-	portalConfig := &portal.Config{
-		Protocol:     config.Protocol,
-		PrivateKey:   config.PrivateKey,
-		RpcAddr:      config.RpcAddr,
-		DataDir:      config.DataDir,
-		DataCapacity: config.DataCapacity,
-		LogLevel:     config.LogLevel,
-		Networks:     config.Networks,
-		Metrics:      config.Metrics,
-	}
-
-	node, err := portal.NewNode(portalConfig, conn)
+	node, err := portal.NewNode(config, conn)
 	if err != nil {
 		return err
 	}
 
-	// Handle graceful shutdown
-	go handleInterrupt(node)
-
-	// Start the node
 	if err = node.Start(); err != nil {
 		log.Error("Failed to start node", "err", err)
 		os.Exit(1)
 	}
+
+	go handleInterrupt(node)
 
 	node.Wait()
 
@@ -206,7 +193,7 @@ func handleInterrupt(node *portal.Node) {
 	log.Warn("Closing Shisui gracefully (type CTRL-C again to force quit)")
 
 	// Gracefully shutdown the node
-	node.Stop()
+	go node.Stop()
 
 	<-interrupt
 	os.Exit(1)
