@@ -32,14 +32,23 @@ import (
 
 // Config holds configuration for the Shisui client
 type Config struct {
-	Protocol     *portalwire.PortalProtocolConfig
-	PrivateKey   *ecdsa.PrivateKey
-	RpcAddr      string
-	DataDir      string
-	DataCapacity uint64
-	LogLevel     int
-	Networks     []string
-	Metrics      *metrics.Config
+	PortalProtocolConfig *portalwire.PortalProtocolConfig
+	PrivateKey           *ecdsa.PrivateKey
+	IsGnetEnabled        bool
+	RpcAddr              string
+	DataDir              string
+	DataCapacity         uint64
+	LogLevel             int
+	Networks             []string
+	Metrics              *metrics.Config
+}
+
+func DefaultConfig() *Config {
+	return &Config{
+		PortalProtocolConfig: portalwire.DefaultPortalProtocolConfig(),
+		Metrics:              &metrics.DefaultConfig,
+		IsGnetEnabled:        false,
+	}
 }
 
 // Node represents a Shisui node with all its services
@@ -59,20 +68,25 @@ type Node struct {
 }
 
 // NewNode creates a new Node with the given config
-func NewNode(config *Config, conn discover.UDPConn) (*Node, error) {
+func NewNode(config *Config) (*Node, error) {
 	node := &Node{
 		config: config,
-		conn:   conn,
 		stop:   make(chan struct{}),
 	}
 
-	// Initialize base components
-	err := node.initDiscV5()
+	// Initialize UDP connection
+	err := node.initUDP()
 	if err != nil {
 		return nil, err
 	}
 
-	node.utp = portalwire.NewZenEthUtp(context.Background(), config.Protocol, node.discV5, conn)
+	// Initialize base components
+	err = node.initDiscV5()
+	if err != nil {
+		return nil, err
+	}
+
+	node.utp = portalwire.NewZenEthUtp(context.Background(), config.PortalProtocolConfig, node.discV5, node.conn)
 
 	// Initialize RPC server
 	node.rpcServer = rpc.NewServer()
@@ -241,16 +255,40 @@ func (n *Node) Wait() {
 	<-n.stop
 }
 
+func (n *Node) initUDP() error {
+	var err error
+	if n.config.IsGnetEnabled {
+		conn := portalwire.NewGnetConn(log.New("discv5", "gnet"))
+		err = conn.ListenUDP(context.Background(), n.config.PortalProtocolConfig.ListenAddr)
+		if err != nil {
+			return err
+		}
+		n.conn = conn
+		return nil
+	} else {
+		var addr *net.UDPAddr
+		addr, err = net.ResolveUDPAddr("udp", n.config.PortalProtocolConfig.ListenAddr)
+		if err != nil {
+			return err
+		}
+		n.conn, err = net.ListenUDP("udp", addr)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
 // initDiscV5 initializes the discV5 protocol and local node
 func (n *Node) initDiscV5() error {
 	discCfg := discover.Config{
 		PrivateKey:  n.config.PrivateKey,
-		NetRestrict: n.config.Protocol.NetRestrict,
-		Bootnodes:   n.config.Protocol.BootstrapNodes,
+		NetRestrict: n.config.PortalProtocolConfig.NetRestrict,
+		Bootnodes:   n.config.PortalProtocolConfig.BootstrapNodes,
 		Log:         log.New("protocol", "discV5"),
 	}
 
-	nodeDB, err := enode.OpenDB(n.config.Protocol.NodeDBPath)
+	nodeDB, err := enode.OpenDB(n.config.PortalProtocolConfig.NodeDBPath)
 	if err != nil {
 		return err
 	}
@@ -259,7 +297,7 @@ func (n *Node) initDiscV5() error {
 
 	n.localNode.Set(portalwire.Tag)
 	listenerAddr := n.conn.LocalAddr().(*net.UDPAddr)
-	natConf := n.config.Protocol.NAT
+	natConf := n.config.PortalProtocolConfig.NAT
 	if natConf != nil && !listenerAddr.IP.IsLoopback() {
 		doPortMapping(natConf, n.localNode, listenerAddr)
 	}
@@ -288,7 +326,7 @@ func (n *Node) initHistoryNetwork() error {
 	contentQueue := make(chan *portalwire.ContentElement, 50)
 
 	protocol, err := portalwire.NewPortalProtocol(
-		n.config.Protocol,
+		n.config.PortalProtocolConfig,
 		portalwire.History,
 		n.config.PrivateKey,
 		n.conn,
@@ -340,7 +378,7 @@ func (n *Node) initBeaconNetwork() error {
 	contentQueue := make(chan *portalwire.ContentElement, 50)
 
 	protocol, err := portalwire.NewPortalProtocol(
-		n.config.Protocol,
+		n.config.PortalProtocolConfig,
 		portalwire.Beacon,
 		n.config.PrivateKey,
 		n.conn,
@@ -357,8 +395,8 @@ func (n *Node) initBeaconNetwork() error {
 	portalApi := portalwire.NewPortalAPI(protocol)
 
 	beaconConfig := beacon.DefaultConfig()
-	if len(n.config.Protocol.TrustedBlockRoot) > 0 {
-		beaconConfig.DefaultCheckpoint = common.Root(n.config.Protocol.TrustedBlockRoot)
+	if len(n.config.PortalProtocolConfig.TrustedBlockRoot) > 0 {
+		beaconConfig.DefaultCheckpoint = common.Root(n.config.PortalProtocolConfig.TrustedBlockRoot)
 	}
 
 	portalRpc := beacon.NewPortalLightApi(protocol, beaconConfig.Spec)
@@ -398,7 +436,7 @@ func (n *Node) initStateNetwork() error {
 	contentQueue := make(chan *portalwire.ContentElement, 50)
 
 	protocol, err := portalwire.NewPortalProtocol(
-		n.config.Protocol,
+		n.config.PortalProtocolConfig,
 		portalwire.State,
 		n.config.PrivateKey,
 		n.conn,

@@ -37,7 +37,7 @@ func TestGenConfig(t *testing.T) {
 	require.Equal(t, config.DataDir, tmpDir)
 	require.Equal(t, config.LogLevel, 3)
 	// require.Equal(t, config.RpcAddr, "127.0.0.11:8888")
-	require.Equal(t, config.Protocol.ListenAddr, ":9999")
+	require.Equal(t, config.PortalProtocolConfig.ListenAddr, ":9999")
 	require.Equal(t, config.Networks, []string{"history"})
 }
 
