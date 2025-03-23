@@ -14,12 +14,14 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-// Package portalwire implements the Node Discovery PortalProtocolConfig.
+// Package portalwire implements the ethereum portal network specs.
 //
-// The Node Discovery protocol provides a way to find RLPx nodes that
-// can be connected to. It uses a Kademlia-like protocol to maintain a
-// distributed database of the IDs and endpoints of all listening
-// nodes.
+// The Portal wire protocol is the default peer-to-peer protocol by which Portal nodes communicate.
+// The Portal wire protocol enables nodes to communicate over the [Node Discovery Protocol v5](https://github.com/ethereum/devp2p/blob/56a498ee34ee0fb69ffd33dda026d632af4c4048/discv5/discv5-wire.md#talkreq-request-0x05) layer using the `TALKREQ` and `TALKRESP` messages.
+// Sub-protocols using the Portal wire protocol must choose a byte string to serve as the protocol identifier.
+// Messages are differentiated between different sub-protocol by this protocol identifier which is set in the `TALKREQ` message.
+// Sub-protocol using the wire protocol may choose to exclude certain message types and must specify which messages are supported.
+// Unsupported messages should receive a `TALKRESP` message with an empty payload.
 package portalwire
 
 import (
