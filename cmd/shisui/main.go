@@ -128,8 +128,7 @@ func shisui(ctx *cli.Context) error {
 	}
 
 	if err = node.Start(); err != nil {
-		log.Error("Failed to start node", "err", err)
-		os.Exit(1)
+		return err
 	}
 
 	go handleInterrupt(node)
