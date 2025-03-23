@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/urfave/cli/v2"
@@ -22,10 +21,7 @@ import (
 )
 
 func getPortalConfig(ctx *cli.Context) (*portal.Config, error) {
-	config := &portal.Config{
-		Protocol: portalwire.DefaultPortalProtocolConfig(),
-		Metrics:  &metrics.DefaultConfig,
-	}
+	config := portal.DefaultConfig()
 
 	httpAddr := ctx.String(utils.PortalRPCListenAddrFlag.Name)
 	httpPort := ctx.String(utils.PortalRPCPortFlag.Name)
@@ -33,11 +29,12 @@ func getPortalConfig(ctx *cli.Context) (*portal.Config, error) {
 	config.DataDir = ctx.String(utils.PortalDataDirFlag.Name)
 	config.DataCapacity = ctx.Uint64(utils.PortalDataCapacityFlag.Name)
 	config.LogLevel = ctx.Int(utils.PortalLogLevelFlag.Name)
+	config.IsGnetEnabled = ctx.Bool(utils.PortalDiscv5GnetFlag.Name)
 	port := ctx.String(utils.PortalUDPPortFlag.Name)
 	if !strings.HasPrefix(port, ":") {
-		config.Protocol.ListenAddr = ":" + port
+		config.PortalProtocolConfig.ListenAddr = ":" + port
 	} else {
-		config.Protocol.ListenAddr = port
+		config.PortalProtocolConfig.ListenAddr = port
 	}
 
 	trustedBlockRoot := ctx.String(utils.PortalTrustedBlockRootFlag.Name)
@@ -52,7 +49,7 @@ func getPortalConfig(ctx *cli.Context) (*portal.Config, error) {
 		if err != nil {
 			return config, err
 		}
-		config.Protocol.TrustedBlockRoot = data
+		config.PortalProtocolConfig.TrustedBlockRoot = data
 	}
 
 	err := setPrivateKey(ctx, config)
@@ -66,7 +63,7 @@ func getPortalConfig(ctx *cli.Context) (*portal.Config, error) {
 		if err != nil {
 			return config, err
 		}
-		config.Protocol.NAT = natInterface
+		config.PortalProtocolConfig.NAT = natInterface
 	}
 
 	setPortalBootstrapNodes(ctx, config)
@@ -190,7 +187,7 @@ func setPortalBootstrapNodes(ctx *cli.Context, config *portal.Config) {
 				log.Error("Bootstrap URL invalid", "enode", url, "err", err)
 				continue
 			}
-			config.Protocol.BootstrapNodes = append(config.Protocol.BootstrapNodes, node)
+			config.PortalProtocolConfig.BootstrapNodes = append(config.PortalProtocolConfig.BootstrapNodes, node)
 		}
 	}
 }

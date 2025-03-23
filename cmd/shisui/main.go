@@ -1,9 +1,7 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"net"
 	"os/signal"
 	"slices"
 	"syscall"
@@ -13,7 +11,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/mattn/go-isatty"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/urfave/cli/v2"
@@ -115,11 +112,6 @@ func shisui(ctx *cli.Context) error {
 		return nil
 	}
 
-	conn, err := newConn(ctx, config.Protocol.ListenAddr)
-	if err != nil {
-		return err
-	}
-
 	// Start metrics export if enabled
 	utils.SetupMetrics(config.Metrics)
 
@@ -130,7 +122,7 @@ func shisui(ctx *cli.Context) error {
 		storageCapacity.Update(ctx.Int64(utils.PortalDataCapacityFlag.Name))
 	}
 
-	node, err := portal.NewNode(config, conn)
+	node, err := portal.NewNode(config)
 	if err != nil {
 		return err
 	}
@@ -145,21 +137,6 @@ func shisui(ctx *cli.Context) error {
 	node.Wait()
 
 	return nil
-}
-
-func newConn(ctx *cli.Context, addrStr string) (discover.UDPConn, error) {
-	if useGnet := ctx.Bool(utils.PortalDiscv5GnetFlag.Name); useGnet {
-		conn := portalwire.NewGnetConn(log.New("discv5", "gnet"))
-		err := conn.ListenUDP(context.Background(), addrStr)
-		return conn, err
-	} else {
-		addr, err := net.ResolveUDPAddr("udp", addrStr)
-		if err != nil {
-			return nil, err
-		}
-		conn, err := net.ListenUDP("udp", addr)
-		return conn, err
-	}
 }
 
 func setDefaultLogger(logLevel int, logFormat string) error {

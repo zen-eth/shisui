@@ -144,7 +144,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 
 	PortalUDPPortFlag = &cli.IntFlag{
 		Name:     "udp.port",
-		Usage:    "Protocol UDP server listening port",
+		Usage:    "PortalProtocolConfig UDP server listening port",
 		Value:    9009,
 		Category: flags.PortalNetworkCategory,
 	}
