@@ -480,7 +480,7 @@ func (p *PortalProtocol) genPayloadByType(payloadType uint16) ([]byte, error) {
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("payload type %d is not supported", payloadType)
+		return nil, pingext.ErrPayloadTypeIsNotSupported{}
 	}
 	return data, nil
 }
