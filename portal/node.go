@@ -48,6 +48,11 @@ func DefaultConfig() *Config {
 		PortalProtocolConfig: portalwire.DefaultPortalProtocolConfig(),
 		Metrics:              &metrics.DefaultConfig,
 		IsGnetEnabled:        false,
+		RpcAddr:              "localhost:8545",
+		DataDir:              "./",
+		DataCapacity:         1000 * 10,
+		LogLevel:             3,
+		Networks:             []string{"history"},
 	}
 }
 
