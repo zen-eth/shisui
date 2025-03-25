@@ -59,7 +59,7 @@ help: Makefile
 
 #? lint-deps: Install lint dependencies.
 lint-deps:
-	@which golangci-lint || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@which golangci-lint > /dev/null && golangci-lint --version | grep -q 'v[2-9]' || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 #? lint: Run linters.
 lint: lint-deps
