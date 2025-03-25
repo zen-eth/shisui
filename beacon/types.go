@@ -82,13 +82,14 @@ func (flcb *ForkedLightClientBootstrap) Deserialize(spec *common.Spec, dr *codec
 		return err
 	}
 
-	if flcb.ForkDigest == Bellatrix {
+	switch flcb.ForkDigest {
+	case Bellatrix:
 		flcb.Bootstrap = &altair.LightClientBootstrap{}
-	} else if flcb.ForkDigest == Capella {
+	case Capella:
 		flcb.Bootstrap = &capella.LightClientBootstrap{}
-	} else if flcb.ForkDigest == Deneb {
+	case Deneb:
 		flcb.Bootstrap = &deneb.LightClientBootstrap{}
-	} else {
+	default:
 		return errors.New("unknown fork digest")
 	}
 
@@ -130,13 +131,14 @@ func (flcu *ForkedLightClientUpdate) Deserialize(spec *common.Spec, dr *codec.De
 		return err
 	}
 
-	if flcu.ForkDigest == Bellatrix {
+	switch flcu.ForkDigest {
+	case Bellatrix:
 		flcu.LightClientUpdate = &altair.LightClientUpdate{}
-	} else if flcu.ForkDigest == Capella {
+	case Capella:
 		flcu.LightClientUpdate = &capella.LightClientUpdate{}
-	} else if flcu.ForkDigest == Deneb {
+	case Deneb:
 		flcu.LightClientUpdate = &deneb.LightClientUpdate{}
-	} else {
+	default:
 		return errors.New("unknown fork digest")
 	}
 
@@ -215,13 +217,14 @@ func (flcou *ForkedLightClientOptimisticUpdate) Deserialize(spec *common.Spec, d
 		return err
 	}
 
-	if flcou.ForkDigest == Bellatrix {
+	switch flcou.ForkDigest {
+	case Bellatrix:
 		flcou.LightClientOptimisticUpdate = &altair.LightClientOptimisticUpdate{}
-	} else if flcou.ForkDigest == Capella {
+	case Capella:
 		flcou.LightClientOptimisticUpdate = &capella.LightClientOptimisticUpdate{}
-	} else if flcou.ForkDigest == Deneb {
+	case Deneb:
 		flcou.LightClientOptimisticUpdate = &deneb.LightClientOptimisticUpdate{}
-	} else {
+	default:
 		return errors.New("unknown fork digest")
 	}
 
@@ -253,11 +256,12 @@ func (flcou *ForkedLightClientOptimisticUpdate) HashTreeRoot(spec *common.Spec, 
 }
 
 func (flcou *ForkedLightClientOptimisticUpdate) GetSignatureSlot() uint64 {
-	if flcou.ForkDigest == Bellatrix {
+	switch flcou.ForkDigest {
+	case Bellatrix:
 		return uint64(flcou.LightClientOptimisticUpdate.(*altair.LightClientOptimisticUpdate).SignatureSlot)
-	} else if flcou.ForkDigest == Capella {
+	case Capella:
 		return uint64(flcou.LightClientOptimisticUpdate.(*capella.LightClientOptimisticUpdate).SignatureSlot)
-	} else if flcou.ForkDigest == Deneb {
+	case Deneb:
 		return uint64(flcou.LightClientOptimisticUpdate.(*deneb.LightClientOptimisticUpdate).SignatureSlot)
 	}
 	return 0
@@ -274,13 +278,14 @@ func (flcfu *ForkedLightClientFinalityUpdate) Deserialize(spec *common.Spec, dr 
 		return err
 	}
 
-	if flcfu.ForkDigest == Bellatrix {
+	switch flcfu.ForkDigest {
+	case Bellatrix:
 		flcfu.LightClientFinalityUpdate = &altair.LightClientFinalityUpdate{}
-	} else if flcfu.ForkDigest == Capella {
+	case Capella:
 		flcfu.LightClientFinalityUpdate = &capella.LightClientFinalityUpdate{}
-	} else if flcfu.ForkDigest == Deneb {
+	case Deneb:
 		flcfu.LightClientFinalityUpdate = &deneb.LightClientFinalityUpdate{}
-	} else {
+	default:
 		return errors.New("unknown fork digest")
 	}
 
@@ -312,11 +317,12 @@ func (flcfu *ForkedLightClientFinalityUpdate) HashTreeRoot(spec *common.Spec, h 
 }
 
 func (flcfu *ForkedLightClientFinalityUpdate) GetBeaconSlot() uint64 {
-	if flcfu.ForkDigest == Bellatrix {
+	switch flcfu.ForkDigest {
+	case Bellatrix:
 		return uint64(flcfu.LightClientFinalityUpdate.(*altair.LightClientFinalityUpdate).FinalizedHeader.Slot)
-	} else if flcfu.ForkDigest == Capella {
+	case Capella:
 		return uint64(flcfu.LightClientFinalityUpdate.(*capella.LightClientFinalityUpdate).FinalizedHeader.Beacon.Slot)
-	} else if flcfu.ForkDigest == Deneb {
+	case Deneb:
 		return uint64(flcfu.LightClientFinalityUpdate.(*deneb.LightClientFinalityUpdate).FinalizedHeader.Beacon.Slot)
 	}
 	return 0

@@ -552,11 +552,12 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 		log.Debug("Node added to replacements list", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	}
 	var contentKeyLen int
-	if request.Kind == TransientOfferRequestKind {
+	switch request.Kind {
+	case TransientOfferRequestKind:
 		contentKeyLen = len(request.Request.(*TransientOfferRequest).Contents)
-	} else if request.Kind == TransientOfferRequestWithResultKind {
+	case TransientOfferRequestWithResultKind:
 		contentKeyLen = 1
-	} else {
+	default:
 		contentKeyLen = len(request.Request.(*PersistOfferRequest).ContentKeys)
 	}
 
@@ -595,15 +596,16 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 			default:
 				contents := make([][]byte, 0, contentKeyBitlist.Count())
 				var content []byte
-				if request.Kind == TransientOfferRequestKind {
+				switch request.Kind {
+				case TransientOfferRequestKind:
 					for _, index := range contentKeyBitlist.BitIndices() {
 						content = request.Request.(*TransientOfferRequest).Contents[index].Content
 						contents = append(contents, content)
 					}
-				} else if request.Kind == TransientOfferRequestWithResultKind {
+				case TransientOfferRequestWithResultKind:
 					content = request.Request.(*TransientOfferRequestWithResult).Content.Content
 					contents = append(contents, content)
-				} else {
+				default:
 					for _, index := range contentKeyBitlist.BitIndices() {
 						contentKey := request.Request.(*PersistOfferRequest).ContentKeys[index]
 						contentId := p.toContentId(contentKey)
@@ -1991,7 +1993,8 @@ func decodeContents(payload []byte) ([][]byte, error) {
 }
 
 func getContentKeys(request *OfferRequest) [][]byte {
-	if request.Kind == TransientOfferRequestKind {
+	switch request.Kind {
+	case TransientOfferRequestKind:
 		contentKeys := make([][]byte, 0)
 		contents := request.Request.(*TransientOfferRequest).Contents
 		for _, content := range contents {
@@ -1999,10 +2002,10 @@ func getContentKeys(request *OfferRequest) [][]byte {
 		}
 
 		return contentKeys
-	} else if request.Kind == TransientOfferRequestWithResultKind {
+	case TransientOfferRequestWithResultKind:
 		content := request.Request.(*TransientOfferRequestWithResult).Content
 		return [][]byte{content.ContentKey}
-	} else {
+	default:
 		return request.Request.(*PersistOfferRequest).ContentKeys
 	}
 }

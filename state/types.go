@@ -74,13 +74,14 @@ func (n *Nibbles) Deserialize(dr *codec.DecodingReader) error {
 	flag, first := unpackNibblePair(firstByte)
 	nibbles := make([]byte, 0, 1+2*len(packedNibbles))
 
-	if flag == 0 {
+	switch flag {
+	case 0:
 		if first != 0 {
 			return fmt.Errorf("nibbles: The lowest 4 bits of the first byte must be 0, but was: %x", first)
 		}
-	} else if flag == 1 {
+	case 1:
 		nibbles = append(nibbles, first)
-	} else {
+	default:
 		return fmt.Errorf("nibbles: The highest 4 bits of the first byte must be 0 or 1, but was: %x", flag)
 	}
 

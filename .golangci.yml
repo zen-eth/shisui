@@ -1,74 +1,78 @@
+version: "2"
 linters:
   enable:
-    - gofmt
-    - govet
-    - gosimple
-    - staticcheck
-    - errcheck
-    - ineffassign
-    - typecheck
-    - unused
-    - revive
+    - bodyclose
+    - copyloopvar
     - gocyclo
-#    - gosec
     - misspell
     - prealloc
-    - copyloopvar
-#    - gocritic
-    - bodyclose
+    - revive
     - unconvert
     - unparam
     - whitespace
-#    - wsl
-
-linters-settings:
-  revive:
-    enable-all-rules: false
-    # here we enable specific useful rules
-    # see https://golangci-lint.run/usage/linters/#revive for supported rules
+  settings:
+    revive:
+      enable-all-rules: false
+      rules:
+        - name: receiver-naming
+          severity: warning
+          disabled: false
+          exclude:
+            - ""
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: receiver-naming
-        severity: warning
-        disabled: false
-        exclude: [""]
-
-issues:
-  exclude-dirs:
-    - vendor
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-    - path: history/storage_test.go
-      text: "`newContentStorage` - `nodeDataDir` always receives `nodeDataDir`"
-    - path: state/trie/node.go
-      linters:
-         - unused
-    - path: state/trie/node_enc.go
-      linters:
-        - unused
-    - path: state/trie/encoding.go
-      linters:
-        - unused
-    - path: portalwire/table_util_test.go
-      linters:
-        - unused
-    - path: portalwire/table.go
-      linters:
-        - unused
-        - unparam
-    - path: portalwire/table_test.go
-      linters:
-        - unparam
-    - path: portalwire/table_reval.go
-      linters:
-        - unparam
-    - path: portalwire/lookup.go
-      linters:
-        - unused
-    - path: state/trie/node_test.go
-      text: "`randBytes` - `n` always receives `32`"
+      - linters:
+          - errcheck
+        path: _test\.go
+      - linters:
+          - unused
+        path: state/trie/node.go
+      - linters:
+          - unused
+        path: state/trie/node_enc.go
+      - linters:
+          - unused
+        path: state/trie/encoding.go
+      - linters:
+          - unused
+        path: portalwire/table_util_test.go
+      - linters:
+          - unparam
+          - unused
+        path: portalwire/table.go
+      - linters:
+          - unparam
+        path: portalwire/table_test.go
+      - linters:
+          - unparam
+        path: portalwire/table_reval.go
+      - linters:
+          - unused
+        path: portalwire/lookup.go
+      - linters:
+          - unparam
+        path: state/trie/node_test.go
+    paths:
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$
 
 run:
   timeout: 10m
-

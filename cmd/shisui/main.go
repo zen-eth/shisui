@@ -140,12 +140,12 @@ func shisui(ctx *cli.Context) error {
 
 func setDefaultLogger(logLevel int, logFormat string) error {
 	var glogger *log.GlogHandler
-	switch {
-	case logFormat == "json":
+	switch logFormat {
+	case "json":
 		glogger = log.NewGlogHandler(log.JSONHandler(os.Stderr))
-	case logFormat == "logfmt":
+	case "logfmt":
 		glogger = log.NewGlogHandler(log.LogfmtHandler(os.Stderr))
-	case logFormat == "", logFormat == "terminal":
+	case "", "terminal":
 		useColor := (isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())) && os.Getenv("TERM") != "dumb"
 		glogger = log.NewGlogHandler(log.NewTerminalHandler(os.Stderr, useColor))
 	default:

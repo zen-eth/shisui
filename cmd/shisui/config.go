@@ -39,7 +39,7 @@ func getPortalConfig(ctx *cli.Context) (*portal.Config, error) {
 
 	trustedBlockRoot := ctx.String(utils.PortalTrustedBlockRootFlag.Name)
 	if trustedBlockRoot != "" {
-		if !(strings.HasPrefix(trustedBlockRoot, "0x") || strings.HasPrefix(trustedBlockRoot, "0X")) {
+		if !strings.HasPrefix(trustedBlockRoot, "0x") && !strings.HasPrefix(trustedBlockRoot, "0X") {
 			trustedBlockRoot = "0x" + trustedBlockRoot
 		}
 		if len(trustedBlockRoot) != 66 {
