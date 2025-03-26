@@ -28,8 +28,8 @@ func (p *API) StateLookupEnr(nodeId string) (string, error) {
 	return p.LookupEnr(nodeId)
 }
 
-func (p *API) StatePing(enr string) (*portalwire.PortalPongResp, error) {
-	return p.Ping(enr)
+func (p *API) StatePing(enr string, payloadType *uint16, payload *string) (*portalwire.PortalPongResp, error) {
+	return p.Ping(enr, payloadType, payload)
 }
 
 func (p *API) StateFindNodes(enr string, distances []uint) ([]string, error) {

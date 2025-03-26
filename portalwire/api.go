@@ -6,7 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/holiman/uint256"
+	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 )
 
 // DiscV5API json-rpc spec
@@ -42,8 +42,9 @@ type DiscV5PongResp struct {
 }
 
 type PortalPongResp struct {
-	EnrSeq     uint32 `json:"enrSeq"`
-	DataRadius string `json:"dataRadius"`
+	EnrSeq      uint32      `json:"enrSeq"`
+	PayloadType uint16      `json:"payloadType"`
+	Payload     interface{} `json:"payload"`
 }
 
 type ContentInfo struct {
@@ -331,26 +332,52 @@ func (p *PortalProtocolAPI) LookupEnr(nodeId string) (string, error) {
 	return enr.String(), nil
 }
 
-func (p *PortalProtocolAPI) Ping(enr string) (*PortalPongResp, error) {
+func (p *PortalProtocolAPI) Ping(enr string, payloadType *uint16, payload *string) (*PortalPongResp, error) {
+	if payloadType == nil && payload != nil {
+		return nil, pingext.ErrPayloadRequired{}
+	}
+
 	n, err := enode.Parse(enode.ValidSchemes, enr)
 	if err != nil {
 		return nil, err
 	}
 
-	pong, radiusBytes, err := p.portalProtocol.pingInner(n)
+	var data []byte
+	var defaultType uint16 = pingext.ClientInfo
+
+	if payloadType == nil {
+		payloadType = &defaultType
+	}
+
+	if !p.portalProtocol.PingExtensions.IsSupported(*payloadType) {
+		return nil, pingext.ErrPayloadTypeIsNotSupported{}
+	}
+	if payload == nil {
+		data, err = p.portalProtocol.genPayloadByType(*payloadType)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		data, err = pingext.JsonTypeToSszBytes(*payloadType, []byte(*payload))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	pong, _, err := p.portalProtocol.pingInnerWithPayload(n, *payloadType, data)
 	if err != nil {
 		return nil, err
 	}
 
-	nodeRadius := new(uint256.Int)
-	err = nodeRadius.UnmarshalSSZ(radiusBytes)
+	jsonRes, err := pingext.SszBytesToJson(pong.PayloadType, pong.Payload)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PortalPongResp{
-		EnrSeq:     uint32(pong.EnrSeq),
-		DataRadius: nodeRadius.Hex(),
+		EnrSeq:      uint32(pong.EnrSeq),
+		PayloadType: pong.PayloadType,
+		Payload:     jsonRes,
 	}, nil
 }
 
