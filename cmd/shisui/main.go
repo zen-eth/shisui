@@ -41,6 +41,7 @@ var (
 		utils.PortalNetworksFlag,
 		utils.PortalDiscv5GnetFlag,
 		utils.PortalTrustedBlockRootFlag,
+		utils.PortalTableInitFlag,
 	}
 	historyRpcFlags = []cli.Flag{
 		utils.PortalRPCListenAddrFlag,
@@ -166,7 +167,7 @@ func handleInterrupt(node *portal.Node) {
 	defer signal.Stop(interrupt)
 
 	<-interrupt
-	log.Warn("Closing Shisui gracefully (type CTRL-C again to force quit)")
+	log.Warn("Closing Shisui gracefully")
 
 	// Gracefully shutdown the node
 	go node.Stop()

@@ -343,7 +343,7 @@ func (p *PortalProtocolAPI) Ping(enr string, payloadType *uint16, payload *strin
 	}
 
 	var data []byte
-	var defaultType uint16 = pingext.ClientInfo
+	var defaultType = pingext.ClientInfo
 
 	if payloadType == nil {
 		payloadType = &defaultType

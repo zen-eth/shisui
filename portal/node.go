@@ -32,15 +32,16 @@ import (
 
 // Config holds configuration for the Shisui client
 type Config struct {
-	PortalProtocolConfig *portalwire.PortalProtocolConfig
-	PrivateKey           *ecdsa.PrivateKey
-	IsGnetEnabled        bool
-	RpcAddr              string
-	DataDir              string
-	DataCapacity         uint64
-	LogLevel             int
-	Networks             []string
-	Metrics              *metrics.Config
+	PortalProtocolConfig  *portalwire.PortalProtocolConfig
+	PrivateKey            *ecdsa.PrivateKey
+	IsGnetEnabled         bool
+	RpcAddr               string
+	DataDir               string
+	DataCapacity          uint64
+	LogLevel              int
+	Networks              []string
+	Metrics               *metrics.Config
+	DisableTableInitCheck bool
 }
 
 func DefaultConfig() *Config {
@@ -339,7 +340,7 @@ func (n *Node) initHistoryNetwork() error {
 		n.discV5,
 		n.utp,
 		contentStorage,
-		contentQueue)
+		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
 		return err
@@ -391,7 +392,7 @@ func (n *Node) initBeaconNetwork() error {
 		n.discV5,
 		n.utp,
 		contentStorage,
-		contentQueue)
+		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
 		return err
@@ -449,7 +450,7 @@ func (n *Node) initStateNetwork() error {
 		n.discV5,
 		n.utp,
 		stateStore,
-		contentQueue)
+		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
 		return err

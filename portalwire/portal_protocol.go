@@ -248,11 +248,19 @@ type PortalProtocol struct {
 
 	portalMetrics  *portalMetrics
 	PingExtensions pingext.PingExtension
+
+	disableTableInitCheck bool
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
 	digest := sha256.Sum256(contentKey)
 	return digest[:]
+}
+
+func WithDisableTableInitCheckOption(disable bool) SetPortalProtocolOption {
+	return func(p *PortalProtocol) {
+		p.disableTableInitCheck = disable
+	}
 }
 
 func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *ZenEthUtp, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
@@ -325,9 +333,6 @@ func (p *PortalProtocol) Start() error {
 	for i := 0; i < concurrentOffers; i++ {
 		go p.offerWorker()
 	}
-
-	// wait for initialization processes to complete
-	p.table.waitInit()
 	return nil
 }
 
@@ -378,10 +383,11 @@ func (p *PortalProtocol) setupDiscV5AndTable() error {
 	}
 
 	cfg := Config{
-		PrivateKey:  p.PrivateKey,
-		NetRestrict: p.NetRestrict,
-		Bootnodes:   p.BootstrapNodes,
-		Log:         p.Log,
+		PrivateKey:       p.PrivateKey,
+		NetRestrict:      p.NetRestrict,
+		Bootnodes:        p.BootstrapNodes,
+		Log:              p.Log,
+		DisableInitCheck: p.disableTableInitCheck,
 	}
 
 	p.table, err = newTable(p, p.localNode.Database(), cfg)
