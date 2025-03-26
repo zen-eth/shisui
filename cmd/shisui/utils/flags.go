@@ -191,6 +191,12 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "Hex encoded block root from a trusted checkpoint",
 		Category: flags.PortalNetworkCategory,
 	}
+	PortalTableInitFlag = &cli.BoolFlag{
+		Name:     "disable-init-check",
+		Usage:    "Disable init check in table, for hive test",
+		Category: flags.PortalNetworkCategory,
+		Value:    false,
+	}
 )
 
 func SetupMetrics(cfg *metrics.Config) {
