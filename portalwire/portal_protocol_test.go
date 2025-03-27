@@ -36,7 +36,7 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node) (*
 	}
 
 	glogger := log.NewGlogHandler(log.JSONHandler(os.Stderr))
-	slogVerbosity := log.FromLegacyLevel(4)
+	slogVerbosity := log.FromLegacyLevel(3)
 	glogger.Verbosity(slogVerbosity)
 	defaultLogger := log.NewLogger(glogger)
 	log.SetDefault(defaultLogger)
@@ -228,14 +228,14 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 func TestPortalWireProtocol(t *testing.T) {
 	node1, err := setupLocalPortalNode(t, ":7777", nil)
 	assert.NoError(t, err)
-	node1.Log = testlog.Logger(t, log.LevelDebug)
+	node1.Log = testlog.Logger(t, log.LevelInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
 	node2, err := setupLocalPortalNode(t, ":7778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
-	node2.Log = testlog.Logger(t, log.LevelDebug)
+	node2.Log = testlog.Logger(t, log.LevelInfo)
 	err = node2.Start()
 	assert.NoError(t, err)
 	defer stopNode(node2)
@@ -243,7 +243,7 @@ func TestPortalWireProtocol(t *testing.T) {
 
 	node3, err := setupLocalPortalNode(t, ":7779", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
-	node3.Log = testlog.Logger(t, log.LevelDebug)
+	node3.Log = testlog.Logger(t, log.LevelInfo)
 	err = node3.Start()
 	assert.NoError(t, err)
 	defer stopNode(node3)
@@ -270,6 +270,11 @@ func TestPortalWireProtocol(t *testing.T) {
 	slices.ContainsFunc(node3.table.nodeList(), func(n *enode.Node) bool {
 		return n.ID() == node2.localNode.Node().ID()
 	})
+
+	_, err = node1.ping(node2.localNode.Node())
+	assert.NoError(t, err)
+	_, err = node1.ping(node3.localNode.Node())
+	assert.NoError(t, err)
 
 	err = node1.storage.Put(nil, node1.toContentId([]byte("test_key")), []byte("test_value"))
 	assert.NoError(t, err)
@@ -441,6 +446,11 @@ func TestContentLookup(t *testing.T) {
 	contentId := node1.toContentId(contentKey)
 
 	err = node3.storage.Put(nil, contentId, content)
+	assert.NoError(t, err)
+
+	_, err = node1.ping(node2.localNode.Node())
+	assert.NoError(t, err)
+	_, err = node2.ping(node3.localNode.Node())
 	assert.NoError(t, err)
 
 	res, _, err := node1.ContentLookup(contentKey, contentId)
