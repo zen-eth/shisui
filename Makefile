@@ -21,7 +21,7 @@ shisui:
 
 #? shisui-image: Build shisui image
 shisui-image:
-	docker build -t ghcr.io/zen-eth/shisui:local -f Dockerfile .
+	docker build -t ghcr.io/zen-eth/shisui:latest -f Dockerfile .
 
 #? fmt: Ensure consistent code formatting.
 fmt:
