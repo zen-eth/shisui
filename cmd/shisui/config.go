@@ -68,6 +68,7 @@ func getPortalConfig(ctx *cli.Context) (*portal.Config, error) {
 
 	setPortalBootstrapNodes(ctx, config)
 	config.Networks = ctx.StringSlice(utils.PortalNetworksFlag.Name)
+	// TODO: make this flag work again and cancel the table init wait after all hive tests passed 
 	// config.DisableTableInitCheck = ctx.Bool(utils.PortalTableInitFlag.Name)
 
 	applyMetricConfig(ctx, config)
