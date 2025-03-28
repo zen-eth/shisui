@@ -333,6 +333,8 @@ func (p *PortalProtocol) Start() error {
 	for i := 0; i < concurrentOffers; i++ {
 		go p.offerWorker()
 	}
+
+	p.table.waitInit()
 	return nil
 }
 
