@@ -30,6 +30,7 @@ import (
 	"github.com/zen-eth/shisui/web3"
 )
 
+// Config holds configuration for the Shisui client
 type Config struct {
 	PortalProtocolConfig  *portalwire.PortalProtocolConfig
 	PrivateKey            *ecdsa.PrivateKey
