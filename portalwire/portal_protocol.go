@@ -98,6 +98,12 @@ const (
 	Failed
 )
 
+type protocolVersions []uint8
+
+func (pv protocolVersions) ENRKey() string { return "pv" }
+
+var Versions protocolVersions = protocolVersions{0} //protocol network versions defined here
+
 type ClientTag string
 
 func (c ClientTag) ENRKey() string { return "c" }
@@ -213,10 +219,6 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 	}
 }
 
-type protocolVersions []uint8
-
-func (pv protocolVersions) ENRKey() string { return "pv" }
-
 type PortalProtocol struct {
 	table *Table
 
@@ -254,7 +256,6 @@ type PortalProtocol struct {
 	PingExtensions pingext.PingExtension
 
 	disableTableInitCheck bool
-	versions              protocolVersions
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -293,7 +294,6 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		NAT:               config.NAT,
 		clock:             config.clock,
 		Utp:               utp,
-		versions:          protocolVersions{0}, //protocol default network versions defined here
 	}
 
 	for _, setOpt := range setOpts {
@@ -313,12 +313,6 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		protocol.PingExtensions = BeaconPingExtension{}
 	default:
 		protocol.PingExtensions = DefaultPingExtension{}
-	}
-
-	//set portal protocol version, since more than one instance of PortalProtocol exist sharing the same localNode, the error verification prevents double set
-	err := protocol.localNode.Node().Record().Load(protocol.versions)
-	if err != nil {
-		protocol.localNode.Set(protocol.versions)
 	}
 
 	return protocol, nil

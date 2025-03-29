@@ -92,6 +92,9 @@ func NewNode(config *Config) (*Node, error) {
 		return nil, err
 	}
 
+	//initialize portal versions on enode enr
+	node.localNode.Set(portalwire.Versions)
+
 	node.utp = portalwire.NewZenEthUtp(context.Background(), config.PortalProtocolConfig, node.discV5, node.conn)
 
 	// Initialize RPC server
