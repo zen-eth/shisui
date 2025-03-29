@@ -53,6 +53,15 @@ func newUtpPeer(dst *enode.Node) *UtpPeer {
 	}
 }
 
+func newUtpPeerWithNodeNAddr(dst *enode.Node, addr *netip.AddrPort) *UtpPeer {
+	return &UtpPeer{
+		id:   dst.ID(),
+		node: dst,
+		addr: addr,
+		hash: dst.ID().String(),
+	}
+}
+
 func newUtpPeerFromId(id enode.ID, addr *netip.AddrPort) *UtpPeer {
 	return &UtpPeer{
 		id:   id,
@@ -90,9 +99,9 @@ func newDiscv5Conn(conn *discover.UDPv5, logger log.Logger) *discv5Conn {
 	}
 }
 
-func (c *discv5Conn) handleUtpTalkRequest(id enode.ID, addr *net.UDPAddr, data []byte) []byte {
+func (c *discv5Conn) handleUtpTalkRequest(node *enode.Node, addr *net.UDPAddr, data []byte) []byte {
 	addrPort := netip.AddrPortFrom(netutil.IPToAddr(addr.IP), uint16(addr.Port))
-	peer := newUtpPeerFromId(id, &addrPort)
+	peer := newUtpPeerWithNodeNAddr(node, &addrPort)
 	c.receive <- &packetItem{peer, data}
 	return UTP_TALKRESPONSE
 }
@@ -114,23 +123,8 @@ func (c *discv5Conn) WriteTo(b []byte, dst zenutp.ConnectionPeer) (int, error) {
 		return 0, nil
 	}
 	peer := dst.(*UtpPeer)
-	var node *enode.Node
-	if peer.node == nil {
-		addr := peer.addr.String()
-		node, _ = c.conn.GetCachedNode(addr)
-		if node == nil {
-			c.logger.Warn("not found in cache, will get from discv5 table", "addr", addr)
-			node = c.conn.GetNode(peer.id)
-		}
-		if node == nil {
-			c.logger.Warn("not found peer", "id", peer.id.String(), "addr", addr)
-			return 0, fmt.Errorf("not found target node id")
-		}
-	} else {
-		node = peer.node
-	}
 	req := &v5wire.TalkRequest{Protocol: UTP_STRING, Message: b}
-	c.conn.SendFromAnotherThreadWithNode(node, *peer.addr, req)
+	c.conn.SendNoResp(peer.node, *peer.addr, req)
 	return len(b), nil
 }
 
