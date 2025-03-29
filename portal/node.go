@@ -92,9 +92,6 @@ func NewNode(config *Config) (*Node, error) {
 		return nil, err
 	}
 
-	//initialize portal versions on enode enr
-	node.localNode.Set(portalwire.Versions)
-
 	node.utp = portalwire.NewZenEthUtp(context.Background(), config.PortalProtocolConfig, node.discV5, node.conn)
 
 	// Initialize RPC server
@@ -303,6 +300,9 @@ func (n *Node) initDiscV5() error {
 	}
 
 	n.localNode = enode.NewLocalNode(nodeDB, n.config.PrivateKey)
+
+	// initialize portal versions on enode enr
+	n.localNode.Set(portalwire.Versions)
 
 	n.localNode.Set(portalwire.Tag)
 	listenerAddr := n.conn.LocalAddr().(*net.UDPAddr)
