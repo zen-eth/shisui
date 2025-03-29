@@ -301,6 +301,9 @@ func (n *Node) initDiscV5() error {
 
 	n.localNode = enode.NewLocalNode(nodeDB, n.config.PrivateKey)
 
+	// initialize portal versions on enode enr
+	n.localNode.Set(portalwire.Versions)
+
 	n.localNode.Set(portalwire.Tag)
 	listenerAddr := n.conn.LocalAddr().(*net.UDPAddr)
 	natConf := n.config.PortalProtocolConfig.NAT
