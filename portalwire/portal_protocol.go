@@ -930,8 +930,8 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []
 	return pong, dataRadius, nil
 }
 
-func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg []byte) []byte {
-	if n := p.DiscV5.GetNode(id); n != nil {
+func (p *PortalProtocol) handleTalkRequest(node *enode.Node, addr *net.UDPAddr, msg []byte) []byte {
+	if n := p.table.getNode(node.ID()); n != nil {
 		p.table.addInboundNode(n)
 	}
 
@@ -946,11 +946,11 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 			return nil
 		}
 
-		p.Log.Trace("<< PING/"+p.protocolName, "protocol", p.protocolName, "source", id, "pingRequest", pingRequest)
+		p.Log.Trace("<< PING/"+p.protocolName, "protocol", p.protocolName, "source", node.ID(), "pingRequest", pingRequest)
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedPing.Mark(1)
 		}
-		resp, err := p.handlePing(id, pingRequest)
+		resp, err := p.handlePing(node.ID(), pingRequest)
 		if err != nil {
 			p.Log.Error("failed to handle ping request", "err", err)
 			return nil
@@ -965,7 +965,7 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 			return nil
 		}
 
-		p.Log.Trace("<< FIND_NODES/"+p.protocolName, "protocol", p.protocolName, "source", id, "findNodesRequest", findNodesRequest)
+		p.Log.Trace("<< FIND_NODES/"+p.protocolName, "protocol", p.protocolName, "source", node.ID(), "findNodesRequest", findNodesRequest)
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedFindNodes.Mark(1)
 		}
@@ -984,11 +984,11 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 			return nil
 		}
 
-		p.Log.Trace("<< FIND_CONTENT/"+p.protocolName, "protocol", p.protocolName, "source", id, "findContentRequest", findContentRequest)
+		p.Log.Trace("<< FIND_CONTENT/"+p.protocolName, "protocol", p.protocolName, "source", node.ID(), "findContentRequest", findContentRequest)
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedFindContent.Mark(1)
 		}
-		resp, err := p.handleFindContent(id, addr, findContentRequest)
+		resp, err := p.handleFindContent(node.ID(), addr, findContentRequest)
 		if err != nil {
 			p.Log.Error("failed to handle find content request", "err", err)
 			return nil
@@ -1003,11 +1003,11 @@ func (p *PortalProtocol) handleTalkRequest(id enode.ID, addr *net.UDPAddr, msg [
 			return nil
 		}
 
-		p.Log.Trace("<< OFFER/"+p.protocolName, "protocol", p.protocolName, "source", id, "offerRequest", offerRequest)
+		p.Log.Trace("<< OFFER/"+p.protocolName, "protocol", p.protocolName, "source", node.ID(), "offerRequest", offerRequest)
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedOffer.Mark(1)
 		}
-		resp, err := p.handleOffer(id, addr, offerRequest)
+		resp, err := p.handleOffer(node.ID(), addr, offerRequest)
 		if err != nil {
 			p.Log.Error("failed to handle offer request", "err", err)
 			return nil
