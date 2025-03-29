@@ -30,36 +30,29 @@ import (
 	"github.com/zen-eth/shisui/web3"
 )
 
-type protocolVersions []uint8
-
-func (pv protocolVersions) ENRKey() string { return "pv" }
-
-// Config holds configuration for the Shisui client
 type Config struct {
-	PortalProtocolConfig   *portalwire.PortalProtocolConfig
-	PrivateKey             *ecdsa.PrivateKey
-	IsGnetEnabled          bool
-	RpcAddr                string
-	DataDir                string
-	DataCapacity           uint64
-	LogLevel               int
-	Networks               []string
-	Metrics                *metrics.Config
-	DisableTableInitCheck  bool
-	PortalProtocolVersions protocolVersions
+	PortalProtocolConfig  *portalwire.PortalProtocolConfig
+	PrivateKey            *ecdsa.PrivateKey
+	IsGnetEnabled         bool
+	RpcAddr               string
+	DataDir               string
+	DataCapacity          uint64
+	LogLevel              int
+	Networks              []string
+	Metrics               *metrics.Config
+	DisableTableInitCheck bool
 }
 
 func DefaultConfig() *Config {
 	return &Config{
-		PortalProtocolConfig:   portalwire.DefaultPortalProtocolConfig(),
-		Metrics:                &metrics.DefaultConfig,
-		IsGnetEnabled:          false,
-		RpcAddr:                "localhost:8545",
-		DataDir:                "./",
-		DataCapacity:           1000 * 10,
-		LogLevel:               3,
-		Networks:               []string{"history"},
-		PortalProtocolVersions: protocolVersions{0}, //protocol default network versions defined here
+		PortalProtocolConfig: portalwire.DefaultPortalProtocolConfig(),
+		Metrics:              &metrics.DefaultConfig,
+		IsGnetEnabled:        false,
+		RpcAddr:              "localhost:8545",
+		DataDir:              "./",
+		DataCapacity:         1000 * 10,
+		LogLevel:             3,
+		Networks:             []string{"history"},
 	}
 }
 
@@ -99,9 +92,6 @@ func NewNode(config *Config) (*Node, error) {
 	}
 
 	node.utp = portalwire.NewZenEthUtp(context.Background(), config.PortalProtocolConfig, node.discV5, node.conn)
-
-	//set portal protocol version
-	node.localNode.Set(protocolVersions(node.config.PortalProtocolVersions))
 
 	// Initialize RPC server
 	node.rpcServer = rpc.NewServer()

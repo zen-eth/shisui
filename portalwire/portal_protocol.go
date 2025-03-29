@@ -213,6 +213,10 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 	}
 }
 
+type protocolVersions []uint8
+
+func (pv protocolVersions) ENRKey() string { return "pv" }
+
 type PortalProtocol struct {
 	table *Table
 
@@ -249,7 +253,8 @@ type PortalProtocol struct {
 	portalMetrics  *portalMetrics
 	PingExtensions pingext.PingExtension
 
-	disableTableInitCheck bool
+	disableTableInitCheck  bool
+	PortalProtocolVersions protocolVersions
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -267,27 +272,28 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 
 	protocol := &PortalProtocol{
-		protocolId:        string(protocolId),
-		protocolName:      protocolId.Name(),
-		Log:               log.New("protocol", protocolId.Name()),
-		PrivateKey:        privateKey,
-		NetRestrict:       config.NetRestrict,
-		BootstrapNodes:    config.BootstrapNodes,
-		radiusCache:       fastcache.New(config.RadiusCacheSize),
-		capabilitiesCache: fastcache.New(config.CapabilitiesCacheSize),
-		closeCtx:          closeCtx,
-		cancelCloseCtx:    cancelCloseCtx,
-		localNode:         localNode,
-		validSchemes:      enode.ValidSchemes,
-		storage:           storage,
-		toContentId:       defaultContentIdFunc,
-		contentQueue:      contentQueue,
-		offerQueue:        make(chan *OfferRequestWithNode, offerQueueSize),
-		conn:              conn,
-		DiscV5:            discV5,
-		NAT:               config.NAT,
-		clock:             config.clock,
-		Utp:               utp,
+		protocolId:             string(protocolId),
+		protocolName:           protocolId.Name(),
+		Log:                    log.New("protocol", protocolId.Name()),
+		PrivateKey:             privateKey,
+		NetRestrict:            config.NetRestrict,
+		BootstrapNodes:         config.BootstrapNodes,
+		radiusCache:            fastcache.New(config.RadiusCacheSize),
+		capabilitiesCache:      fastcache.New(config.CapabilitiesCacheSize),
+		closeCtx:               closeCtx,
+		cancelCloseCtx:         cancelCloseCtx,
+		localNode:              localNode,
+		validSchemes:           enode.ValidSchemes,
+		storage:                storage,
+		toContentId:            defaultContentIdFunc,
+		contentQueue:           contentQueue,
+		offerQueue:             make(chan *OfferRequestWithNode, offerQueueSize),
+		conn:                   conn,
+		DiscV5:                 discV5,
+		NAT:                    config.NAT,
+		clock:                  config.clock,
+		Utp:                    utp,
+		PortalProtocolVersions: protocolVersions{0}, //protocol default network versions defined here
 	}
 
 	for _, setOpt := range setOpts {
@@ -307,6 +313,12 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		protocol.PingExtensions = BeaconPingExtension{}
 	default:
 		protocol.PingExtensions = DefaultPingExtension{}
+	}
+
+	//set portal protocol version, since more than one instance of PortalProtocol exist sharing the same localNode, the error verification prevents double set
+	err := protocol.localNode.Node().Record().Load(protocol.PortalProtocolVersions)
+	if err != nil {
+		protocol.localNode.Set(protocol.PortalProtocolVersions)
 	}
 
 	return protocol, nil
