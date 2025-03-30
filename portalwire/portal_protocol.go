@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	ssz "github.com/ferranbt/fastssz"
 	"github.com/holiman/uint256"
-	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/tetratelabs/wabin/leb128"
 	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
@@ -256,6 +255,7 @@ type PortalProtocol struct {
 	PingExtensions pingext.PingExtension
 
 	disableTableInitCheck bool
+	currentVersions       protocolVersions
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -270,6 +270,13 @@ func WithDisableTableInitCheckOption(disable bool) SetPortalProtocolOption {
 }
 
 func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *ZenEthUtp, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
+	// set versions in test
+	key := protocolVersions{}
+	err := localNode.Node().Load(&key)
+	if err != nil {
+		key = Versions
+	}
+
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 
 	protocol := &PortalProtocol{
@@ -294,6 +301,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		NAT:               config.NAT,
 		clock:             config.clock,
 		Utp:               utp,
+		currentVersions:   key,
 	}
 
 	for _, setOpt := range setOpts {
@@ -585,11 +593,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 
 	p.Log.Info("will process Offer", "id", target.ID(), "ip", target.IP().To4().String(), "port", target.UDP())
 
-	accept := &Accept{}
-	err = accept.UnmarshalSSZ(resp[1:])
-	if err != nil {
-		return nil, err
-	}
+	accept, err := p.parseOfferResp(target, resp[1:])
 
 	p.Log.Trace("<< ACCEPT/"+p.protocolName, "id", target.ID(), "accept", accept)
 	if metrics.Enabled() {
@@ -617,17 +621,19 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 	} else {
 		resultChan = nil
 	}
-	contentKeyBitlist := bitfield.Bitlist(accept.ContentKeys)
-	if contentKeyBitlist.Len() != uint64(contentKeyLen) {
+	acceptIndices := accept.GetAcceptIndices()
+	if accept.GetKeyLength() != contentKeyLen {
+		// contentKeyBitlist := bitfield.Bitlist(accept.GetContentKeys())
+		// if contentKeyBitlist.Len() != uint64(contentKeyLen) {
 		if resultChan != nil {
 			resultChan <- &OfferTrace{
 				Type: Failed,
 			}
 		}
-		return nil, fmt.Errorf("accepted content key bitlist has invalid size, expected %d, got %d", contentKeyLen, contentKeyBitlist.Len())
+		return nil, fmt.Errorf("accepted content key bitlist has invalid size, expected %d, got %d", contentKeyLen, len(acceptIndices))
 	}
 
-	if contentKeyBitlist.Count() == 0 {
+	if len(acceptIndices) == 0 {
 		if resultChan != nil {
 			resultChan <- &OfferTrace{
 				Type: Declined,
@@ -636,7 +642,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 		return nil, nil
 	}
 
-	connId := binary.BigEndian.Uint16(accept.ConnectionId)
+	connId := binary.BigEndian.Uint16(accept.GetConnectionId())
 	go func(ctx context.Context) {
 		var conn *zenutp.UtpStream
 		for {
@@ -644,11 +650,11 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 			case <-ctx.Done():
 				return
 			default:
-				contents := make([][]byte, 0, contentKeyBitlist.Count())
+				contents := make([][]byte, 0, len(acceptIndices))
 				var content []byte
 				switch request.Kind {
 				case TransientOfferRequestKind:
-					for _, index := range contentKeyBitlist.BitIndices() {
+					for _, index := range acceptIndices {
 						content = request.Request.(*TransientOfferRequest).Contents[index].Content
 						contents = append(contents, content)
 					}
@@ -656,7 +662,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 					content = request.Request.(*TransientOfferRequestWithResult).Content.Content
 					contents = append(contents, content)
 				default:
-					for _, index := range contentKeyBitlist.BitIndices() {
+					for _, index := range acceptIndices {
 						contentKey := request.Request.(*PersistOfferRequest).ContentKeys[index]
 						contentId := p.toContentId(contentKey)
 						if contentId != nil {
@@ -718,7 +724,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				if resultChan != nil {
 					resultChan <- &OfferTrace{
 						Type:        Success,
-						ContentKeys: accept.ContentKeys,
+						ContentKeys: accept.GetContentKeys(),
 					}
 				}
 				return
@@ -726,7 +732,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 		}
 	}(p.closeCtx)
 
-	return accept.ContentKeys, nil
+	return accept.GetContentKeys(), nil
 }
 
 func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, interface{}, error) {
@@ -1315,7 +1321,11 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 
 func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, request *Offer) ([]byte, error) {
 	var err error
-	acceptKeys, contentKeys, err := p.findContentKeys(request)
+	version, err := p.getMaxVersion(node)
+	if err != nil {
+		return nil, err
+	}
+	accept, contentKeys, err := p.findContentKeys(request, version)
 	if err != nil {
 		return nil, err
 	}
@@ -1371,30 +1381,12 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 	} else {
 		binary.BigEndian.PutUint16(idBuffer, uint16(0))
 	}
-	var acceptMsgBytes []byte
-
-	switch p.getVersion() {
-	case 0:
-		accept := &Accept{
-			ConnectionId: idBuffer,
-			ContentKeys:  acceptKeys,
-		}
-		acceptMsgBytes, err = accept.MarshalSSZ()
-		if err != nil {
-			return nil, err
-		}
-	case 1:
-		accept := &AcceptV1{
-			ConnectionId: idBuffer,
-			ContentKeys:  acceptKeys,
-		}
-		acceptMsgBytes, err = accept.MarshalSSZ()
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, ErrUnsupportedVersion
+	accept.SetConnectionId(idBuffer)
+	acceptMsgBytes, err := accept.MarshalSSZ()
+	if err != nil {
+		return nil, err
 	}
+
 	p.Log.Trace(">> ACCEPT/"+p.protocolName, "protocol", p.protocolName, "source", addr, "accept", acceptMsgBytes)
 	if metrics.Enabled() {
 		p.portalMetrics.messagesSentAccept.Mark(1)

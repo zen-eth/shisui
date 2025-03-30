@@ -25,7 +25,7 @@ import (
 	assert "github.com/stretchr/testify/require"
 )
 
-func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node) (*PortalProtocol, error) {
+func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, versions ...uint8) (*PortalProtocol, error) {
 	conf := DefaultPortalProtocolConfig()
 	conf.NAT = nil
 	if addr != "" {
@@ -67,6 +67,11 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node) (*
 	localNode.SetFallbackIP(net.IP{127, 0, 0, 1})
 	localNode.SetFallbackUDP(addr1.Port)
 	localNode.Set(Tag)
+	if len(versions) == 0 {
+		localNode.Set(protocolVersions{0})
+	} else {
+		localNode.Set(protocolVersions(versions))
+	}
 
 	if conf.NAT == nil {
 		var addrs []net.Addr
@@ -228,14 +233,14 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 func TestPortalWireProtocol(t *testing.T) {
 	node1, err := setupLocalPortalNode(t, ":7777", nil)
 	assert.NoError(t, err)
-	node1.Log = testlog.Logger(t, log.LevelInfo)
+	node1.Log = testlog.Logger(t, log.LvlInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
 	node2, err := setupLocalPortalNode(t, ":7778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
-	node2.Log = testlog.Logger(t, log.LevelInfo)
+	node2.Log = testlog.Logger(t, log.LvlInfo)
 	err = node2.Start()
 	assert.NoError(t, err)
 	defer stopNode(node2)
@@ -243,7 +248,7 @@ func TestPortalWireProtocol(t *testing.T) {
 
 	node3, err := setupLocalPortalNode(t, ":7779", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
-	node3.Log = testlog.Logger(t, log.LevelInfo)
+	node3.Log = testlog.Logger(t, log.LvlInfo)
 	err = node3.Start()
 	assert.NoError(t, err)
 	defer stopNode(node3)
@@ -416,20 +421,20 @@ func TestCancel(t *testing.T) {
 func TestContentLookup(t *testing.T) {
 	node1, err := setupLocalPortalNode(t, ":17777", nil)
 	assert.NoError(t, err)
-	node1.Log = testlog.Logger(t, log.LvlTrace)
+	node1.Log = testlog.Logger(t, log.LvlInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 
 	node2, err := setupLocalPortalNode(t, ":17778", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
-	node2.Log = testlog.Logger(t, log.LvlTrace)
+	node2.Log = testlog.Logger(t, log.LvlInfo)
 	err = node2.Start()
 	assert.NoError(t, err)
 	fmt.Println(node2.localNode.Node().String())
 
 	node3, err := setupLocalPortalNode(t, ":17779", []*enode.Node{node1.localNode.Node(), node2.localNode.Node()})
 	assert.NoError(t, err)
-	node3.Log = testlog.Logger(t, log.LvlTrace)
+	node3.Log = testlog.Logger(t, log.LvlInfo)
 	err = node3.Start()
 	assert.NoError(t, err)
 
@@ -466,19 +471,19 @@ func TestContentLookup(t *testing.T) {
 func TestTraceContentLookup(t *testing.T) {
 	node1, err := setupLocalPortalNode(t, ":17787", nil)
 	assert.NoError(t, err)
-	node1.Log = testlog.Logger(t, log.LvlTrace)
+	node1.Log = testlog.Logger(t, log.LvlInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 
 	node2, err := setupLocalPortalNode(t, ":17788", []*enode.Node{node1.localNode.Node()})
 	assert.NoError(t, err)
-	node2.Log = testlog.Logger(t, log.LvlTrace)
+	node2.Log = testlog.Logger(t, log.LvlInfo)
 	err = node2.Start()
 	assert.NoError(t, err)
 
 	node3, err := setupLocalPortalNode(t, ":17789", []*enode.Node{node2.localNode.Node()})
 	assert.NoError(t, err)
-	node3.Log = testlog.Logger(t, log.LvlTrace)
+	node3.Log = testlog.Logger(t, log.LvlInfo)
 	err = node3.Start()
 	assert.NoError(t, err)
 
@@ -538,4 +543,147 @@ func stopNode(node *PortalProtocol) {
 	node.Stop()
 	node.Utp.Stop()
 	node.DiscV5.Close()
+}
+
+func TestFindTheBiggestSameNumber(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        []uint8
+		b        []uint8
+		expected uint8
+		wantErr  bool
+	}{
+		{
+			name:     "Basic case with common values",
+			a:        []uint8{1, 2, 3, 4, 5},
+			b:        []uint8{3, 4, 5, 6, 7},
+			expected: 5,
+			wantErr:  false,
+		},
+		{
+			name:     "Single common value",
+			a:        []uint8{1, 2, 3},
+			b:        []uint8{3, 4, 5},
+			expected: 3,
+			wantErr:  false,
+		},
+		{
+			name:     "Multiple common values",
+			a:        []uint8{1, 2, 3, 4, 5},
+			b:        []uint8{2, 4, 6},
+			expected: 4,
+			wantErr:  false,
+		},
+		{
+			name:     "No common values",
+			a:        []uint8{1, 2, 3},
+			b:        []uint8{4, 5, 6},
+			expected: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "Empty first slice",
+			a:        []uint8{},
+			b:        []uint8{1, 2, 3},
+			expected: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "Empty second slice",
+			a:        []uint8{1, 2, 3},
+			b:        []uint8{},
+			expected: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "Both slices empty",
+			a:        []uint8{},
+			b:        []uint8{},
+			expected: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "Duplicate values in slices",
+			a:        []uint8{1, 2, 2, 3, 3},
+			b:        []uint8{2, 2, 3, 4, 4},
+			expected: 3,
+			wantErr:  false,
+		},
+		{
+			name:     "Protocol version negotiation example",
+			a:        []uint8{0, 1, 2},
+			b:        []uint8{0, 1},
+			expected: 1,
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := findTheBiggestSameNumber(tt.a, tt.b)
+
+			// Check error condition
+			if (err != nil) != tt.wantErr {
+				t.Errorf("findTheBiggestSameNumber() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// If we expect an error, don't check the result value
+			if tt.wantErr {
+				return
+			}
+
+			// Check result value
+			if result != tt.expected {
+				t.Errorf("findTheBiggestSameNumber() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestOfferV1(t *testing.T) {
+	node1, err := setupLocalPortalNode(t, ":3321", nil, 0, 1)
+	assert.NoError(t, err)
+	node1.Log = testlog.Logger(t, log.LevelInfo)
+	err = node1.Start()
+	assert.NoError(t, err)
+	defer stopNode(node1)
+
+	node2, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node1.localNode.Node()}, 0, 1)
+	assert.NoError(t, err)
+	node2.Log = testlog.Logger(t, log.LevelInfo)
+	err = node2.Start()
+	assert.NoError(t, err)
+	defer stopNode(node2)
+
+	time.Sleep(8 * time.Second)
+
+	_, err = node1.ping(node2.localNode.Node())
+	assert.NoError(t, err)
+
+	testEntry1 := &ContentEntry{
+		ContentKey: []byte("test_entry1"),
+		Content:    []byte("test_entry1_content"),
+	}
+
+	testEntry2 := &ContentEntry{
+		ContentKey: []byte("test_entry2"),
+		Content:    []byte("test_entry2_content"),
+	}
+
+	testTransientOfferRequest := &TransientOfferRequest{
+		Contents: []*ContentEntry{testEntry1, testEntry2},
+	}
+
+	offerRequest := &OfferRequest{
+		Kind:    TransientOfferRequestKind,
+		Request: testTransientOfferRequest,
+	}
+
+	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(contentKeys))
+	for _, val := range contentKeys {
+		assert.Equal(t, uint8(Accepted), val)
+	}
 }
