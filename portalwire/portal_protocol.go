@@ -339,8 +339,6 @@ func (p *PortalProtocol) Start() error {
 	for i := 0; i < concurrentOffers; i++ {
 		go p.offerWorker()
 	}
-
-	p.table.waitInit()
 	return nil
 }
 
@@ -931,9 +929,7 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []
 }
 
 func (p *PortalProtocol) handleTalkRequest(node *enode.Node, addr *net.UDPAddr, msg []byte) []byte {
-	if n := p.table.getNode(node.ID()); n != nil {
-		p.table.addInboundNode(n)
-	}
+	p.table.addInboundNode(node)
 
 	msgCode := msg[0]
 
