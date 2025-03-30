@@ -339,6 +339,7 @@ func (p *PortalProtocol) Start() error {
 	for i := 0; i < concurrentOffers; i++ {
 		go p.offerWorker()
 	}
+
 	return nil
 }
 
@@ -986,7 +987,7 @@ func (p *PortalProtocol) handleTalkRequest(node *enode.Node, addr *net.UDPAddr, 
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedFindContent.Mark(1)
 		}
-		resp, err := p.handleFindContent(node.ID(), addr, findContentRequest)
+		resp, err := p.handleFindContent(node, addr, findContentRequest)
 		if err != nil {
 			p.Log.Error("failed to handle find content request", "err", err)
 			return nil
@@ -1005,7 +1006,7 @@ func (p *PortalProtocol) handleTalkRequest(node *enode.Node, addr *net.UDPAddr, 
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedOffer.Mark(1)
 		}
-		resp, err := p.handleOffer(node.ID(), addr, offerRequest)
+		resp, err := p.handleOffer(node, addr, offerRequest)
 		if err != nil {
 			p.Log.Error("failed to handle offer request", "err", err)
 			return nil
@@ -1158,7 +1159,7 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 	return talkRespBytes, nil
 }
 
-func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, request *FindContent) ([]byte, error) {
+func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, request *FindContent) ([]byte, error) {
 	contentOverhead := 1 + 1 // msg id + SSZ Union selector
 	maxPayloadSize := maxPacketSize - talkRespOverhead - contentOverhead
 	enrOverhead := 4 // per added ENR, 4 bytes offset overhead
@@ -1177,8 +1178,8 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 
 	if errors.Is(err, ErrContentNotFound) {
 		closestNodes := p.findNodesCloseToContent(contentId, portalFindnodesResultLimit)
-		for i, n := range closestNodes {
-			if n.ID() == id {
+		for i, closeNode := range closestNodes {
+			if closeNode.ID() == n.ID() {
 				closestNodes = append(closestNodes[:i], closestNodes[i+1:]...)
 				break
 			}
@@ -1239,7 +1240,7 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 
 		return talkRespBytes, nil
 	} else {
-		connectionId := p.Utp.CidFromId(id, addr, false)
+		connectionId := p.Utp.CidWithAddr(n, addr, false)
 
 		go func(bctx context.Context, connId *zenutp.ConnectionId) {
 			var conn *zenutp.UtpStream
@@ -1250,7 +1251,7 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 				case <-bctx.Done():
 					return
 				default:
-					p.Log.Debug("will accept find content conn from: ", "nodeId", id.String(), "source", addr, "connId", connId)
+					p.Log.Debug("will accept find content conn from: ", "nodeId", n.ID().String(), "source", addr, "connId", connId)
 					connectCtx, cancel = context.WithTimeout(bctx, defaultUTPConnectTimeout)
 					defer cancel()
 					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
@@ -1312,7 +1313,7 @@ func (p *PortalProtocol) handleFindContent(id enode.ID, addr *net.UDPAddr, reque
 	}
 }
 
-func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Offer) ([]byte, error) {
+func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, request *Offer) ([]byte, error) {
 	var err error
 	contentKeyBitlist := bitfield.NewBitlist(uint64(len(request.ContentKeys)))
 	if len(p.contentQueue) >= cap(p.contentQueue) {
@@ -1355,7 +1356,7 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 
 	idBuffer := make([]byte, 2)
 	if contentKeyBitlist.Count() != 0 {
-		connectionId := p.Utp.CidFromId(id, addr, false)
+		connectionId := p.Utp.CidWithAddr(node, addr, false)
 
 		go func(bctx context.Context, connId *zenutp.ConnectionId) {
 			var conn *zenutp.UtpStream
@@ -1383,12 +1384,12 @@ func (p *PortalProtocol) handleOffer(id enode.ID, addr *net.UDPAddr, request *Of
 					defer readCancel()
 					n, err = conn.ReadToEOF(readCtx, &data)
 					conn.Close()
-					p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", id, "size", n, "data", data)
+					p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n, "data", data)
 					if metrics.Enabled() {
 						p.portalMetrics.messagesReceivedContent.Mark(1)
 					}
 
-					err = p.handleOfferedContents(id, contentKeys, data)
+					err = p.handleOfferedContents(node.ID(), contentKeys, data)
 					if err != nil {
 						p.Log.Error("failed to handle offered Contents", "err", err)
 						return
