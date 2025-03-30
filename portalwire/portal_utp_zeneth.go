@@ -62,14 +62,6 @@ func newUtpPeerWithNodeNAddr(dst *enode.Node, addr *netip.AddrPort) *UtpPeer {
 	}
 }
 
-func newUtpPeerFromId(id enode.ID, addr *netip.AddrPort) *UtpPeer {
-	return &UtpPeer{
-		id:   id,
-		addr: addr,
-		hash: id.String(),
-	}
-}
-
 func (p *UtpPeer) Hash() string {
 	return p.hash
 }
@@ -188,9 +180,9 @@ func (p *ZenEthUtp) Cid(dst *enode.Node, isInitiator bool) *zenutp.ConnectionId 
 	return p.socket.Cid(peer, isInitiator)
 }
 
-func (p *ZenEthUtp) CidFromId(id enode.ID, addr *net.UDPAddr, isInitiator bool) *zenutp.ConnectionId {
+func (p *ZenEthUtp) CidWithAddr(dst *enode.Node, addr *net.UDPAddr, isInitiator bool) *zenutp.ConnectionId {
 	addrPort := netip.AddrPortFrom(netutil.IPToAddr(addr.IP), uint16(addr.Port))
-	peer := newUtpPeerFromId(id, &addrPort)
+	peer := newUtpPeerWithNodeNAddr(dst, &addrPort)
 	return p.socket.Cid(peer, isInitiator)
 }
 
