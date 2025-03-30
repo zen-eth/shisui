@@ -117,6 +117,11 @@ type (
 		ConnectionId []byte `ssz-size:"2"`
 		ContentKeys  []byte `ssz:"bitlist" ssz-max:"64"`
 	}
+
+	AcceptV1 struct {
+		ConnectionId []byte  `ssz-size:"2"`
+		ContentKeys  []uint8 `ssz-max:"64"`
+	}
 )
 
 // MarshalSSZ ssz marshals the Content object

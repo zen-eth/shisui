@@ -205,4 +205,15 @@ func TestOfferAndAcceptMessage(t *testing.T) {
 	data, err = accept.MarshalSSZ()
 	assert.NoError(t, err)
 	assert.Equal(t, expected, fmt.Sprintf("0x%x", data))
+
+	acceptV1 := &AcceptV1{
+		ConnectionId: []byte{0x01, 0x02},
+		ContentKeys:  []uint8{0, 1, 2, 3, 4, 5, 1, 1},
+	}
+
+	expected = "0x0102060000000001020304050101"
+
+	data, err = acceptV1.MarshalSSZ()
+	assert.NoError(t, err)
+	assert.Equal(t, expected, fmt.Sprintf("0x%x", data))
 }
