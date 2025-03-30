@@ -1315,47 +1315,12 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 
 func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, request *Offer) ([]byte, error) {
 	var err error
-	contentKeyBitlist := bitfield.NewBitlist(uint64(len(request.ContentKeys)))
-	if len(p.contentQueue) >= cap(p.contentQueue) {
-		acceptMsg := &Accept{
-			ConnectionId: []byte{0, 0},
-			ContentKeys:  contentKeyBitlist,
-		}
-
-		p.Log.Trace(">> ACCEPT/"+p.protocolName, "protocol", p.protocolName, "source", addr, "accept", acceptMsg)
-		if metrics.Enabled() {
-			p.portalMetrics.messagesSentAccept.Mark(1)
-		}
-		var acceptMsgBytes []byte
-		acceptMsgBytes, err = acceptMsg.MarshalSSZ()
-		if err != nil {
-			return nil, err
-		}
-
-		talkRespBytes := make([]byte, 0, len(acceptMsgBytes)+1)
-		talkRespBytes = append(talkRespBytes, ACCEPT)
-		talkRespBytes = append(talkRespBytes, acceptMsgBytes...)
-
-		return talkRespBytes, nil
+	acceptKeys, contentKeys, err := p.findContentKeys(request)
+	if err != nil {
+		return nil, err
 	}
-
-	contentKeys := make([][]byte, 0)
-	for i, contentKey := range request.ContentKeys {
-		contentId := p.toContentId(contentKey)
-		if contentId != nil {
-			if inRange(p.Self().ID(), p.Radius(), contentId) {
-				if _, err = p.storage.Get(contentKey, contentId); err != nil {
-					contentKeyBitlist.SetBitAt(uint64(i), true)
-					contentKeys = append(contentKeys, contentKey)
-				}
-			}
-		} else {
-			return nil, ErrNilContentKey
-		}
-	}
-
 	idBuffer := make([]byte, 2)
-	if contentKeyBitlist.Count() != 0 {
+	if len(contentKeys) > 0 {
 		connectionId := p.Utp.CidWithAddr(node, addr, false)
 
 		go func(bctx context.Context, connId *zenutp.ConnectionId) {
@@ -1406,20 +1371,33 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 	} else {
 		binary.BigEndian.PutUint16(idBuffer, uint16(0))
 	}
+	var acceptMsgBytes []byte
 
-	acceptMsg := &Accept{
-		ConnectionId: idBuffer,
-		ContentKeys:  []byte(contentKeyBitlist),
+	switch p.getVersion() {
+	case 0:
+		accept := &Accept{
+			ConnectionId: idBuffer,
+			ContentKeys:  acceptKeys,
+		}
+		acceptMsgBytes, err = accept.MarshalSSZ()
+		if err != nil {
+			return nil, err
+		}
+	case 1:
+		accept := &AcceptV1{
+			ConnectionId: idBuffer,
+			ContentKeys:  acceptKeys,
+		}
+		acceptMsgBytes, err = accept.MarshalSSZ()
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, ErrUnsupportedVersion
 	}
-
-	p.Log.Trace(">> ACCEPT/"+p.protocolName, "protocol", p.protocolName, "source", addr, "accept", acceptMsg)
+	p.Log.Trace(">> ACCEPT/"+p.protocolName, "protocol", p.protocolName, "source", addr, "accept", acceptMsgBytes)
 	if metrics.Enabled() {
 		p.portalMetrics.messagesSentAccept.Mark(1)
-	}
-	var acceptMsgBytes []byte
-	acceptMsgBytes, err = acceptMsg.MarshalSSZ()
-	if err != nil {
-		return nil, err
 	}
 
 	talkRespBytes := make([]byte, 0, len(acceptMsgBytes)+1)
