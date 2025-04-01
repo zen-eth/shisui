@@ -620,7 +620,7 @@ func TestFindTheBiggestSameNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := findTheBiggestSameNumber(tt.a, tt.b)
+			result, err := findBiggestSameNumber(tt.a, tt.b)
 
 			// Check error condition
 			if (err != nil) != tt.wantErr {
@@ -679,11 +679,20 @@ func TestOfferV1(t *testing.T) {
 		Kind:    TransientOfferRequestKind,
 		Request: testTransientOfferRequest,
 	}
-
+	// all accept
 	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(contentKeys))
 	for _, val := range contentKeys {
 		assert.Equal(t, uint8(Accepted), val)
 	}
+
+	// one reject
+	node1.storage.Put(testEntry1.ContentKey, node2.toContentId(testEntry1.ContentKey), testEntry1.Content)
+	node1.inTransferMap.Store(hexutil.Encode(testEntry2.ContentKey), struct{}{})
+	acceptCodes, err := node2.offer(node1.localNode.Node(), offerRequest)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(acceptCodes))
+	assert.Equal(t, uint8(AlreadyStored), acceptCodes[0])
+	assert.Equal(t, uint8(InboundTransferInProgress), acceptCodes[1])
 }

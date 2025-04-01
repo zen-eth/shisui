@@ -3,12 +3,24 @@ package portalwire
 import (
 	"errors"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/prysmaticlabs/go-bitfield"
 )
 
 var ErrUnsupportedVersion = errors.New("unsupported version")
+
+type AcceptCode uint8
+
+const (
+	Accepted AcceptCode = iota
+	GenericDeclined
+	AlreadyStored
+	NotWithinRadius
+	RateLimited               // rate limit reached. Node can't handle anymore connections
+	InboundTransferInProgress // inbound rate limit reached for accepting a specific content_id, used to protect against thundering herds
+	Unspecified
+)
 
 type CommonAccept interface {
 	MarshalSSZ() ([]byte, error)
@@ -69,32 +81,29 @@ func (a *AcceptV1) GetKeyLength() int {
 	return len(a.GetContentKeys())
 }
 
-func (p *PortalProtocol) getMaxVersion(node *enode.Node) (uint8, error) {
-	key := &protocolVersions{}
-	err := node.Load(key)
+func (p *PortalProtocol) getHighestVersion(node *enode.Node) (uint8, error) {
+	versions := &protocolVersions{}
+	err := node.Load(versions)
 	// key is not set, return the default version
-	if err != nil && errors.Is(err, &enr.KeyError{}) {
+	if err != nil {
 		return p.currentVersions[0], nil
 	}
-	if err != nil {
-		return 0, err
-	}
-	return findTheBiggestSameNumber(p.currentVersions, []uint8(*key))
+	return findBiggestSameNumber(p.currentVersions, []uint8(*versions))
 }
 
 // find the Accept.ContentKeys and the content keys to accept
-func (p *PortalProtocol) findContentKeys(request *Offer, version uint8) (CommonAccept, [][]byte, error) {
+func (p *PortalProtocol) filterContentKeys(request *Offer, version uint8) (CommonAccept, [][]byte, error) {
 	switch version {
 	case 0:
-		return p.findContentKeysV0(request)
+		return p.filterContentKeysV0(request)
 	case 1:
-		return p.findContentKeysV1(request)
+		return p.filterContentKeysV1(request)
 	default:
 		return nil, nil, ErrUnsupportedVersion
 	}
 }
 
-func (p *PortalProtocol) findContentKeysV0(request *Offer) (CommonAccept, [][]byte, error) {
+func (p *PortalProtocol) filterContentKeysV0(request *Offer) (CommonAccept, [][]byte, error) {
 	contentKeyBitlist := bitfield.NewBitlist(uint64(len(request.ContentKeys)))
 	acceptContentKeys := make([][]byte, 0)
 	if len(p.contentQueue) < cap(p.contentQueue) {
@@ -118,12 +127,12 @@ func (p *PortalProtocol) findContentKeysV0(request *Offer) (CommonAccept, [][]by
 	return accept, acceptContentKeys, nil
 }
 
-func (p *PortalProtocol) findContentKeysV1(request *Offer) (CommonAccept, [][]byte, error) {
+func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]byte, error) {
 	contentKeyList := make([]uint8, len(request.ContentKeys))
 	acceptContentKeys := make([][]byte, 0)
 	if len(p.contentQueue) >= cap(p.contentQueue) {
 		for i := 0; i < len(request.ContentKeys); i++ {
-			contentKeyList[i] = uint8(InboundRateLimit)
+			contentKeyList[i] = uint8(RateLimited)
 		}
 	} else {
 		for i, contentKey := range request.ContentKeys {
@@ -134,8 +143,13 @@ func (p *PortalProtocol) findContentKeysV1(request *Offer) (CommonAccept, [][]by
 					if err == nil {
 						contentKeyList[i] = uint8(AlreadyStored)
 					} else {
-						contentKeyList[i] = uint8(Accepted)
-						acceptContentKeys = append(acceptContentKeys, contentKey)
+						if _, exist := p.inTransferMap.Load(hexutil.Encode(contentKey)); exist {
+							contentKeyList[i] = uint8(InboundTransferInProgress)
+						} else {
+							p.inTransferMap.Store(hexutil.Encode(contentKey), struct{}{})
+							contentKeyList[i] = uint8(Accepted)
+							acceptContentKeys = append(acceptContentKeys, contentKey)
+						}
 					}
 				} else {
 					contentKeyList[i] = uint8(NotWithinRadius)
@@ -152,7 +166,7 @@ func (p *PortalProtocol) findContentKeysV1(request *Offer) (CommonAccept, [][]by
 }
 
 func (p *PortalProtocol) parseOfferResp(node *enode.Node, data []byte) (CommonAccept, error) {
-	version, err := p.getMaxVersion(node)
+	version, err := p.getHighestVersion(node)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +192,7 @@ func (p *PortalProtocol) parseOfferResp(node *enode.Node, data []byte) (CommonAc
 
 // findTheBiggestSameNumber finds the largest value that exists in both slices.
 // Returns the largest common value, or an error if there are no common values.
-func findTheBiggestSameNumber(a []uint8, b []uint8) (uint8, error) {
+func findBiggestSameNumber(a []uint8, b []uint8) (uint8, error) {
 	if len(a) == 0 || len(b) == 0 {
 		return 0, errors.New("empty slice provided")
 	}
