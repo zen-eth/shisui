@@ -256,6 +256,7 @@ type PortalProtocol struct {
 
 	disableTableInitCheck bool
 	currentVersions       protocolVersions
+	inTransferMap         sync.Map
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -605,14 +606,14 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 	} else {
 		log.Debug("Node added to replacements list", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	}
-	var contentKeyLen int
+	var contentKeysNumber int
 	switch request.Kind {
 	case TransientOfferRequestKind:
-		contentKeyLen = len(request.Request.(*TransientOfferRequest).Contents)
+		contentKeysNumber = len(request.Request.(*TransientOfferRequest).Contents)
 	case TransientOfferRequestWithResultKind:
-		contentKeyLen = 1
+		contentKeysNumber = 1
 	default:
-		contentKeyLen = len(request.Request.(*PersistOfferRequest).ContentKeys)
+		contentKeysNumber = len(request.Request.(*PersistOfferRequest).ContentKeys)
 	}
 
 	var resultChan chan *OfferTrace
@@ -622,15 +623,13 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 		resultChan = nil
 	}
 	acceptIndices := accept.GetAcceptIndices()
-	if accept.GetKeyLength() != contentKeyLen {
-		// contentKeyBitlist := bitfield.Bitlist(accept.GetContentKeys())
-		// if contentKeyBitlist.Len() != uint64(contentKeyLen) {
+	if accept.GetKeyLength() != contentKeysNumber {
 		if resultChan != nil {
 			resultChan <- &OfferTrace{
 				Type: Failed,
 			}
 		}
-		return nil, fmt.Errorf("accepted content key bitlist has invalid size, expected %d, got %d", contentKeyLen, len(acceptIndices))
+		return nil, fmt.Errorf("accepted content key bitlist has invalid size, expected %d, got %d", contentKeysNumber, len(acceptIndices))
 	}
 
 	if len(acceptIndices) == 0 {
@@ -639,7 +638,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				Type: Declined,
 			}
 		}
-		return nil, nil
+		return accept.GetContentKeys(), nil
 	}
 
 	connId := binary.BigEndian.Uint16(accept.GetConnectionId())
@@ -1321,11 +1320,11 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 
 func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, request *Offer) ([]byte, error) {
 	var err error
-	version, err := p.getMaxVersion(node)
+	version, err := p.getHighestVersion(node)
 	if err != nil {
 		return nil, err
 	}
-	accept, contentKeys, err := p.findContentKeys(request, version)
+	accept, contentKeys, err := p.filterContentKeys(request, version)
 	if err != nil {
 		return nil, err
 	}
@@ -1340,6 +1339,11 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 				case <-bctx.Done():
 					return
 				default:
+					defer func() {
+						for _, key := range contentKeys {
+							p.inTransferMap.Delete(hexutil.Encode(key))
+						}
+					}()
 					p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
 					connectCtx, cancel := context.WithTimeout(bctx, defaultUTPConnectTimeout)
 					defer cancel()
