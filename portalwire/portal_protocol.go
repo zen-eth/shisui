@@ -272,10 +272,10 @@ func WithDisableTableInitCheckOption(disable bool) SetPortalProtocolOption {
 
 func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *ZenEthUtp, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
 	// set versions in test
-	key := protocolVersions{}
-	err := localNode.Node().Load(&key)
+	currentVersions := protocolVersions{}
+	err := localNode.Node().Load(&currentVersions)
 	if err != nil {
-		key = Versions
+		currentVersions = Versions
 	}
 
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
@@ -302,7 +302,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		NAT:               config.NAT,
 		clock:             config.clock,
 		Utp:               utp,
-		currentVersions:   key,
+		currentVersions:   currentVersions,
 	}
 
 	for _, setOpt := range setOpts {
