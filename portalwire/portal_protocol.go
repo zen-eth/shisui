@@ -1583,7 +1583,7 @@ func (p *PortalProtocol) truncateNodes(nodes []*enode.Node, maxSize int, enrOver
 			break
 		} else {
 			res = append(res, enrBytes)
-			totalSize += len(enrBytes)
+			totalSize = totalSize + len(enrBytes) + enrOverhead
 		}
 	}
 	return res
