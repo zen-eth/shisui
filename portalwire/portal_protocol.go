@@ -785,25 +785,18 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		defer conncancel()
 		connId := binary.BigEndian.Uint16(connIdMsg.Id)
 		conn, err := p.Utp.DialWithCid(connctx, target, connId)
-		defer func() {
-			if conn == nil {
-				if metrics.Enabled() {
-					p.portalMetrics.utpInFailConn.Inc(1)
-				}
-				return
-			}
-		}()
-		defer conncancel()
 		if err != nil {
+			if metrics.Enabled() {
+				p.portalMetrics.utpInFailConn.Inc(1)
+			}
 			return 0xff, nil, err
 		}
-
+		defer conn.Close()
 		// Read ALL the data from the connection until EOF and return it
 		readCtx, readCancel := context.WithTimeout(p.closeCtx, defaultUTPReadTimeout)
 		defer readCancel()
 		var data []byte
 		n, err := conn.ReadToEOF(readCtx, &data)
-		conn.Close()
 		if err != nil {
 			if metrics.Enabled() {
 				p.portalMetrics.utpInFailRead.Inc(1)
@@ -812,6 +805,14 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 			return 0xff, nil, err
 		}
 		p.Log.Trace("<< CONTENT/"+p.protocolName, "id", target.ID(), "size", n, "data", data)
+		data, err = p.decodeUtpContent(target, data)
+		if err != nil {
+			if metrics.Enabled() {
+				p.portalMetrics.utpOutFailConn.Inc(1)
+			}
+			p.Log.Error("decode utp content failed", "err", err)
+			return 0xff, nil, err
+		}
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 			p.portalMetrics.utpInSuccess.Inc(1)
@@ -1260,6 +1261,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 					connectCtx, cancel = context.WithTimeout(bctx, defaultUTPConnectTimeout)
 					defer cancel()
 					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
+					defer conn.Close()
 					if err != nil {
 						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailConn.Inc(1)
@@ -1270,9 +1272,16 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 
 					writeCtx, writeCancel := context.WithTimeout(bctx, defaultUTPWriteTimeout)
 					defer writeCancel()
+					content, err = p.encodeUtpContent(n, content)
+					if err != nil {
+						if metrics.Enabled() {
+							p.portalMetrics.utpOutFailConn.Inc(1)
+						}
+						p.Log.Error("encode utp content failed", "err", err)
+						return
+					}
 					var n int
 					n, err = conn.Write(writeCtx, content)
-					conn.Close()
 					if err != nil {
 						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailWrite.Inc(1)
