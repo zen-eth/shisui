@@ -1,12 +1,14 @@
 package portalwire
 
 import (
+	"bytes"
 	"errors"
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/prysmaticlabs/go-bitfield"
+	"github.com/tetratelabs/wabin/leb128"
 )
 
 var ErrUnsupportedVersion = errors.New("unsupported version")
@@ -241,4 +243,36 @@ func (p *PortalProtocol) handleV0Offer(data []byte) []byte {
 	} else {
 		return data
 	}
+}
+
+func (p *PortalProtocol) decodeUtpContent(target *enode.Node, data []byte) ([]byte, error) {
+	version, err := p.getHighestVersion(target)
+	if err != nil {
+		return nil, err
+	}
+	if version == 1 {
+		contentLen, bytesRead, err := leb128.DecodeUint32(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		data = data[bytesRead:]
+		if len(data) != int(contentLen) {
+			return nil, errors.New("content length mismatch")
+		}
+	}
+	return data, nil
+}
+
+func (p *PortalProtocol) encodeUtpContent(target *enode.Node, data []byte) ([]byte, error) {
+	version, err := p.getHighestVersion(target)
+	if err != nil {
+		return nil, err
+	}
+	if version == 1 {
+		contentLen := uint32(len(data))
+		contentLenBytes := leb128.EncodeUint32(contentLen)
+		contentLenBytes = append(contentLenBytes, data...)
+		return contentLenBytes, nil
+	}
+	return data, nil
 }
