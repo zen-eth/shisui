@@ -2,6 +2,7 @@ package portalwire
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -221,4 +222,23 @@ func findBiggestSameNumber(a []uint8, b []uint8) (uint8, error) {
 	}
 
 	return maxCommon, nil
+}
+
+func (p *PortalProtocol) handleV0Offer(data []byte) []byte {
+	// if currentVersions includes version 1, then we need to handle the offer
+	if slices.Contains(p.currentVersions, 1) {
+		bitlist := bitfield.Bitlist(data)
+		v1 := make([]byte, 0)
+		for i := 0; i < int(bitlist.Len()); i++ {
+			exist := bitlist.BitAt(uint64(i))
+			if exist {
+				v1 = append(v1, byte(Accepted))
+			} else {
+				v1 = append(v1, byte(GenericDeclined))
+			}
+		}
+		return v1
+	} else {
+		return data
+	}
 }
