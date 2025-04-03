@@ -44,6 +44,8 @@ type portalMetrics struct {
 
 	contentDecodedTrue  *metrics.Counter
 	contentDecodedFalse *metrics.Counter
+
+	gossipDropCount *metrics.Counter
 }
 
 func newPortalMetrics(protocolName string) *portalMetrics {
@@ -74,6 +76,7 @@ func newPortalMetrics(protocolName string) *portalMetrics {
 		utpOutSuccess:               metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/outbound/success", nil),
 		contentDecodedTrue:          metrics.NewRegisteredCounter("portal/"+protocolName+"/content/decoded/true", nil),
 		contentDecodedFalse:         metrics.NewRegisteredCounter("portal/"+protocolName+"/content/decoded/false", nil),
+		gossipDropCount:             metrics.NewRegisteredCounter("portal/"+protocolName+"/gossip/drop", nil),
 	}
 }
 
