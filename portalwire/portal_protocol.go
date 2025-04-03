@@ -1948,7 +1948,14 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 			Node:    n,
 			Request: offerRequest,
 		}
-		p.offerQueue <- offerRequestWithNode
+		select {
+		case p.offerQueue <- offerRequestWithNode:
+		default:
+			p.Log.Info("offer queue is full, drop offer request", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
+			if metrics.Enabled() {
+				p.portalMetrics.gossipDropCount.Inc(1)
+			}
+		}
 	}
 
 	return len(finalGossipNodes), nil
