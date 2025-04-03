@@ -801,7 +801,6 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 			if metrics.Enabled() {
 				p.portalMetrics.utpInFailRead.Inc(1)
 			}
-			p.Log.Error("failed to read from utp connection", "err", err)
 			return 0xff, nil, err
 		}
 		p.Log.Trace("<< CONTENT/"+p.protocolName, "id", target.ID(), "size", n, "data", data)
@@ -810,7 +809,6 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 			if metrics.Enabled() {
 				p.portalMetrics.utpOutFailConn.Inc(1)
 			}
-			p.Log.Error("decode utp content failed", "err", err)
 			return 0xff, nil, err
 		}
 		if metrics.Enabled() {
