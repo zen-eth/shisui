@@ -1966,9 +1966,9 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 	}
 
 	for _, n := range finalGossipNodes {
-		permit := p.Utp.UtpController.GetOutboundPermit()
-		if permit == nil {
-			p.Log.Debug("reached utp conn limit, will drop this content", "nodeId", n.ID(), "addr", n.IPAddr().String())
+		permit, ok := p.Utp.UtpController.GetOutboundPermit()
+		if !ok {
+			p.Log.Debug("reached utp conn limit, will drop this content", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
 			continue
 		}
 		transientOfferRequest := &TransientOfferRequest{
