@@ -1367,62 +1367,74 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 		return nil, err
 	}
 	idBuffer := make([]byte, 2)
+	idValue := uint16(0)
 	if len(contentKeys) > 0 {
-		connectionId := p.Utp.CidWithAddr(node, addr, false)
+		permit, getPermit := p.Utp.GetInboundPermit()
+		if !getPermit {
+			if acceptV1, isV1 := accept.(*AcceptV1); isV1 {
+				keysLen := len(acceptV1.ContentKeys)
+				var limitRate = make([]uint8, keysLen)
+				for i := 0; i < keysLen; i++ {
+					limitRate[i] = uint8(RateLimited)
+				}
+				acceptV1.ContentKeys = limitRate
+			}
+		} else {
+			connectionId := p.Utp.CidWithAddr(node, addr, false)
 
-		go func(bctx context.Context, connId *zenutp.ConnectionId) {
-			var conn *zenutp.UtpStream
-			for {
-				select {
-				case <-bctx.Done():
-					return
-				default:
-					defer func() {
-						for _, key := range contentKeys {
-							p.inTransferMap.Delete(hexutil.Encode(key))
+			go func(bctx context.Context, connId *zenutp.ConnectionId) {
+				defer permit()
+				var conn *zenutp.UtpStream
+				for {
+					select {
+					case <-bctx.Done():
+						return
+					default:
+						defer func() {
+							for _, key := range contentKeys {
+								p.inTransferMap.Delete(hexutil.Encode(key))
+							}
+						}()
+						p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
+						connectCtx, cancel := context.WithTimeout(bctx, defaultUTPConnectTimeout)
+						defer cancel()
+						conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
+						if err != nil {
+							if metrics.Enabled() {
+								p.portalMetrics.utpInFailConn.Inc(1)
+							}
+							p.Log.Error("failed to accept utp connection for handle offer", "connId", connectionId.Send, "err", err)
+							return
 						}
-					}()
-					p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
-					connectCtx, cancel := context.WithTimeout(bctx, defaultUTPConnectTimeout)
-					defer cancel()
-					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
-					if err != nil {
+
+						// Read ALL the data from the connection until EOF and return it
+						var data []byte
+						var n int
+						readCtx, readCancel := context.WithTimeout(bctx, defaultUTPReadTimeout)
+						defer readCancel()
+						n, err = conn.ReadToEOF(readCtx, &data)
+						conn.Close()
+						p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n, "data", data)
 						if metrics.Enabled() {
-							p.portalMetrics.utpInFailConn.Inc(1)
+							p.portalMetrics.messagesReceivedContent.Mark(1)
 						}
-						p.Log.Error("failed to accept utp connection for handle offer", "connId", connectionId.Send, "err", err)
-						return
-					}
 
-					// Read ALL the data from the connection until EOF and return it
-					var data []byte
-					var n int
-					readCtx, readCancel := context.WithTimeout(bctx, defaultUTPReadTimeout)
-					defer readCancel()
-					n, err = conn.ReadToEOF(readCtx, &data)
-					conn.Close()
-					p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n, "data", data)
-					if metrics.Enabled() {
-						p.portalMetrics.messagesReceivedContent.Mark(1)
-					}
+						err = p.handleOfferedContents(node.ID(), contentKeys, data)
+						if err != nil {
+							p.Log.Error("failed to handle offered Contents", "err", err)
+							return
+						}
 
-					err = p.handleOfferedContents(node.ID(), contentKeys, data)
-					if err != nil {
-						p.Log.Error("failed to handle offered Contents", "err", err)
-						return
-					}
-
-					if metrics.Enabled() {
-						p.portalMetrics.utpInSuccess.Inc(1)
+						if metrics.Enabled() {
+							p.portalMetrics.utpInSuccess.Inc(1)
+						}
 					}
 				}
-			}
-		}(p.closeCtx, connectionId)
-
-		binary.BigEndian.PutUint16(idBuffer, connectionId.Send)
-	} else {
-		binary.BigEndian.PutUint16(idBuffer, uint16(0))
+			}(p.closeCtx, connectionId)
+			idValue = connectionId.Send
+		}
 	}
+	binary.BigEndian.PutUint16(idBuffer, idValue)
 	accept.SetConnectionId(idBuffer)
 	acceptMsgBytes, err := accept.MarshalSSZ()
 	if err != nil {
@@ -1966,7 +1978,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 	}
 
 	for _, n := range finalGossipNodes {
-		permit, ok := p.Utp.UtpController.GetOutboundPermit()
+		permit, ok := p.Utp.GetOutboundPermit()
 		if !ok {
 			p.Log.Debug("reached utp conn limit, will drop this content", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
 			continue

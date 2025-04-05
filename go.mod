@@ -23,9 +23,10 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834
 	github.com/urfave/cli/v2 v2.27.6
-	github.com/zen-eth/utp-go v0.0.0-20250323121936-88a9f87c66bf
+	github.com/zen-eth/utp-go v0.0.0-20250409100709-911715a704db
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
+	golang.org/x/sync v0.13.0
 	golang.org/x/text v0.24.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v2 v2.4.0
@@ -108,7 +109,6 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	google.golang.org/protobuf v1.35.2 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
