@@ -123,15 +123,15 @@ func (p *PortalProtocol) filterContentKeysV0(request *Offer) (CommonAccept, [][]
 	if len(p.contentQueue) < cap(p.contentQueue) {
 		for i, contentKey := range request.ContentKeys {
 			contentId := p.toContentId(contentKey)
-			if contentId != nil {
-				if inRange(p.Self().ID(), p.Radius(), contentId) {
-					if _, err := p.storage.Get(contentKey, contentId); err != nil {
-						contentKeyBitlist.SetBitAt(uint64(i), true)
-						acceptContentKeys = append(acceptContentKeys, contentKey)
-					}
-				}
-			} else {
+			if contentId == nil {
 				return nil, nil, ErrNilContentKey
+			}
+			if !inRange(p.Self().ID(), p.Radius(), contentId) {
+				continue
+			}
+			if _, err := p.storage.Get(contentKey, contentId); err != nil {
+				contentKeyBitlist.SetBitAt(uint64(i), true)
+				acceptContentKeys = append(acceptContentKeys, contentKey)
 			}
 		}
 	}
@@ -142,41 +142,39 @@ func (p *PortalProtocol) filterContentKeysV0(request *Offer) (CommonAccept, [][]
 }
 
 func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]byte, error) {
-	contentKeyList := make([]uint8, len(request.ContentKeys))
+	acceptV1 := &AcceptV1{
+		ContentKeys: make([]uint8, len(request.ContentKeys)),
+	}
 	acceptContentKeys := make([][]byte, 0)
 	if len(p.contentQueue) >= cap(p.contentQueue) {
 		for i := 0; i < len(request.ContentKeys); i++ {
-			contentKeyList[i] = uint8(RateLimited)
+			acceptV1.ContentKeys[i] = uint8(RateLimited)
 		}
-	} else {
-		for i, contentKey := range request.ContentKeys {
-			contentId := p.toContentId(contentKey)
-			if contentId != nil {
-				if inRange(p.Self().ID(), p.Radius(), contentId) {
-					_, err := p.storage.Get(contentKey, contentId)
-					if err == nil {
-						contentKeyList[i] = uint8(AlreadyStored)
-					} else {
-						if _, exist := p.inTransferMap.Load(hexutil.Encode(contentKey)); exist {
-							contentKeyList[i] = uint8(InboundTransferInProgress)
-						} else {
-							p.inTransferMap.Store(hexutil.Encode(contentKey), struct{}{})
-							contentKeyList[i] = uint8(Accepted)
-							acceptContentKeys = append(acceptContentKeys, contentKey)
-						}
-					}
-				} else {
-					contentKeyList[i] = uint8(NotWithinRadius)
-				}
-			} else {
-				return nil, nil, ErrNilContentKey
-			}
+		return acceptV1, acceptContentKeys, nil
+	}
+	for i, contentKey := range request.ContentKeys {
+		contentId := p.toContentId(contentKey)
+		if contentId == nil {
+			return nil, nil, ErrNilContentKey
 		}
+		if !inRange(p.Self().ID(), p.Radius(), contentId) {
+			acceptV1.ContentKeys[i] = uint8(NotWithinRadius)
+			continue
+		}
+		_, err := p.storage.Get(contentKey, contentId)
+		if err == nil {
+			acceptV1.ContentKeys[i] = uint8(AlreadyStored)
+			continue
+		}
+		if _, exist := p.inTransferMap.Load(hexutil.Encode(contentKey)); exist {
+			acceptV1.ContentKeys[i] = uint8(InboundTransferInProgress)
+			continue
+		}
+		p.inTransferMap.Store(hexutil.Encode(contentKey), struct{}{})
+		acceptV1.ContentKeys[i] = uint8(Accepted)
+		acceptContentKeys = append(acceptContentKeys, contentKey)
 	}
-	accept := &AcceptV1{
-		ContentKeys: contentKeyList,
-	}
-	return accept, acceptContentKeys, nil
+	return acceptV1, acceptContentKeys, nil
 }
 
 func (p *PortalProtocol) parseOfferResp(node *enode.Node, data []byte) (CommonAccept, error) {
