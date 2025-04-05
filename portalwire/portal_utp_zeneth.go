@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/semaphore"
 	"io"
 	"net"
 	"net/netip"
@@ -24,13 +25,14 @@ var (
 )
 
 type ZenEthUtp struct {
-	startOnce    sync.Once
-	ctx          context.Context
-	log          log.Logger
-	discV5       *discover.UDPv5
-	socket       *zenutp.UtpSocket
-	socketConfig *zenutp.ConnectionConfig
-	ListenAddr   string
+	startOnce     sync.Once
+	ctx           context.Context
+	log           log.Logger
+	discV5        *discover.UDPv5
+	socket        *zenutp.UtpSocket
+	socketConfig  *zenutp.ConnectionConfig
+	ListenAddr    string
+	UtpController *UtpController
 }
 
 type UtpPeer struct {
@@ -75,11 +77,48 @@ type packetItem struct {
 	data []byte
 }
 
+// ReleasePermit permit of Utp conn, if apply for permit success, will return a permit function.
+// And must uses it to release permit.
+type ReleasePermit func()
+
+var NoPermit ReleasePermit = func() {}
+
+type UtpController struct {
+	inboundLimit  *semaphore.Weighted
+	outboundLimit *semaphore.Weighted
+}
+
+func NewUtpController(maxLimit int) *UtpController {
+	return &UtpController{
+		inboundLimit:  semaphore.NewWeighted(int64(maxLimit)),
+		outboundLimit: semaphore.NewWeighted(int64(maxLimit)),
+	}
+}
+
+func (u *UtpController) GetInboundPermit() (ReleasePermit, bool) {
+	if ok := u.inboundLimit.TryAcquire(1); !ok {
+		return NoPermit, false
+	}
+	return func() {
+		u.inboundLimit.Release(1)
+	}, true
+}
+
+func (u *UtpController) GetOutboundPermit() (ReleasePermit, bool) {
+	if ok := u.outboundLimit.TryAcquire(1); !ok {
+		return NoPermit, false
+	}
+	return func() {
+		u.outboundLimit.Release(1)
+	}, true
+}
+
 type discv5Conn struct {
-	logger  log.Logger
-	receive chan *packetItem
-	conn    *discover.UDPv5
-	closed  *atomic.Bool
+	logger        log.Logger
+	receive       chan *packetItem
+	conn          *discover.UDPv5
+	closed        *atomic.Bool
+	UtpController *UtpController
 }
 
 func newDiscv5Conn(conn *discover.UDPv5, logger log.Logger) *discv5Conn {
@@ -128,70 +167,79 @@ func (c *discv5Conn) Close() error {
 
 func NewZenEthUtp(ctx context.Context, config *PortalProtocolConfig, discV5 *discover.UDPv5, conn discover.UDPConn) *ZenEthUtp {
 	return &ZenEthUtp{
-		ctx:          ctx,
-		log:          log.New("protocol", "utp", "local", conn.LocalAddr().String()),
-		discV5:       discV5,
-		socketConfig: zenutp.NewConnectionConfig(),
-		ListenAddr:   config.ListenAddr,
+		ctx:           ctx,
+		log:           log.New("protocol", "utp", "local", conn.LocalAddr().String()),
+		discV5:        discV5,
+		socketConfig:  zenutp.NewConnectionConfig(),
+		ListenAddr:    config.ListenAddr,
+		UtpController: NewUtpController(config.MaxUtpConnSize),
 	}
 }
 
-func (p *ZenEthUtp) Start() error {
-	p.startOnce.Do(func() {
-		conn := newDiscv5Conn(p.discV5, p.log)
-		p.socket = zenutp.WithSocket(p.ctx, conn, p.log)
-		p.discV5.RegisterTalkHandler(UTP_STRING, conn.handleUtpTalkRequest)
+func (z *ZenEthUtp) Start() error {
+	z.startOnce.Do(func() {
+		conn := newDiscv5Conn(z.discV5, z.log)
+		z.socket = zenutp.WithSocket(z.ctx, conn, z.log)
+		z.discV5.RegisterTalkHandler(UTP_STRING, conn.handleUtpTalkRequest)
 	})
 	return nil
 }
 
-func (p *ZenEthUtp) DialWithCid(ctx context.Context, dest *enode.Node, connId uint16) (*zenutp.UtpStream, error) {
-	cid := p.SendId(dest, connId)
-	stream, err := p.socket.ConnectWithCid(ctx, cid, p.socketConfig)
+func (z *ZenEthUtp) GetOutboundPermit() (ReleasePermit, bool) {
+	return z.UtpController.GetOutboundPermit()
+}
+
+func (z *ZenEthUtp) GetInboundPermit() (ReleasePermit, bool) {
+	return z.UtpController.GetInboundPermit()
+}
+
+func (z *ZenEthUtp) DialWithCid(ctx context.Context, dest *enode.Node, connId uint16) (*zenutp.UtpStream, error) {
+	cid := z.SendId(dest, connId)
+	stream, err := z.socket.ConnectWithCid(ctx, cid, z.socketConfig)
 	return stream, err
 }
 
-func (p *ZenEthUtp) Dial(ctx context.Context, dest *enode.Node) (*zenutp.UtpStream, error) {
+func (z *ZenEthUtp) Dial(ctx context.Context, dest *enode.Node) (*zenutp.UtpStream, error) {
 	addrPort := netip.AddrPortFrom(dest.IPAddr(), uint16(dest.UDP()))
 	peer := &UtpPeer{id: dest.ID(), addr: &addrPort}
-	p.log.Info("will connect to: ", "addr", addrPort.String())
+	z.log.Info("will connect to: ", "addr", addrPort.String())
 
-	stream, err := p.socket.Connect(ctx, peer, p.socketConfig)
+	stream, err := z.socket.Connect(ctx, peer, z.socketConfig)
 	return stream, err
 }
 
-func (p *ZenEthUtp) AcceptWithCid(ctx context.Context, cid *zenutp.ConnectionId) (*zenutp.UtpStream, error) {
-	p.log.Debug("will accept from: ", "nodeId", cid.Peer.Hash(), "sendId", cid.Send, "recvId", cid.Recv)
-	stream, err := p.socket.AcceptWithCid(ctx, cid, p.socketConfig)
+func (z *ZenEthUtp) AcceptWithCid(ctx context.Context, cid *zenutp.ConnectionId) (*zenutp.UtpStream, error) {
+	z.log.Debug("will accept from: ", "nodeId", cid.Peer.Hash(), "sendId", cid.Send, "recvId", cid.Recv)
+	stream, err := z.socket.AcceptWithCid(ctx, cid, z.socketConfig)
 	return stream, err
 }
 
-func (p *ZenEthUtp) Accept(ctx context.Context) (*zenutp.UtpStream, error) {
-	stream, err := p.socket.Accept(ctx, p.socketConfig)
+func (z *ZenEthUtp) Accept(ctx context.Context) (*zenutp.UtpStream, error) {
+	stream, err := z.socket.Accept(ctx, z.socketConfig)
 	return stream, err
 }
 
-func (p *ZenEthUtp) Stop() {
-	p.socket.Close()
+func (z *ZenEthUtp) Stop() {
+	z.socket.Close()
 }
 
-func (p *ZenEthUtp) Cid(dst *enode.Node, isInitiator bool) *zenutp.ConnectionId {
+func (z *ZenEthUtp) Cid(dst *enode.Node, isInitiator bool) *zenutp.ConnectionId {
 	peer := newUtpPeer(dst)
-	return p.socket.Cid(peer, isInitiator)
+	return z.socket.Cid(peer, isInitiator)
 }
 
-func (p *ZenEthUtp) CidWithAddr(dst *enode.Node, addr *net.UDPAddr, isInitiator bool) *zenutp.ConnectionId {
+func (z *ZenEthUtp) CidWithAddr(dst *enode.Node, addr *net.UDPAddr, isInitiator bool) *zenutp.ConnectionId {
 	addrPort := netip.AddrPortFrom(netutil.IPToAddr(addr.IP), uint16(addr.Port))
 	peer := newUtpPeerWithNodeNAddr(dst, &addrPort)
-	return p.socket.Cid(peer, isInitiator)
+	return z.socket.Cid(peer, isInitiator)
 }
 
-func (p *ZenEthUtp) RecvId(dst *enode.Node, connId uint16) *zenutp.ConnectionId {
+func (z *ZenEthUtp) RecvId(dst *enode.Node, connId uint16) *zenutp.ConnectionId {
 	peer := newUtpPeer(dst)
 	return zenutp.NewConnectionId(peer, connId+1, connId)
 }
 
-func (p *ZenEthUtp) SendId(dst *enode.Node, connId uint16) *zenutp.ConnectionId {
+func (z *ZenEthUtp) SendId(dst *enode.Node, connId uint16) *zenutp.ConnectionId {
 	peer := newUtpPeer(dst)
 	return zenutp.NewConnectionId(peer, connId, connId+1)
 }
