@@ -95,22 +95,22 @@ func NewUtpController(maxLimit int) *UtpController {
 	}
 }
 
-func (u *UtpController) GetInboundPermit() ReleasePermit {
+func (u *UtpController) GetInboundPermit() (ReleasePermit, bool) {
 	if ok := u.inboundLimit.TryAcquire(1); !ok {
-		return NoPermit
+		return NoPermit, false
 	}
 	return func() {
 		u.inboundLimit.Release(1)
-	}
+	}, true
 }
 
-func (u *UtpController) GetOutboundPermit() ReleasePermit {
+func (u *UtpController) GetOutboundPermit() (ReleasePermit, bool) {
 	if ok := u.outboundLimit.TryAcquire(1); !ok {
-		return nil
+		return NoPermit, false
 	}
 	return func() {
 		u.outboundLimit.Release(1)
-	}
+	}, true
 }
 
 type discv5Conn struct {
