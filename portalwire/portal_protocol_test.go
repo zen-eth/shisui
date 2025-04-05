@@ -333,7 +333,7 @@ func TestPortalWireProtocol(t *testing.T) {
 		Request: testTransientOfferRequest,
 	}
 
-	contentKeys, err := node1.offer(node3.localNode.Node(), offerRequest)
+	contentKeys, err := node1.offer(node3.localNode.Node(), offerRequest, NoPermit)
 	assert.Equal(t, uint64(2), bitfield.Bitlist(contentKeys).Count())
 	assert.NoError(t, err)
 
@@ -380,7 +380,7 @@ func TestPortalWireProtocol(t *testing.T) {
 		Request: testTransientOfferRequestWithResult,
 	}
 
-	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest)
+	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest, NoPermit)
 	assert.NoError(t, err)
 
 	offerTrace := <-testTransientOfferRequestWithResult.Result
@@ -399,7 +399,7 @@ func TestPortalWireProtocol(t *testing.T) {
 
 	err = node3.storage.Put(nil, node3.toContentId(testTraceEntry.ContentKey), testTraceEntry.Content)
 	assert.NoError(t, err)
-	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest1)
+	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest1, NoPermit)
 	assert.NoError(t, err)
 
 	offerTrace1 := <-testTransientOfferRequestWithResult1.Result
@@ -685,7 +685,7 @@ func TestOfferV1(t *testing.T) {
 		Request: testTransientOfferRequest,
 	}
 	// all accept
-	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest)
+	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest, NoPermit)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(contentKeys))
 	for _, val := range contentKeys {
@@ -695,7 +695,7 @@ func TestOfferV1(t *testing.T) {
 	// one reject
 	node1.storage.Put(testEntry1.ContentKey, node2.toContentId(testEntry1.ContentKey), testEntry1.Content)
 	node1.inTransferMap.Store(hexutil.Encode(testEntry2.ContentKey), struct{}{})
-	acceptCodes, err := node2.offer(node1.localNode.Node(), offerRequest)
+	acceptCodes, err := node2.offer(node1.localNode.Node(), offerRequest, NoPermit)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(acceptCodes))
 	assert.Equal(t, uint8(AlreadyStored), acceptCodes[0])
