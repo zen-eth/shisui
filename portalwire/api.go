@@ -474,7 +474,7 @@ func (p *PortalProtocolAPI) Offer(enr string, contentItems [][2]string) (string,
 		Kind:    TransientOfferRequestKind,
 		Request: transientOfferRequest,
 	}
-	accept, err := p.portalProtocol.offer(n, offerReq)
+	accept, err := p.portalProtocol.offer(n, offerReq, NoPermit)
 	if err != nil {
 		return "", err
 	}
@@ -519,7 +519,7 @@ func (p *PortalProtocolAPI) TraceOffer(enr string, key string, value string) (in
 		Request: transientOfferRequestWithResult,
 	}
 
-	_, err = p.portalProtocol.offer(n, offerReq)
+	_, err = p.portalProtocol.offer(n, offerReq, NoPermit)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/semaphore"
 	"io"
 	"net"
 	"net/netip"
@@ -24,13 +25,14 @@ var (
 )
 
 type ZenEthUtp struct {
-	startOnce    sync.Once
-	ctx          context.Context
-	log          log.Logger
-	discV5       *discover.UDPv5
-	socket       *zenutp.UtpSocket
-	socketConfig *zenutp.ConnectionConfig
-	ListenAddr   string
+	startOnce     sync.Once
+	ctx           context.Context
+	log           log.Logger
+	discV5        *discover.UDPv5
+	socket        *zenutp.UtpSocket
+	socketConfig  *zenutp.ConnectionConfig
+	ListenAddr    string
+	UtpController *UtpController
 }
 
 type UtpPeer struct {
@@ -75,11 +77,48 @@ type packetItem struct {
 	data []byte
 }
 
+// ReleasePermit permit of Utp conn, if apply for permit success, will return a permit function.
+// And must uses it to release permit.
+type ReleasePermit func()
+
+var NoPermit ReleasePermit = func() {}
+
+type UtpController struct {
+	inboundLimit  *semaphore.Weighted
+	outboundLimit *semaphore.Weighted
+}
+
+func NewUtpController(maxLimit int) *UtpController {
+	return &UtpController{
+		inboundLimit:  semaphore.NewWeighted(int64(maxLimit)),
+		outboundLimit: semaphore.NewWeighted(int64(maxLimit)),
+	}
+}
+
+func (u *UtpController) GetInboundPermit() ReleasePermit {
+	if ok := u.inboundLimit.TryAcquire(1); !ok {
+		return NoPermit
+	}
+	return func() {
+		u.inboundLimit.Release(1)
+	}
+}
+
+func (u *UtpController) GetOutboundPermit() ReleasePermit {
+	if ok := u.outboundLimit.TryAcquire(1); !ok {
+		return nil
+	}
+	return func() {
+		u.outboundLimit.Release(1)
+	}
+}
+
 type discv5Conn struct {
-	logger  log.Logger
-	receive chan *packetItem
-	conn    *discover.UDPv5
-	closed  *atomic.Bool
+	logger        log.Logger
+	receive       chan *packetItem
+	conn          *discover.UDPv5
+	closed        *atomic.Bool
+	UtpController *UtpController
 }
 
 func newDiscv5Conn(conn *discover.UDPv5, logger log.Logger) *discv5Conn {
@@ -128,11 +167,12 @@ func (c *discv5Conn) Close() error {
 
 func NewZenEthUtp(ctx context.Context, config *PortalProtocolConfig, discV5 *discover.UDPv5, conn discover.UDPConn) *ZenEthUtp {
 	return &ZenEthUtp{
-		ctx:          ctx,
-		log:          log.New("protocol", "utp", "local", conn.LocalAddr().String()),
-		discV5:       discV5,
-		socketConfig: zenutp.NewConnectionConfig(),
-		ListenAddr:   config.ListenAddr,
+		ctx:           ctx,
+		log:           log.New("protocol", "utp", "local", conn.LocalAddr().String()),
+		discV5:        discV5,
+		socketConfig:  zenutp.NewConnectionConfig(),
+		ListenAddr:    config.ListenAddr,
+		UtpController: NewUtpController(config.MaxUtpConnSize),
 	}
 }
 
