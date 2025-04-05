@@ -59,6 +59,8 @@ const (
 
 	defaultUTPReadTimeout = 60 * time.Second
 
+	DefaultUtpConnSize = 50
+
 	// These are the concurrent offers per Portal wire protocol that is running.
 	// Using the `offerQueue` allows for limiting the amount of offers send and
 	// thus how many streams can be started.
@@ -170,6 +172,8 @@ type OfferRequest struct {
 type OfferRequestWithNode struct {
 	Request *OfferRequest
 	Node    *enode.Node
+
+	permit ReleasePermit
 }
 
 type ContentInfoResp struct {
@@ -203,6 +207,7 @@ type PortalProtocolConfig struct {
 	NAT                   nat.Interface
 	clock                 mclock.Clock
 	TrustedBlockRoot      []byte
+	MaxUtpConnSize        int
 }
 
 func DefaultPortalProtocolConfig() *PortalProtocolConfig {
@@ -215,6 +220,7 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 		NodeDBPath:            "",
 		clock:                 mclock.System{},
 		TrustedBlockRoot:      make([]byte, 0),
+		MaxUtpConnSize:        DefaultUtpConnSize,
 	}
 }
 
@@ -558,7 +564,7 @@ func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte,
 	return p.processContent(node, talkResp)
 }
 
-func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest) ([]byte, error) {
+func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, permit ReleasePermit) ([]byte, error) {
 	contentKeys := getContentKeys(offerRequest)
 
 	offer := &Offer{
@@ -580,10 +586,16 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest) ([]
 		return nil, err
 	}
 
-	return p.processOffer(node, talkResp, offerRequest)
+	return p.processOffer(node, talkResp, offerRequest, permit)
 }
 
-func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *OfferRequest) ([]byte, error) {
+func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *OfferRequest, permit ReleasePermit) ([]byte, error) {
+	notStartedUtp := true
+	defer func() {
+		if notStartedUtp {
+			permit()
+		}
+	}()
 	var err error
 	if len(resp) == 0 {
 		return nil, ErrEmptyResp
@@ -640,9 +652,10 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 		}
 		return accept.GetContentKeys(), nil
 	}
-
+	notStartedUtp = false
 	connId := binary.BigEndian.Uint16(accept.GetConnectionId())
 	go func(ctx context.Context) {
+		defer permit()
 		var conn *zenutp.UtpStream
 		for {
 			select {
@@ -1542,7 +1555,7 @@ func (p *PortalProtocol) offerWorker() {
 			return
 		case offerRequestWithNode := <-p.offerQueue:
 			p.Log.Trace("offerWorker", "offerRequestWithNode", offerRequestWithNode)
-			_, err := p.offer(offerRequestWithNode.Node, offerRequestWithNode.Request)
+			_, err := p.offer(offerRequestWithNode.Node, offerRequestWithNode.Request, offerRequestWithNode.permit)
 			if err != nil {
 				p.Log.Error("failed to offer", "err", err)
 			}
@@ -1935,6 +1948,11 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 	}
 
 	for _, n := range finalGossipNodes {
+		permit := p.Utp.UtpController.GetOutboundPermit()
+		if permit == nil {
+			p.Log.Debug("reached utp conn limit, will drop this content", "nodeId", n.ID(), "addr", n.IPAddr().String())
+			continue
+		}
 		transientOfferRequest := &TransientOfferRequest{
 			Contents: contentList,
 		}
@@ -1947,6 +1965,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 		offerRequestWithNode := &OfferRequestWithNode{
 			Node:    n,
 			Request: offerRequest,
+			permit:  permit,
 		}
 		select {
 		case p.offerQueue <- offerRequestWithNode:
