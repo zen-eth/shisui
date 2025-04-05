@@ -52,6 +52,8 @@ func getPortalConfig(ctx *cli.Context) (*portal.Config, error) {
 		config.PortalProtocolConfig.TrustedBlockRoot = data
 	}
 
+	config.PortalProtocolConfig.MaxUtpConnSize = ctx.Int(utils.PortalUtpConnSizeLimitFlag.Name)
+
 	err := setPrivateKey(ctx, config)
 	if err != nil {
 		return config, err

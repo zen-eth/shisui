@@ -197,6 +197,13 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Category: flags.PortalNetworkCategory,
 		Value:    false,
 	}
+
+	PortalUtpConnSizeLimitFlag = &cli.IntFlag{
+		Name:     "utp-conn-size-limit",
+		Usage:    "Limit the number of UTP connections, with a default value of 50",
+		Value:    portalwire.DefaultUtpConnSize,
+		Category: flags.PortalNetworkCategory,
+	}
 )
 
 func SetupMetrics(cfg *metrics.Config) {
