@@ -10,10 +10,14 @@ GORUN = go run
 
 GIT_COMMIT := $(shell git rev-parse --short=8 HEAD)
 GIT_DATE := $(shell git log -1 --format=%ci | cut -d ' ' -f 1)
+GIT_TAG := $(shell git tag --sort=-creatordate | head -n 1)
 
 #? shisui: Build shisui
 shisui:
-	go build -ldflags "-X github.com/zen-eth/shisui/internal/version.gitCommit=$(GIT_COMMIT) -X github.com/zen-eth/shisui/internal/version.gitDate=$(GIT_DATE)" ./cmd/shisui
+	go build -ldflags " \
+	-X github.com/zen-eth/shisui/internal/version.gitCommit=$(GIT_COMMIT) \
+	-X github.com/zen-eth/shisui/internal/version.gitTag=$(GIT_TAG) \
+	-X github.com/zen-eth/shisui/internal/version.gitDate=$(GIT_DATE)" ./cmd/shisui
 	mkdir -p $(GOBIN)
 	mv shisui $(GOBIN)/shisui
 	@echo "Done building."

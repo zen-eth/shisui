@@ -36,20 +36,21 @@ const (
 
 // These variables are set at build-time by the linker when the build is
 // done by build/ci.go.
-var gitCommit, gitDate string
+var gitCommit, gitDate, gitTag string
 
 // VCSInfo represents the git repository state.
 type VCSInfo struct {
 	Commit string // head commit hash
 	Date   string // commit time in YYYYMMDD format
 	Dirty  bool
+	Tag    string
 }
 
 // VCS returns version control information of the current executable.
 func VCS() (VCSInfo, bool) {
 	if gitCommit != "" {
 		// Use information set by the build script if present.
-		return VCSInfo{Commit: gitCommit, Date: gitDate}, true
+		return VCSInfo{Commit: gitCommit, Date: gitDate, Tag: gitTag}, true
 	}
 	if buildInfo, ok := debug.ReadBuildInfo(); ok {
 		if buildInfo.Main.Path == ourPath {
@@ -65,7 +66,7 @@ func ClientInfo() string {
 	info, _ := VCS()
 	name := "shisui"
 	// TODO replease with tag when a release is created
-	name += "/latest-" + info.Commit
+	name += "/" + info.Tag + "-" + info.Commit
 	name += "/" + runtime.GOOS + "-" + runtime.GOARCH
 	name += "/" + runtime.Version()
 	return name
