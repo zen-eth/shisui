@@ -65,7 +65,6 @@ func VCS() (VCSInfo, bool) {
 func ClientInfo() string {
 	info, _ := VCS()
 	name := "shisui"
-	// TODO replease with tag when a release is created
 	name += "/" + info.Tag + "-" + info.Commit
 	name += "/" + runtime.GOOS + "-" + runtime.GOARCH
 	name += "/" + runtime.Version()
