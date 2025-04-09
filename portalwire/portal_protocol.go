@@ -1259,7 +1259,6 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 					connectCtx, cancel = context.WithTimeout(bctx, defaultUTPConnectTimeout)
 					defer cancel()
 					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
-					defer conn.Close()
 					if err != nil {
 						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailConn.Inc(1)
@@ -1267,6 +1266,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 						p.Log.Error("failed to accept utp connection for handle find content", "connId", connectionId.Send, "err", err)
 						return
 					}
+					defer conn.Close()
 
 					writeCtx, writeCancel := context.WithTimeout(bctx, defaultUTPWriteTimeout)
 					defer writeCancel()
