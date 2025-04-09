@@ -629,7 +629,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				Type: Failed,
 			}
 		}
-		return nil, fmt.Errorf("accepted content key bitlist has invalid size, expected %d, got %d", contentKeysNumber, len(acceptIndices))
+		return nil, fmt.Errorf("accepted content key bitlist has invalid size, expected %d, got %d", contentKeysNumber, accept.GetKeyLength())
 	}
 
 	if len(acceptIndices) == 0 {
