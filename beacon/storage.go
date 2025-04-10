@@ -3,6 +3,7 @@ package beacon
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"sync"
 	"sync/atomic"
 
@@ -231,7 +232,7 @@ func (bs *Storage) getUint64Bytes(value uint64) []byte {
 }
 
 func handleNotFound(err error) error {
-	if err == pebble.ErrNotFound {
+	if errors.Is(err, pebble.ErrNotFound) {
 		return storage.ErrContentNotFound
 	}
 	return err

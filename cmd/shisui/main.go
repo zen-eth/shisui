@@ -110,7 +110,7 @@ func shisui(ctx *cli.Context) error {
 
 	config, err := getPortalConfig(ctx)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	// Start metrics export if enabled

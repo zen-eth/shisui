@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/tetratelabs/wabin/leb128"
 )
@@ -88,7 +89,7 @@ func (p *PortalProtocol) getHighestVersion(node *enode.Node) (uint8, error) {
 	versions := &protocolVersions{}
 	err := node.Load(versions)
 	// key is not set, return the default version
-	if err != nil {
+	if enr.IsNotFound(err) {
 		return p.currentVersions[0], nil
 	}
 	return findBiggestSameNumber(p.currentVersions, []uint8(*versions))
