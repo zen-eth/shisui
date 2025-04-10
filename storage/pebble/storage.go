@@ -3,6 +3,7 @@ package pebble
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"runtime"
 	"sync"
@@ -139,7 +140,7 @@ func NewStorage(config storage.PortalStorageConfig, db *pebble.DB) (storage.Cont
 	cs.radius.Store(storage.MaxDistance)
 
 	val, _, err := cs.db.Get(storage.SizeKey)
-	if err != nil && err != pebble.ErrNotFound {
+	if err != nil && !errors.Is(err, pebble.ErrNotFound) {
 		return nil, err
 	}
 	if err == nil {
@@ -177,11 +178,11 @@ func NewStorage(config storage.PortalStorageConfig, db *pebble.DB) (storage.Cont
 func (c *ContentStorage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	distance := xor(contentId, c.nodeId[:])
 	data, closer, err := c.db.Get(distance)
-	if err != nil && err != pebble.ErrNotFound {
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, storage.ErrContentNotFound
+		}
 		return nil, err
-	}
-	if err == pebble.ErrNotFound {
-		return nil, storage.ErrContentNotFound
 	}
 	closer.Close()
 	return data, nil

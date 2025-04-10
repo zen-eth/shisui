@@ -10,6 +10,11 @@ linters:
     - unconvert
     - unparam
     - whitespace
+    - nilerr
+    - nilnesserr
+#    - nilnil
+#    - err113
+#    - errorlint
   settings:
     revive:
       enable-all-rules: false
@@ -58,6 +63,9 @@ linters:
       - linters:
           - unparam
         path: state/trie/node_test.go
+      - linters:
+          - nilerr
+        path: portalwire/portal_protocol.go
     paths:
       - vendor
       - third_party$

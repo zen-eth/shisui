@@ -552,7 +552,7 @@ func (p *PortalProtocolAPI) RecursiveFindContent(contentKeyHex string) (*Content
 		return &ContentInfo{
 			Content:     hexutil.Encode(data),
 			UtpTransfer: false,
-		}, err
+		}, nil
 	}
 	p.portalProtocol.Log.Warn("find content err", "contextKey", hexutil.Encode(contentKey), "err", err)
 
