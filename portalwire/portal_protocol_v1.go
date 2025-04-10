@@ -92,7 +92,10 @@ func (p *PortalProtocol) getHighestVersion(node *enode.Node) (uint8, error) {
 	if enr.IsNotFound(err) {
 		return p.currentVersions[0], nil
 	}
-	return findBiggestSameNumber(p.currentVersions, []uint8(*versions))
+	if err != nil {
+		return 0, err
+	}
+	return findBiggestSameNumber(p.currentVersions, *versions)
 }
 
 // find the Accept.ContentKeys and the content keys to accept
