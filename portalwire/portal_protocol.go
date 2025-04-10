@@ -595,9 +595,9 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 	p.Log.Info("will process Offer", "id", target.ID(), "ip", target.IP().To4().String(), "port", target.UDP())
 
 	accept, err := p.parseOfferResp(target, resp[1:])
-	//if err != nil {
-	//	return nil, err
-	//}
+	if err != nil {
+		return nil, err
+	}
 
 	p.Log.Trace("<< ACCEPT/"+p.protocolName, "id", target.ID(), "accept", accept)
 	if metrics.Enabled() {
