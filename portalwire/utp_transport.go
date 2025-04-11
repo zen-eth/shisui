@@ -32,7 +32,7 @@ type ZenEthUtp struct {
 	socket        *zenutp.UtpSocket
 	socketConfig  *zenutp.ConnectionConfig
 	ListenAddr    string
-	UtpController *UtpController
+	utpController *UtpController
 }
 
 type UtpPeer struct {
@@ -151,9 +151,12 @@ func (c *discv5Conn) ReadFrom(b []byte) (int, zenutp.ConnectionPeer, error) {
 
 func (c *discv5Conn) WriteTo(b []byte, dst zenutp.ConnectionPeer) (int, error) {
 	if c.closed.Load() {
-		return 0, nil
+		return 0, errors.New("discv5 conn has closed")
 	}
-	peer := dst.(*UtpPeer)
+	peer, ok := dst.(*UtpPeer)
+	if !ok {
+		return 0, errors.New("dest peer is not a utp peer")
+	}
 	req := &v5wire.TalkRequest{Protocol: UTP_STRING, Message: b}
 	c.conn.SendNoResp(peer.node, *peer.addr, req)
 	return len(b), nil
@@ -172,7 +175,7 @@ func NewZenEthUtp(ctx context.Context, config *PortalProtocolConfig, discV5 *dis
 		discV5:        discV5,
 		socketConfig:  zenutp.NewConnectionConfig(),
 		ListenAddr:    config.ListenAddr,
-		UtpController: NewUtpController(config.MaxUtpConnSize),
+		utpController: NewUtpController(config.MaxUtpConnSize),
 	}
 }
 
@@ -186,11 +189,11 @@ func (z *ZenEthUtp) Start() error {
 }
 
 func (z *ZenEthUtp) GetOutboundPermit() (ReleasePermit, bool) {
-	return z.UtpController.GetOutboundPermit()
+	return z.utpController.GetOutboundPermit()
 }
 
 func (z *ZenEthUtp) GetInboundPermit() (ReleasePermit, bool) {
-	return z.UtpController.GetInboundPermit()
+	return z.utpController.GetInboundPermit()
 }
 
 func (z *ZenEthUtp) DialWithCid(ctx context.Context, dest *enode.Node, connId uint16) (*zenutp.UtpStream, error) {
