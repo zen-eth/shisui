@@ -101,7 +101,7 @@ type protocolVersions []uint8
 
 func (pv protocolVersions) ENRKey() string { return "pv" }
 
-var Versions protocolVersions = protocolVersions{0} //protocol network versions defined here
+var Versions protocolVersions = protocolVersions{0, 1} //protocol network versions defined here
 
 type ClientTag string
 
