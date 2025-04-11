@@ -42,6 +42,7 @@ var (
 		utils.PortalDiscv5GnetFlag,
 		utils.PortalTrustedBlockRootFlag,
 		utils.PortalTableInitFlag,
+		utils.PortalUtpConnSizeLimitFlag,
 	}
 	historyRpcFlags = []cli.Flag{
 		utils.PortalRPCListenAddrFlag,
