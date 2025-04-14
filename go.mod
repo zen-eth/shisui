@@ -5,9 +5,10 @@ go 1.24.2
 replace github.com/protolambda/zrnt v0.34.1 => github.com/optimism-java/zrnt v0.32.4-0.20240415084906-d9dbf06b32f7
 
 require (
+	github.com/OffchainLabs/go-bitfield v0.0.0-20250408211841-ad7364de91a5
 	github.com/VictoriaMetrics/fastcache v1.12.2
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/ethereum/go-ethereum v1.15.4
+	github.com/ethereum/go-ethereum v1.15.8
 	github.com/ferranbt/fastssz v0.1.4
 	github.com/golang/snappy v1.0.0
 	github.com/hashicorp/go-bexpr v0.1.14
@@ -19,13 +20,12 @@ require (
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
-	github.com/prysmaticlabs/go-bitfield v0.0.0-20240618144021-706c95b2dd15
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834
 	github.com/urfave/cli/v2 v2.27.6
 	github.com/zen-eth/utp-go v0.0.0-20250323121936-88a9f87c66bf
 	go.uber.org/automaxprocs v1.6.0
-	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f
+	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/text v0.24.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v2 v2.4.0
@@ -113,4 +113,4 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250409054516-9ee4b89f90d7
+replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250414141813-4a5771aa2e28

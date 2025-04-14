@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OffchainLabs/go-bitfield"
 	"github.com/ethereum/go-ethereum/p2p/discover"
-	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/zen-eth/shisui/storage"
 	"github.com/zen-eth/shisui/testlog"
 	zenutp "github.com/zen-eth/utp-go"

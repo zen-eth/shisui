@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"testing"
 
+	bitfield "github.com/OffchainLabs/go-bitfield"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rlp"
 	ssz "github.com/ferranbt/fastssz"
-	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/stretchr/testify/assert"
 )
 
