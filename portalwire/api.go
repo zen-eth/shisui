@@ -479,10 +479,7 @@ func (p *PortalProtocolAPI) Offer(enr string, contentItems [][2]string) (string,
 		return "", err
 	}
 
-	version, err := p.portalProtocol.getHighestVersion(n)
-	if err != nil {
-		return "", err
-	}
+	version := p.portalProtocol.table.getNodeHighestVersion(n)
 	// transfer bitlist to []byte
 	if version == 0 {
 		accept = p.portalProtocol.handleV0Offer(accept)

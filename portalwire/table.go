@@ -90,6 +90,8 @@ type Table struct {
 
 	nodeAddedHook   func(*bucket, *tableNode)
 	nodeRemovedHook func(*bucket, *tableNode)
+
+	currentVersions *activeVersions
 }
 
 // transport is implemented by the UDP transports.
@@ -138,6 +140,7 @@ func newTable(t transport, db *enode.DB, cfg Config) (*Table, error) {
 		closeReq:        make(chan struct{}),
 		closed:          make(chan struct{}),
 		ips:             netutil.DistinctNetSet{Subnet: tableSubnet, Limit: tableIPLimit},
+		currentVersions: newActiveVersions(cfg.Log),
 	}
 	for i := range tab.buckets {
 		tab.buckets[i] = &bucket{
@@ -194,6 +197,21 @@ func (tab *Table) getNode(id enode.ID) *enode.Node {
 		}
 	}
 	return nil
+}
+
+// getNodeHighestVersion returns the node higest compatible version
+func (tab *Table) getNodeHighestVersion(node *enode.Node) uint8 {
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+
+	return tab.currentVersions.getHighestVersion(node)
+}
+
+// updateNodeHighestVersion updates/set the node higest compatible version
+func (tab *Table) updateNodeHighestVersion(node *enode.Node) {
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+	tab.currentVersions.updateHighestVersion(node)
 }
 
 // close terminates the network listener and flushes the node database.
@@ -551,6 +569,9 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 		wn.livenessChecks = 1
 		wn.isValidatedLive = true
 	}
+
+	tab.currentVersions.updateHighestVersion(req.node)
+
 	b.entries = append(b.entries, wn)
 	b.replacements = deleteNode(b.replacements, wn.ID())
 	tab.nodeAdded(b, wn)
@@ -613,6 +634,8 @@ func (tab *Table) deleteInBucket(b *bucket, id enode.ID) *tableNode {
 	b.entries = slices.Delete(b.entries, index, index+1)
 	tab.removeIP(b, n.IPAddr())
 	tab.nodeRemoved(b, n)
+
+	tab.currentVersions.deleteHighestVersion(n.Node)
 
 	// Add replacement.
 	if len(b.replacements) == 0 {

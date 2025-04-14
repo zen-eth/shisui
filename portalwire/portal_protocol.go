@@ -97,12 +97,6 @@ const (
 	Failed
 )
 
-type protocolVersions []uint8
-
-func (pv protocolVersions) ENRKey() string { return "pv" }
-
-var Versions protocolVersions = protocolVersions{0, 1} //protocol network versions defined here
-
 type ClientTag string
 
 func (c ClientTag) ENRKey() string { return "c" }
@@ -255,7 +249,6 @@ type PortalProtocol struct {
 	PingExtensions pingext.PingExtension
 
 	disableTableInitCheck bool
-	currentVersions       protocolVersions
 	inTransferMap         sync.Map
 }
 
@@ -302,7 +295,6 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		NAT:               config.NAT,
 		clock:             config.clock,
 		Utp:               utp,
-		currentVersions:   currentVersions,
 	}
 
 	for _, setOpt := range setOpts {
@@ -941,6 +933,8 @@ func (p *PortalProtocol) handleTalkRequest(node *enode.Node, addr *net.UDPAddr, 
 		p.table.addInboundNode(node)
 	}
 
+	p.table.updateNodeHighestVersion(node)
+
 	msgCode := msg[0]
 
 	switch msgCode {
@@ -1329,11 +1323,8 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 }
 
 func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, request *Offer) ([]byte, error) {
-	var err error
-	version, err := p.getHighestVersion(node)
-	if err != nil {
-		return nil, err
-	}
+	version := p.table.getNodeHighestVersion(node)
+
 	accept, contentKeys, err := p.filterContentKeys(request, version)
 	if err != nil {
 		return nil, err

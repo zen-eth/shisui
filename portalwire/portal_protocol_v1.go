@@ -8,7 +8,6 @@ import (
 	bitfield "github.com/OffchainLabs/go-bitfield"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/tetratelabs/wabin/leb128"
 )
 
@@ -83,19 +82,6 @@ func (a *AcceptV1) GetAcceptIndices() []int {
 
 func (a *AcceptV1) GetKeyLength() int {
 	return len(a.GetContentKeys())
-}
-
-func (p *PortalProtocol) getHighestVersion(node *enode.Node) (uint8, error) {
-	versions := &protocolVersions{}
-	err := node.Load(versions)
-	// key is not set, return the default version
-	if enr.IsNotFound(err) {
-		return p.currentVersions[0], nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	return findBiggestSameNumber(p.currentVersions, *versions)
 }
 
 // find the Accept.ContentKeys and the content keys to accept
@@ -173,10 +159,8 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 }
 
 func (p *PortalProtocol) parseOfferResp(node *enode.Node, data []byte) (CommonAccept, error) {
-	version, err := p.getHighestVersion(node)
-	if err != nil {
-		return nil, err
-	}
+	var err error
+	version := p.table.getNodeHighestVersion(node)
 	switch version {
 	case 0:
 		accept := &Accept{}
@@ -197,42 +181,9 @@ func (p *PortalProtocol) parseOfferResp(node *enode.Node, data []byte) (CommonAc
 	}
 }
 
-// findTheBiggestSameNumber finds the largest value that exists in both slices.
-// Returns the largest common value, or an error if there are no common values.
-func findBiggestSameNumber(a []uint8, b []uint8) (uint8, error) {
-	if len(a) == 0 || len(b) == 0 {
-		return 0, errors.New("empty slice provided")
-	}
-
-	// Create a map to track values in the first slice
-	valuesInA := make(map[uint8]bool)
-	for _, val := range a {
-		valuesInA[val] = true
-	}
-
-	// Find common values and track the maximum
-	var maxCommon uint8
-	foundCommon := false
-
-	for _, val := range b {
-		if valuesInA[val] {
-			foundCommon = true
-			if val > maxCommon {
-				maxCommon = val
-			}
-		}
-	}
-
-	if !foundCommon {
-		return 0, errors.New("no common values found")
-	}
-
-	return maxCommon, nil
-}
-
 func (p *PortalProtocol) handleV0Offer(data []byte) []byte {
 	// if currentVersions includes version 1, then we need to handle the offer
-	if slices.Contains(p.currentVersions, 1) {
+	if slices.Contains(p.table.currentVersions.currentVersions, 1) {
 		bitlist := bitfield.Bitlist(data)
 		v1 := make([]byte, 0)
 		for i := 0; i < int(bitlist.Len()); i++ {
@@ -250,10 +201,7 @@ func (p *PortalProtocol) handleV0Offer(data []byte) []byte {
 }
 
 func (p *PortalProtocol) decodeUtpContent(target *enode.Node, data []byte) ([]byte, error) {
-	version, err := p.getHighestVersion(target)
-	if err != nil {
-		return nil, err
-	}
+	version := p.table.getNodeHighestVersion(target)
 	if version == 1 {
 		contentLen, bytesRead, err := leb128.DecodeUint32(bytes.NewReader(data))
 		if err != nil {
@@ -268,10 +216,7 @@ func (p *PortalProtocol) decodeUtpContent(target *enode.Node, data []byte) ([]by
 }
 
 func (p *PortalProtocol) encodeUtpContent(target *enode.Node, data []byte) ([]byte, error) {
-	version, err := p.getHighestVersion(target)
-	if err != nil {
-		return nil, err
-	}
+	version := p.table.getNodeHighestVersion(target)
 	if version == 1 {
 		contentLen := uint32(len(data))
 		contentLenBytes := leb128.EncodeUint32(contentLen)
