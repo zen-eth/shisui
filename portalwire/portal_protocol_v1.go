@@ -215,13 +215,13 @@ func (p *PortalProtocol) decodeUtpContent(target *enode.Node, data []byte) ([]by
 	return data, nil
 }
 
-func (p *PortalProtocol) encodeUtpContent(target *enode.Node, data []byte) ([]byte, error) {
+func (p *PortalProtocol) encodeUtpContent(target *enode.Node, data []byte) []byte {
 	version := p.table.getNodeHighestVersion(target)
 	if version == 1 {
 		contentLen := uint32(len(data))
 		contentLenBytes := leb128.EncodeUint32(contentLen)
 		contentLenBytes = append(contentLenBytes, data...)
-		return contentLenBytes, nil
+		return contentLenBytes
 	}
-	return data, nil
+	return data
 }

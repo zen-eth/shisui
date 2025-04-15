@@ -1266,14 +1266,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 
 					writeCtx, writeCancel := context.WithTimeout(bctx, defaultUTPWriteTimeout)
 					defer writeCancel()
-					content, err = p.encodeUtpContent(n, content)
-					if err != nil {
-						if metrics.Enabled() {
-							p.portalMetrics.utpOutFailConn.Inc(1)
-						}
-						p.Log.Error("encode utp content failed", "err", err)
-						return
-					}
+					content = p.encodeUtpContent(n, content)
 					var n int
 					n, err = conn.Write(writeCtx, content)
 					conn.Close()

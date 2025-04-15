@@ -199,7 +199,7 @@ func (tab *Table) getNode(id enode.ID) *enode.Node {
 	return nil
 }
 
-// getNodeHighestVersion returns the node higest compatible version
+// getNodeHighestVersion returns the node highest compatible version
 func (tab *Table) getNodeHighestVersion(node *enode.Node) uint8 {
 	tab.mutex.Lock()
 	defer tab.mutex.Unlock()
@@ -207,7 +207,7 @@ func (tab *Table) getNodeHighestVersion(node *enode.Node) uint8 {
 	return tab.currentVersions.getHighestVersion(node)
 }
 
-// updateNodeHighestVersion updates/set the node higest compatible version
+// updateNodeHighestVersion updates/set the node highest compatible version
 func (tab *Table) updateNodeHighestVersion(node *enode.Node) {
 	tab.mutex.Lock()
 	defer tab.mutex.Unlock()
