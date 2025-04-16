@@ -199,6 +199,7 @@ type PortalProtocolConfig struct {
 	NodeRadius            *uint256.Int
 	RadiusCacheSize       int
 	CapabilitiesCacheSize int
+	VersionsCacheSize     int
 	NodeDBPath            string
 	NAT                   nat.Interface
 	clock                 mclock.Clock
@@ -212,6 +213,7 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 		NetRestrict:           nil,
 		RadiusCacheSize:       32 * 1024 * 1024,
 		CapabilitiesCacheSize: 16 * 1024 * 1024,
+		VersionsCacheSize:     16 * 1024 * 1024,
 		NodeDBPath:            "",
 		clock:                 mclock.System{},
 		TrustedBlockRoot:      make([]byte, 0),
@@ -257,6 +259,9 @@ type PortalProtocol struct {
 	disableTableInitCheck bool
 	currentVersions       protocolVersions
 	inTransferMap         sync.Map
+
+	versionsCache       *fastcache.Cache
+	versionsCacheRWLock sync.RWMutex
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -289,6 +294,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		BootstrapNodes:    config.BootstrapNodes,
 		radiusCache:       fastcache.New(config.RadiusCacheSize),
 		capabilitiesCache: fastcache.New(config.CapabilitiesCacheSize),
+		versionsCache:     fastcache.New(config.VersionsCacheSize),
 		closeCtx:          closeCtx,
 		cancelCloseCtx:    cancelCloseCtx,
 		localNode:         localNode,
@@ -941,6 +947,12 @@ func (p *PortalProtocol) handleTalkRequest(node *enode.Node, addr *net.UDPAddr, 
 		p.table.addInboundNode(node)
 	}
 
+	//store the highest version on talkRequest
+	_, err := p.loadOrStoreHighestVersion(node)
+	if err != nil {
+		p.Log.Debug("could not store highest compatible version on talkRequest, will use 0", "err", err)
+	}
+
 	msgCode := msg[0]
 
 	switch msgCode {
@@ -1330,7 +1342,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 
 func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, request *Offer) ([]byte, error) {
 	var err error
-	version, err := p.getHighestVersion(node)
+	version, err := p.loadOrStoreHighestVersion(node)
 	if err != nil {
 		return nil, err
 	}
