@@ -25,13 +25,17 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+	"bytes"
+	"errors"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/tetratelabs/wabin/leb128"
 )
+
 
 // UDPConn is a network connection on which discovery can operate.
 type UDPConn interface {
@@ -134,4 +138,27 @@ func (r *reseedingRandom) Shuffle(n int, swap func(i, j int)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.cur.Shuffle(n, swap)
+}
+
+func encodeSingleContent(data []byte) []byte {
+	contentLen := uint32(len(data))
+	contentLenBytes := leb128.EncodeUint32(contentLen)
+	return append(contentLenBytes, data...)
+}
+
+func decodeSingleContent(data []byte) (content []byte, remaining []byte, err error) {
+	reader := bytes.NewReader(data)
+	contentLen, bytesRead, err := leb128.DecodeUint32(reader)
+	if err != nil {
+		return nil, data, err
+	}
+	
+	headerSize := int(bytesRead)
+	if len(data) < headerSize+int(contentLen) {
+		return nil, data, errors.New("insufficient data for content length")
+	}
+	
+	content = data[headerSize : headerSize+int(contentLen)]
+	remaining = data[headerSize+int(contentLen):]
+	return content, remaining, nil
 }

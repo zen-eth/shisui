@@ -1,7 +1,6 @@
 package portalwire
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	crand "crypto/rand"
@@ -9,7 +8,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net"
 	"slices"
@@ -32,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	ssz "github.com/ferranbt/fastssz"
 	"github.com/holiman/uint256"
-	"github.com/tetratelabs/wabin/leb128"
 	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
 	zenutp "github.com/zen-eth/utp-go"
@@ -1990,10 +1987,8 @@ func inRange(nodeId enode.ID, nodeRadius *uint256.Int, contentId []byte) bool {
 func encodeContents(contents [][]byte) []byte {
 	contentsBytes := make([]byte, 0)
 	for _, content := range contents {
-		contentLen := len(content)
-		contentLenBytes := leb128.EncodeUint32(uint32(contentLen))
-		contentsBytes = append(contentsBytes, contentLenBytes...)
-		contentsBytes = append(contentsBytes, content...)
+		encodedContent := encodeSingleContent(content)
+		contentsBytes = append(contentsBytes, encodedContent...)
 	}
 
 	return contentsBytes
@@ -2001,31 +1996,19 @@ func encodeContents(contents [][]byte) []byte {
 
 func decodeContents(payload []byte) ([][]byte, error) {
 	contents := make([][]byte, 0)
-	buffer := bytes.NewBuffer(payload)
-
-	for {
-		contentLen, contentLenLen, err := leb128.DecodeUint32(bytes.NewReader(buffer.Bytes()))
+	remainingData := payload
+	
+	for len(remainingData) > 0 {
+		content, remaining, err := decodeSingleContent(remainingData)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return contents, nil
-			}
 			return nil, err
 		}
-
-		buffer.Next(int(contentLenLen))
-
-		content := make([]byte, contentLen)
-		_, err = buffer.Read(content)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return contents, nil
-			}
-			return nil, err
-		}
-
 		contents = append(contents, content)
+		remainingData = remaining
 	}
+	return contents, nil
 }
+
 
 func getContentKeys(request *OfferRequest) [][]byte {
 	switch request.Kind {
