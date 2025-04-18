@@ -479,7 +479,7 @@ func (p *PortalProtocolAPI) Offer(enr string, contentItems [][2]string) (string,
 		return "", err
 	}
 
-	version, err := p.portalProtocol.loadOrStoreHighestVersion(n)
+	version, err := p.portalProtocol.getOrStoreHighestVersion(n)
 	if err != nil {
 		return "", err
 	}
