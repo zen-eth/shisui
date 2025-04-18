@@ -3,6 +3,7 @@ package history
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -112,14 +113,26 @@ func (h *Network) Stop() {
 const requestRetries = 4
 
 func (h *Network) GetBlockHeader(blockHash []byte) (*types.Header, error) {
-	contentKey := newContentKey(BlockHeaderType, blockHash).encode()
-	contentId := h.portalProtocol.ToContentId(contentKey)
-	h.log.Trace("contentKey convert to contentId", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId))
+	contentKey := newContentKey(BlockHeaderType, blockHash)
+	return h.getBlockHeader(contentKey, blockHash)
+}
+
+func (h *Network) GetBlockHeaderByNumber(number uint64) (*types.Header, error) {
+	numArray := make([]byte, 8)
+	binary.LittleEndian.PutUint64(numArray, number)
+	contentKey := newContentKey(BlockHeaderNumberType, numArray)
+	return h.getBlockHeader(contentKey, nil)
+}
+
+func (h *Network) getBlockHeader(contentKey *ContentKey, blockHash []byte) (*types.Header, error) {
+	cKey := contentKey.encode()
+	contentId := h.portalProtocol.ToContentId(cKey)
+	h.log.Trace("contentKey convert to contentId", "contentKey", hexutil.Encode(cKey), "contentId", hexutil.Encode(contentId))
 	if !h.portalProtocol.InRange(contentId) {
 		return nil, ErrContentOutOfRange
 	}
 
-	res, err := h.portalProtocol.Get(contentKey, contentId)
+	res, err := h.portalProtocol.Get(cKey, contentId)
 	// other error
 	if err != nil && !errors.Is(err, storage.ErrContentNotFound) {
 		return nil, err
@@ -136,9 +149,9 @@ func (h *Network) GetBlockHeader(blockHash []byte) (*types.Header, error) {
 	}
 	// no content in local storage
 	for retries := 0; retries < requestRetries; retries++ {
-		content, _, err := h.portalProtocol.ContentLookup(contentKey, contentId)
+		content, _, err := h.portalProtocol.ContentLookup(cKey, contentId)
 		if err != nil {
-			h.log.Error("getBlockHeader failed", "contentKey", hexutil.Encode(contentKey), "err", err)
+			h.log.Error("getBlockHeader failed", "contentKey", hexutil.Encode(cKey), "err", err)
 			continue
 		}
 
@@ -148,19 +161,28 @@ func (h *Network) GetBlockHeader(blockHash []byte) (*types.Header, error) {
 			continue
 		}
 
-		header, err := ValidateBlockHeaderBytes(headerWithProof.Header, blockHash)
-		if err != nil {
-			h.log.Error("validateBlockHeaderBytes failed", "header", hexutil.Encode(headerWithProof.Header), "blockhash", hexutil.Encode(blockHash), "err", err)
-			continue
+		var header *types.Header
+		if contentKey.selector == BlockHeaderType {
+			header, err = ValidateBlockHeaderBytes(headerWithProof.Header, blockHash)
+			if err != nil {
+				h.log.Error("validateBlockHeaderBytes failed", "header", hexutil.Encode(headerWithProof.Header), "blockhash", hexutil.Encode(blockHash), "err", err)
+				continue
+			}
+		} else if contentKey.selector == BlockHeaderNumberType {
+			header, err = GetBlockHeaderBytes(headerWithProof.Header)
+			if err != nil {
+				h.log.Error("getBlockHeaderBytes failed", "header", hexutil.Encode(headerWithProof.Header), "err", err)
+				continue
+			}
 		}
 		valid, err := h.verifyHeader(header, headerWithProof.Proof)
 		if err != nil || !valid {
 			h.log.Error("verifyHeader failed", "err", err)
 			continue
 		}
-		err = h.portalProtocol.Put(contentKey, contentId, content)
+		err = h.portalProtocol.Put(cKey, contentId, content)
 		if err != nil {
-			h.log.Error("failed to store content in getBlockHeader", "contentKey", hexutil.Encode(contentKey), "err", err)
+			h.log.Error("failed to store content in getBlockHeader", "contentKey", hexutil.Encode(cKey), "err", err)
 		}
 		return header, nil
 	}
@@ -647,8 +669,7 @@ func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) erro
 }
 
 func ValidateBlockHeaderBytes(headerBytes []byte, blockHash []byte) (*types.Header, error) {
-	header := new(types.Header)
-	err := rlp.DecodeBytes(headerBytes, header)
+	header, err := GetBlockHeaderBytes(headerBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -656,6 +677,16 @@ func ValidateBlockHeaderBytes(headerBytes []byte, blockHash []byte) (*types.Head
 	if !bytes.Equal(hash[:], blockHash) {
 		return nil, ErrInvalidBlockHash
 	}
+	return header, nil
+}
+
+func GetBlockHeaderBytes(headerBytes []byte) (*types.Header, error) {
+	header := new(types.Header)
+	err := rlp.DecodeBytes(headerBytes, header)
+	if err != nil {
+		return nil, err
+	}
+
 	return header, nil
 }
 

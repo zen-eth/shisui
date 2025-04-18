@@ -85,6 +85,24 @@ func (p *API) GetBlockByHash(hash *common.Hash, fullTransactions bool) (map[stri
 	return RPCMarshalBlock(block, true, fullTransactions, params.MainnetChainConfig), nil
 }
 
+func (p *API) GetBlockByNumber(number uint64, fullTransactions bool) (map[string]interface{}, error) {
+	blockHeader, err := p.History.GetBlockHeaderByNumber(number)
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
+
+	blockBody, err := p.History.GetBlockBody(blockHeader.Hash().Bytes())
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
+
+	block := types.NewBlockWithHeader(blockHeader).WithBody(*blockBody)
+	// static configuration of Config, currently only mainnet implemented
+	return RPCMarshalBlock(block, true, fullTransactions, params.MainnetChainConfig), nil
+}
+
 func (p *API) GetBlockReceipts(blockNrOrHash rpc.BlockNumberOrHash) ([]map[string]interface{}, error) {
 	hash, isHhash := blockNrOrHash.Hash()
 	if !isHhash {
@@ -133,5 +151,48 @@ func (p *API) GetBlockTransactionCountByHash(hash common.Hash) *hexutil.Uint {
 	}
 
 	n := hexutil.Uint(len(blockBody.Transactions))
+	return &n
+}
+
+func (p *API) GetBlockTransactionCountByNumber(number uint64) *hexutil.Uint {
+	blockHeader, err := p.History.GetBlockHeaderByNumber(number)
+	if err != nil {
+		log.Error(err.Error())
+		return nil
+	}
+	blockBody, err := p.History.GetBlockBody(blockHeader.Hash().Bytes())
+	if err != nil {
+		log.Error(err.Error())
+		return nil
+	}
+
+	n := hexutil.Uint(len(blockBody.Transactions))
+	return &n
+}
+
+func (p *API) GetUncleCountByBlockHash(hash common.Hash) *hexutil.Uint {
+	blockBody, err := p.History.GetBlockBody(hash.Bytes())
+	if err != nil {
+		log.Error(err.Error())
+		return nil
+	}
+
+	n := hexutil.Uint(len(blockBody.Uncles))
+	return &n
+}
+
+func (p *API) GetUncleCountByBlockNumber(number uint64) *hexutil.Uint {
+	blockHeader, err := p.History.GetBlockHeaderByNumber(number)
+	if err != nil {
+		log.Error(err.Error())
+		return nil
+	}
+	blockBody, err := p.History.GetBlockBody(blockHeader.Hash().Bytes())
+	if err != nil {
+		log.Error(err.Error())
+		return nil
+	}
+
+	n := hexutil.Uint(len(blockBody.Uncles))
 	return &n
 }
