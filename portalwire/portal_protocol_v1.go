@@ -83,36 +83,28 @@ func (a *AcceptV1) GetKeyLength() int {
 	return len(a.GetContentKeys())
 }
 
-func (p *PortalProtocol) loadOrStoreHighestVersion(node *enode.Node) (uint8, error) {
-	p.versionsCacheRWLock.RLock()
-	hcVersionValue, ok := p.versionsCache.HasGet(nil, node.ID().Bytes())
-	p.versionsCacheRWLock.RUnlock()
+func (p *PortalProtocol) getOrStoreHighestVersion(node *enode.Node) (uint8, error) {
+	hcVersionValue, ok := p.versionsCache.Get(node)
 
 	if !ok {
 		versions := &protocolVersions{}
 		err := node.Load(versions)
 		// key is not set, return the default version
 		if enr.IsNotFound(err) {
-			p.storeHighestVersion(p.currentVersions[0], node)
+			p.versionsCache.Set(node, p.currentVersions[0], 0)
 			return p.currentVersions[0], nil
 		}
 		if err != nil {
-			p.storeHighestVersion(0, node)
+			p.versionsCache.Set(node, 0, 0)
 			return 0, err
 		}
 
 		hcVersion, err := findBiggestSameNumber(p.currentVersions, *versions)
-		p.storeHighestVersion(hcVersion, node)
+		p.versionsCache.Set(node, hcVersion, 0)
 		return hcVersion, err
 	} else {
-		return hcVersionValue[0], nil
+		return hcVersionValue, nil
 	}
-}
-
-func (p *PortalProtocol) storeHighestVersion(version uint8, node *enode.Node) {
-	p.versionsCacheRWLock.Lock()
-	p.versionsCache.Set(node.ID().Bytes(), []byte{version})
-	p.versionsCacheRWLock.Unlock()
 }
 
 // find the Accept.ContentKeys and the content keys to accept
@@ -190,7 +182,7 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 }
 
 func (p *PortalProtocol) parseOfferResp(node *enode.Node, data []byte) (CommonAccept, error) {
-	version, err := p.loadOrStoreHighestVersion(node)
+	version, err := p.getOrStoreHighestVersion(node)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +259,7 @@ func (p *PortalProtocol) handleV0Offer(data []byte) []byte {
 }
 
 func (p *PortalProtocol) decodeUtpContent(target *enode.Node, data []byte) ([]byte, error) {
-	version, err := p.loadOrStoreHighestVersion(target)
+	version, err := p.getOrStoreHighestVersion(target)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +279,7 @@ func (p *PortalProtocol) decodeUtpContent(target *enode.Node, data []byte) ([]by
 }
 
 func (p *PortalProtocol) encodeUtpContent(target *enode.Node, data []byte) ([]byte, error) {
-	version, err := p.loadOrStoreHighestVersion(target)
+	version, err := p.getOrStoreHighestVersion(target)
 	if err != nil {
 		return nil, err
 	}

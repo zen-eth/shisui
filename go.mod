@@ -58,6 +58,7 @@ require (
 	github.com/ethereum/go-verkle v0.2.2 // indirect
 	github.com/getsentry/sentry-go v0.29.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
+	github.com/go-pkgz/expirable-cache/v3 v3.0.0 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/btree v1.1.3 // indirect
