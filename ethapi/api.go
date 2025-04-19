@@ -67,14 +67,37 @@ func (p *API) ChainId() hexutil.Uint64 {
 	return (hexutil.Uint64)(p.ChainID.Uint64())
 }
 
-func (p *API) GetBlockByHash(hash *common.Hash, fullTransactions bool) (map[string]interface{}, error) {
-	blockHeader, err := p.History.GetBlockHeader(hash.Bytes())
-	if err != nil {
-		log.Error(err.Error())
-		return nil, err
+func (p *API) GetBlockByHash(hash common.Hash, fullTransactions bool) (map[string]interface{}, error) {
+	blockNrOrHash := rpc.BlockNumberOrHashWithHash(hash, false)
+	return p.getBlock(blockNrOrHash, fullTransactions)
+}
+
+func (p *API) GetBlockByNumber(number rpc.BlockNumber, fullTransactions bool) (map[string]interface{}, error) {
+	blockNrOrHash := rpc.BlockNumberOrHashWithNumber(number)
+	return p.getBlock(blockNrOrHash, fullTransactions)
+}
+
+func (p *API) getBlock(blockNrOrHash rpc.BlockNumberOrHash, fullTransactions bool) (map[string]interface{}, error) {
+	var blockHeader *types.Header
+	var err error
+
+	number, ok := blockNrOrHash.Number()
+	if ok {
+		blockHeader, err = p.History.GetBlockHeaderByNumber(uint64(number.Int64()))
+		if err != nil {
+			log.Error(err.Error())
+			return nil, err
+		}
+	} else {
+		hash, _ := blockNrOrHash.Hash()
+		blockHeader, err = p.History.GetBlockHeader(hash.Bytes())
+		if err != nil {
+			log.Error(err.Error())
+			return nil, err
+		}
 	}
 
-	blockBody, err := p.History.GetBlockBody(hash.Bytes())
+	blockBody, err := p.History.GetBlockBody(blockHeader.Hash().Bytes())
 	if err != nil {
 		log.Error(err.Error())
 		return nil, err
@@ -126,6 +149,32 @@ func (p *API) GetBlockReceipts(blockNrOrHash rpc.BlockNumberOrHash) ([]map[strin
 }
 
 func (p *API) GetBlockTransactionCountByHash(hash common.Hash) *hexutil.Uint {
+	blockNrOrHash := rpc.BlockNumberOrHashWithHash(hash, false)
+	return p.getBlockTransactionCount(blockNrOrHash)
+}
+
+func (p *API) GetBlockTransactionCountByNumber(number rpc.BlockNumber) *hexutil.Uint {
+	blockNrOrHash := rpc.BlockNumberOrHashWithNumber(number)
+	return p.getBlockTransactionCount(blockNrOrHash)
+}
+
+func (p *API) getBlockTransactionCount(blockNrOrHash rpc.BlockNumberOrHash) *hexutil.Uint {
+	var blockHeader *types.Header
+	var err error
+	var hash common.Hash
+
+	number, ok := blockNrOrHash.Number()
+	if ok {
+		blockHeader, err = p.History.GetBlockHeaderByNumber(uint64(number.Int64()))
+		if err != nil {
+			log.Error(err.Error())
+			return nil
+		}
+		hash = blockHeader.Hash()
+	} else {
+		hash, _ = blockNrOrHash.Hash()
+	}
+
 	blockBody, err := p.History.GetBlockBody(hash.Bytes())
 	if err != nil {
 		log.Error(err.Error())
@@ -133,5 +182,42 @@ func (p *API) GetBlockTransactionCountByHash(hash common.Hash) *hexutil.Uint {
 	}
 
 	n := hexutil.Uint(len(blockBody.Transactions))
+	return &n
+}
+
+func (p *API) GetUncleCountByBlockHash(hash common.Hash) *hexutil.Uint {
+	blockNrOrHash := rpc.BlockNumberOrHashWithHash(hash, false)
+	return p.getUncleCount(blockNrOrHash)
+}
+
+func (p *API) GetUncleCountByBlockNumber(number rpc.BlockNumber) *hexutil.Uint {
+	blockNrOrHash := rpc.BlockNumberOrHashWithNumber(number)
+	return p.getUncleCount(blockNrOrHash)
+}
+
+func (p *API) getUncleCount(blockNrOrHash rpc.BlockNumberOrHash) *hexutil.Uint {
+	var blockHeader *types.Header
+	var err error
+	var hash common.Hash
+
+	number, ok := blockNrOrHash.Number()
+	if ok {
+		blockHeader, err = p.History.GetBlockHeaderByNumber(uint64(number.Int64()))
+		if err != nil {
+			log.Error(err.Error())
+			return nil
+		}
+		hash = blockHeader.Hash()
+	} else {
+		hash, _ = blockNrOrHash.Hash()
+	}
+
+	blockBody, err := p.History.GetBlockBody(hash.Bytes())
+	if err != nil {
+		log.Error(err.Error())
+		return nil
+	}
+
+	n := hexutil.Uint(len(blockBody.Uncles))
 	return &n
 }
