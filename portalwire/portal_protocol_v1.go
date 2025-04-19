@@ -257,11 +257,11 @@ func (p *PortalProtocol) decodeUtpContent(target *enode.Node, data []byte) ([]by
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if len(remaining) > 0 {
 			return nil, errors.New("content length mismatch")
 		}
-		
+
 		return content, nil
 	}
 	return data, nil

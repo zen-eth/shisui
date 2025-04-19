@@ -1997,7 +1997,7 @@ func encodeContents(contents [][]byte) []byte {
 func decodeContents(payload []byte) ([][]byte, error) {
 	contents := make([][]byte, 0)
 	remainingData := payload
-	
+
 	for len(remainingData) > 0 {
 		content, remaining, err := decodeSingleContent(remainingData)
 		if err != nil {
@@ -2008,7 +2008,6 @@ func decodeContents(payload []byte) ([][]byte, error) {
 	}
 	return contents, nil
 }
-
 
 func getContentKeys(request *OfferRequest) [][]byte {
 	switch request.Kind {
