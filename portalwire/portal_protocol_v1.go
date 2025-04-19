@@ -85,26 +85,25 @@ func (a *AcceptV1) GetKeyLength() int {
 
 func (p *PortalProtocol) getOrStoreHighestVersion(node *enode.Node) (uint8, error) {
 	hcVersionValue, ok := p.versionsCache.Get(node)
-
-	if !ok {
-		versions := &protocolVersions{}
-		err := node.Load(versions)
-		// key is not set, return the default version
-		if enr.IsNotFound(err) {
-			p.versionsCache.Set(node, p.currentVersions[0], 0)
-			return p.currentVersions[0], nil
-		}
-		if err != nil {
-			p.versionsCache.Set(node, 0, 0)
-			return 0, err
-		}
-
-		hcVersion, err := findBiggestSameNumber(p.currentVersions, *versions)
-		p.versionsCache.Set(node, hcVersion, 0)
-		return hcVersion, err
-	} else {
+	if ok {
 		return hcVersionValue, nil
 	}
+
+	versions := &protocolVersions{}
+	err := node.Load(versions)
+	// key is not set, return the default version
+	if enr.IsNotFound(err) {
+		p.versionsCache.Set(node, p.currentVersions[0], 0)
+		return p.currentVersions[0], nil
+	}
+	if err != nil {
+		p.versionsCache.Set(node, 0, 0)
+		return 0, err
+	}
+
+	hcVersion, err := findBiggestSameNumber(p.currentVersions, *versions)
+	p.versionsCache.Set(node, hcVersion, 0)
+	return hcVersion, err
 }
 
 // find the Accept.ContentKeys and the content keys to accept
