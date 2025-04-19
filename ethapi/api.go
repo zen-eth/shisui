@@ -85,8 +85,8 @@ func (p *API) GetBlockByHash(hash *common.Hash, fullTransactions bool) (map[stri
 	return RPCMarshalBlock(block, true, fullTransactions, params.MainnetChainConfig), nil
 }
 
-func (p *API) GetBlockByNumber(number uint64, fullTransactions bool) (map[string]interface{}, error) {
-	blockHeader, err := p.History.GetBlockHeaderByNumber(number)
+func (p *API) GetBlockByNumber(number rpc.BlockNumber, fullTransactions bool) (map[string]interface{}, error) {
+	blockHeader, err := p.History.GetBlockHeaderByNumber(uint64(number.Int64()))
 	if err != nil {
 		log.Error(err.Error())
 		return nil, err
@@ -154,8 +154,8 @@ func (p *API) GetBlockTransactionCountByHash(hash common.Hash) *hexutil.Uint {
 	return &n
 }
 
-func (p *API) GetBlockTransactionCountByNumber(number uint64) *hexutil.Uint {
-	blockHeader, err := p.History.GetBlockHeaderByNumber(number)
+func (p *API) GetBlockTransactionCountByNumber(number rpc.BlockNumber) *hexutil.Uint {
+	blockHeader, err := p.History.GetBlockHeaderByNumber(uint64(number.Int64()))
 	if err != nil {
 		log.Error(err.Error())
 		return nil
@@ -181,8 +181,8 @@ func (p *API) GetUncleCountByBlockHash(hash common.Hash) *hexutil.Uint {
 	return &n
 }
 
-func (p *API) GetUncleCountByBlockNumber(number uint64) *hexutil.Uint {
-	blockHeader, err := p.History.GetBlockHeaderByNumber(number)
+func (p *API) GetUncleCountByBlockNumber(number rpc.BlockNumber) *hexutil.Uint {
+	blockHeader, err := p.History.GetBlockHeaderByNumber(uint64(number.Int64()))
 	if err != nil {
 		log.Error(err.Error())
 		return nil
