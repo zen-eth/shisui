@@ -85,17 +85,27 @@ func (a *AcceptV1) GetKeyLength() int {
 	return len(a.GetContentKeys())
 }
 
-func (p *PortalProtocol) getHighestVersion(node *enode.Node) (uint8, error) {
+func (p *PortalProtocol) getOrStoreHighestVersion(node *enode.Node) (uint8, error) {
+	hcVersionValue, ok := p.versionsCache.Get(node)
+	if ok {
+		return hcVersionValue, nil
+	}
+
 	versions := &protocolVersions{}
 	err := node.Load(versions)
 	// key is not set, return the default version
 	if enr.IsNotFound(err) {
+		p.versionsCache.Set(node, p.currentVersions[0], 0)
 		return p.currentVersions[0], nil
 	}
 	if err != nil {
+		p.versionsCache.Set(node, 0, 0)
 		return 0, err
 	}
-	return findBiggestSameNumber(p.currentVersions, *versions)
+
+	hcVersion, err := findBiggestSameNumber(p.currentVersions, *versions)
+	p.versionsCache.Set(node, hcVersion, 0)
+	return hcVersion, err
 }
 
 // find the Accept.ContentKeys and the content keys to accept
@@ -173,7 +183,7 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 }
 
 func (p *PortalProtocol) parseOfferResp(node *enode.Node, data []byte) (CommonAccept, error) {
-	version, err := p.getHighestVersion(node)
+	version, err := p.getOrStoreHighestVersion(node)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +260,7 @@ func (p *PortalProtocol) handleV0Offer(data []byte) []byte {
 }
 
 func (p *PortalProtocol) decodeUtpContent(target *enode.Node, data []byte) ([]byte, error) {
-	version, err := p.getHighestVersion(target)
+	version, err := p.getOrStoreHighestVersion(target)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +278,7 @@ func (p *PortalProtocol) decodeUtpContent(target *enode.Node, data []byte) ([]by
 }
 
 func (p *PortalProtocol) encodeUtpContent(target *enode.Node, data []byte) ([]byte, error) {
-	version, err := p.getHighestVersion(target)
+	version, err := p.getOrStoreHighestVersion(target)
 	if err != nil {
 		return nil, err
 	}
