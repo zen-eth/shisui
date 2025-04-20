@@ -949,12 +949,6 @@ func (p *PortalProtocol) handleTalkRequest(node *enode.Node, addr *net.UDPAddr, 
 		p.table.addInboundNode(node)
 	}
 
-	//store the highest version on talkRequest
-	_, err := p.getOrStoreHighestVersion(node)
-	if err != nil {
-		p.Log.Debug("could not store highest compatible version on talkRequest, will use 0", "err", err)
-	}
-
 	msgCode := msg[0]
 
 	switch msgCode {
