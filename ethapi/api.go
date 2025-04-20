@@ -181,6 +181,10 @@ func (p *API) getBlockTransactionCount(blockNrOrHash rpc.BlockNumberOrHash) *hex
 		return nil
 	}
 
+	if len(blockBody.Transactions) == 0 {
+		return nil
+	}
+
 	n := hexutil.Uint(len(blockBody.Transactions))
 	return &n
 }
@@ -215,6 +219,10 @@ func (p *API) getUncleCount(blockNrOrHash rpc.BlockNumberOrHash) *hexutil.Uint {
 	blockBody, err := p.History.GetBlockBody(hash.Bytes())
 	if err != nil {
 		log.Error(err.Error())
+		return nil
+	}
+
+	if len(blockBody.Uncles) == 0 {
 		return nil
 	}
 

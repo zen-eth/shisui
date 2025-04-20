@@ -45,6 +45,8 @@ var (
 	ErrHeaderWithProofIsInvalid = errors.New("header proof is invalid")
 	ErrInvalidBlockHash         = errors.New("invalid block hash")
 	ErrInvalidBlockNumber       = errors.New("invalid block number")
+
+	ErrInvalidContentKeySelector = errors.New("invalid contentKey selector")
 )
 
 var emptyReceiptHash = hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
@@ -126,6 +128,10 @@ func (h *Network) GetBlockHeaderByNumber(number uint64) (*types.Header, error) {
 
 func (h *Network) getBlockHeader(contentKey *ContentKey, blockHash []byte) (*types.Header, error) {
 	cKey := contentKey.encode()
+	if contentKey.selector != BlockHeaderType && contentKey.selector != BlockHeaderNumberType {
+		h.log.Error("invalid contentKey selector", "selector", contentKey.selector)
+		return nil, ErrInvalidContentKeySelector
+	}
 	contentId := h.portalProtocol.ToContentId(cKey)
 	h.log.Trace("contentKey convert to contentId", "contentKey", hexutil.Encode(cKey), "contentId", hexutil.Encode(contentId))
 	if !h.portalProtocol.InRange(contentId) {
@@ -168,7 +174,7 @@ func (h *Network) getBlockHeader(contentKey *ContentKey, blockHash []byte) (*typ
 				h.log.Error("validateBlockHeaderBytes failed", "header", hexutil.Encode(headerWithProof.Header), "blockhash", hexutil.Encode(blockHash), "err", err)
 				continue
 			}
-		} else if contentKey.selector == BlockHeaderNumberType {
+		} else {
 			header, err = GetBlockHeaderBytes(headerWithProof.Header)
 			if err != nil {
 				h.log.Error("getBlockHeaderBytes failed", "header", hexutil.Encode(headerWithProof.Header), "err", err)
