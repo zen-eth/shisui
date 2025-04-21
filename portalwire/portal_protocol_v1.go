@@ -97,7 +97,6 @@ func (p *PortalProtocol) getOrStoreHighestVersion(node *enode.Node) (uint8, erro
 		return p.currentVersions[0], nil
 	}
 	if err != nil {
-		p.versionsCache.Set(node, 0, 0)
 		return 0, err
 	}
 
