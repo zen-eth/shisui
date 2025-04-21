@@ -63,7 +63,7 @@ type Node struct {
 	discV5         *discover.UDPv5
 	localNode      *enode.LocalNode
 	conn           discover.UDPConn
-	utp            *portalwire.ZenEthUtp
+	utp            *portalwire.UtpTransportService
 	discV5API      *portalwire.DiscV5API
 	rpcServer      *rpc.Server
 	httpServer     *http.Server
@@ -442,7 +442,7 @@ func (n *Node) initStateNetwork() error {
 	}
 
 	stateStore := state.NewStateStorage(contentStorage, db)
-	contentQueue := make(chan *portalwire.ContentElement, 50)
+	contentQueue := make(chan *portalwire.ContentElement, n.config.PortalProtocolConfig.MaxUtpConnSize)
 
 	protocol, err := portalwire.NewPortalProtocol(
 		n.config.PortalProtocolConfig,
