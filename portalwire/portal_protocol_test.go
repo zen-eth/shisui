@@ -983,5 +983,4 @@ func TestAcceptCode_Ratelmit(t *testing.T) {
 	for _, val := range contentKeys {
 		assert.Equal(t, uint8(RateLimited), val, "excepted: AcceptCode(RateLimited), but got: %d", val)
 	}
-
 }
