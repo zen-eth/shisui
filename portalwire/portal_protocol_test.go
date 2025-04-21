@@ -648,14 +648,14 @@ func TestFindTheBiggestSameNumber(t *testing.T) {
 }
 
 func TestOfferV1(t *testing.T) {
-	node1, err := setupLocalPortalNode(t, ":3321", nil, 0, 1)
+	node1, err := setupLocalPortalNode(t, ":3321", nil, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LevelInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
-	node2, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node1.localNode.Node()}, 0, 1)
+	node2, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LevelInfo)
 	err = node2.Start()
