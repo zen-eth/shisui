@@ -33,7 +33,7 @@ import (
 	"github.com/holiman/uint256"
 	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
-	zenutp "github.com/zen-eth/utp-go"
+	utp "github.com/zen-eth/utp-go"
 )
 
 const (
@@ -175,7 +175,7 @@ type OfferRequestWithNode struct {
 	Request *OfferRequest
 	Node    *enode.Node
 
-	permit ReleasePermit
+	permit Permit
 }
 
 type ContentInfoResp struct {
@@ -242,7 +242,7 @@ type PortalProtocol struct {
 	BootstrapNodes []*enode.Node
 	conn           discover.UDPConn
 
-	Utp *ZenEthUtp
+	Utp *UtpTransportService
 
 	validSchemes            enr.IdentityScheme
 	radiusCache             *fastcache.Cache
@@ -282,7 +282,7 @@ func WithDisableTableInitCheckOption(disable bool) SetPortalProtocolOption {
 	}
 }
 
-func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *ZenEthUtp, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
+func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
 	// set versions in test
 	currentVersions := protocolVersions{}
 	err := localNode.Node().Load(&currentVersions)
@@ -579,7 +579,7 @@ func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte,
 	return p.processContent(node, talkResp)
 }
 
-func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, permit ReleasePermit) ([]byte, error) {
+func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, permit Permit) ([]byte, error) {
 	contentKeys := getContentKeys(offerRequest)
 
 	offer := &Offer{
@@ -604,11 +604,11 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, per
 	return p.processOffer(node, talkResp, offerRequest, permit)
 }
 
-func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *OfferRequest, permit ReleasePermit) ([]byte, error) {
+func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *OfferRequest, permit Permit) ([]byte, error) {
 	notStartedUtp := true
 	defer func() {
 		if notStartedUtp {
-			permit()
+			permit.Release()
 		}
 	}()
 	var err error
@@ -673,8 +673,8 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 	notStartedUtp = false
 	connId := binary.BigEndian.Uint16(accept.GetConnectionId())
 	go func(ctx context.Context) {
-		defer permit()
-		var conn *zenutp.UtpStream
+		defer permit.Release()
+		var conn *utp.UtpStream
 		for {
 			select {
 			case <-ctx.Done():
@@ -1277,8 +1277,8 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 	} else {
 		connectionId := p.Utp.CidWithAddr(n, addr, false)
 
-		go func(bctx context.Context, connId *zenutp.ConnectionId) {
-			var conn *zenutp.UtpStream
+		go func(bctx context.Context, connId *utp.ConnectionId) {
+			var conn *utp.UtpStream
 			var connectCtx context.Context
 			var cancel context.CancelFunc
 			for {
@@ -1382,9 +1382,9 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 		} else {
 			connectionId := p.Utp.CidWithAddr(node, addr, false)
 
-			go func(bctx context.Context, connId *zenutp.ConnectionId) {
-				defer permit()
-				var conn *zenutp.UtpStream
+			go func(bctx context.Context, connId *utp.ConnectionId, releasePermit Permit) {
+				defer releasePermit.Release()
+				var conn *utp.UtpStream
 				for {
 					select {
 					case <-bctx.Done():
@@ -1414,6 +1414,8 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						defer readCancel()
 						n, err = conn.ReadToEOF(readCtx, &data)
 						conn.Close()
+						// release permit fast
+						releasePermit.Release()
 						p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n, "data", data)
 						if metrics.Enabled() {
 							p.portalMetrics.messagesReceivedContent.Mark(1)
@@ -1430,7 +1432,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						}
 					}
 				}
-			}(p.closeCtx, connectionId)
+			}(p.closeCtx, connectionId, permit)
 			idValue = connectionId.Send
 		}
 	}
