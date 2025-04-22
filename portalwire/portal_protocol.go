@@ -79,8 +79,6 @@ const (
 	lookupRequestLimit = 3 // max requests against a single node during lookup
 
 	maxPacketSize = 1280
-
-	expirationVersionMinutes = 5 * time.Minute // expiration time in minutes
 )
 
 const (
@@ -99,6 +97,10 @@ const (
 	// Failed indicates the offer failed, perhaps locally or from timeout/transfer failure
 	Failed
 )
+
+var expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
+
+var versionsCacheSize = nBuckets * (bucketSize + maxReplacements) // VersionsCacheSize ideally should have the buckets plus the replacement Buckets size
 
 type protocolVersions []uint8
 
@@ -216,7 +218,7 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 		NetRestrict:           nil,
 		RadiusCacheSize:       32 * 1024 * 1024,
 		CapabilitiesCacheSize: 16 * 1024 * 1024,
-		VersionsCacheSize:     nBuckets * (bucketSize + maxReplacements), // VersionsCacheSize ideally should have the buckets plus the replacement Buckets size
+		VersionsCacheSize:     versionsCacheSize,
 		NodeDBPath:            "",
 		clock:                 mclock.System{},
 		TrustedBlockRoot:      make([]byte, 0),
@@ -312,6 +314,14 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		Utp:               utp,
 		currentVersions:   currentVersions,
 	}
+
+	ticker := time.NewTicker(expirationVersionMinutes / 2)
+	defer ticker.Stop()
+	go func() {
+		for range ticker.C {
+			protocol.versionsCache.DeleteExpired()
+		}
+	}()
 
 	for _, setOpt := range setOpts {
 		setOpt(protocol)

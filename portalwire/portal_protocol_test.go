@@ -67,10 +67,15 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, ve
 	localNode.SetFallbackIP(net.IP{127, 0, 0, 1})
 	localNode.SetFallbackUDP(addr1.Port)
 	localNode.Set(Tag)
-	if len(versions) == 0 {
-		localNode.Set(protocolVersions{0})
+	// for test with no versions, set Versions var nil (Version=nil)
+	if Versions == nil {
+		localNode.Set(Versions)
 	} else {
-		localNode.Set(protocolVersions(versions))
+		if len(versions) == 0 {
+			localNode.Set(protocolVersions{0})
+		} else {
+			localNode.Set(protocolVersions(versions))
+		}
 	}
 
 	if conf.NAT == nil {
@@ -695,4 +700,241 @@ func TestOfferV1(t *testing.T) {
 	assert.Equal(t, 2, len(acceptCodes))
 	assert.Equal(t, uint8(AlreadyStored), acceptCodes[0])
 	assert.Equal(t, uint8(InboundTransferInProgress), acceptCodes[1])
+}
+
+func TestGetOrStoreHighestVersion(t *testing.T) {
+	node, err := setupLocalPortalNode(t, ":3321", nil)
+	assert.NoError(t, err)
+	node.Log = testlog.Logger(t, log.LevelInfo)
+	err = node.Start()
+	assert.NoError(t, err)
+	defer stopNode(node)
+
+	nodeV0, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node.localNode.Node()}, 0)
+	assert.NoError(t, err)
+	nodeV0.Log = testlog.Logger(t, log.LevelInfo)
+	err = nodeV0.Start()
+	assert.NoError(t, err)
+	defer stopNode(nodeV0)
+
+	nodeV1, err := setupLocalPortalNode(t, ":3323", []*enode.Node{node.localNode.Node()}, 0, 1)
+	assert.NoError(t, err)
+	nodeV1.Log = testlog.Logger(t, log.LevelInfo)
+	err = nodeV1.Start()
+	assert.NoError(t, err)
+	defer stopNode(nodeV1)
+
+	nodeV2, err := setupLocalPortalNode(t, ":3324", []*enode.Node{node.localNode.Node()}, 0, 1, 2)
+	assert.NoError(t, err)
+	nodeV2.Log = testlog.Logger(t, log.LevelInfo)
+	err = nodeV2.Start()
+	assert.NoError(t, err)
+	defer stopNode(nodeV2)
+
+	nodeV3, err := setupLocalPortalNode(t, ":3325", []*enode.Node{node.localNode.Node()}, 3)
+	assert.NoError(t, err)
+	nodeV3.Log = testlog.Logger(t, log.LevelInfo)
+	err = nodeV3.Start()
+	assert.NoError(t, err)
+	defer stopNode(nodeV3)
+
+	original := Versions
+	Versions = nil // override for test
+	defer func() { Versions = original }()
+	nodeNil, err := setupLocalPortalNode(t, ":3326", []*enode.Node{node.localNode.Node()})
+	assert.NoError(t, err)
+	nodeNil.Log = testlog.Logger(t, log.LevelInfo)
+	err = nodeNil.Start()
+	assert.NoError(t, err)
+	defer stopNode(nodeNil)
+
+	tests := []struct {
+		name         string
+		nodea        *PortalProtocol
+		nodeb        *PortalProtocol
+		expected     uint8
+		wantErr      bool
+		expectedErr  string
+		lengthBefore int
+		lengthAfter  int
+	}{
+		{
+			name:         "Store version 0 from node without version",
+			nodea:        node,
+			nodeb:        nodeV0,
+			expected:     0,
+			wantErr:      false,
+			lengthBefore: 0,
+			lengthAfter:  1,
+		},
+		{
+			name:         "Get version 0 from node without version",
+			nodea:        node,
+			nodeb:        nodeV0,
+			expected:     0,
+			wantErr:      false,
+			lengthBefore: 1,
+			lengthAfter:  1,
+		},
+		{
+			name:         "Store version 0 from node with highest version 0",
+			nodea:        nodeV0,
+			nodeb:        nodeV1,
+			expected:     0,
+			wantErr:      false,
+			lengthBefore: 0,
+			lengthAfter:  1,
+		},
+		{
+			name:         "Get version 0 from node with highest version 0",
+			nodea:        nodeV0,
+			nodeb:        nodeV1,
+			expected:     0,
+			wantErr:      false,
+			lengthBefore: 1,
+			lengthAfter:  1,
+		},
+		{
+			name:         "Store version 1 from node with highest version 1",
+			nodea:        nodeV1,
+			nodeb:        nodeV2,
+			expected:     1,
+			wantErr:      false,
+			lengthBefore: 0,
+			lengthAfter:  1,
+		},
+		{
+			name:         "Get version 1 from node with highest version 1",
+			nodea:        nodeV1,
+			nodeb:        nodeV2,
+			expected:     1,
+			wantErr:      false,
+			lengthBefore: 1,
+			lengthAfter:  1,
+		},
+		{
+			name:         "Store version 0 with error no compatible versions",
+			nodea:        nodeV0,
+			nodeb:        nodeV3,
+			expected:     0,
+			wantErr:      true,
+			expectedErr:  "no common values found",
+			lengthBefore: 1,
+			lengthAfter:  2,
+		},
+		{
+			name:         "Get version 0 from no compatible versions",
+			nodea:        nodeV0,
+			nodeb:        nodeV3,
+			expected:     0,
+			wantErr:      false,
+			lengthBefore: 2,
+			lengthAfter:  2,
+		},
+		{
+			name:         "Store version 0 with error node without version",
+			nodea:        nodeV0,
+			nodeb:        nodeNil,
+			expected:     0,
+			wantErr:      true,
+			expectedErr:  "empty slice provided",
+			lengthBefore: 2,
+			lengthAfter:  3,
+		},
+		{
+			name:         "Get version 0 from node without version",
+			nodea:        nodeV0,
+			nodeb:        nodeNil,
+			expected:     0,
+			wantErr:      false,
+			lengthBefore: 3,
+			lengthAfter:  3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.lengthBefore, tt.nodea.versionsCache.Len())
+			v, err := tt.nodea.getOrStoreHighestVersion(tt.nodeb.localNode.Node())
+			if tt.wantErr {
+				assert.EqualError(t, err, tt.expectedErr)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tt.expected, v)
+			assert.Equal(t, tt.lengthAfter, tt.nodea.versionsCache.Len())
+		})
+	}
+}
+
+func TestGetOrStoreHighestVersionExpiry(t *testing.T) {
+	original := expirationVersionMinutes
+	expirationVersionMinutes = 1 * time.Second // override for test
+	defer func() { expirationVersionMinutes = original }()
+	node1, err := setupLocalPortalNode(t, ":3321", nil, 0, 1)
+	assert.NoError(t, err)
+	node1.Log = testlog.Logger(t, log.LevelInfo)
+	err = node1.Start()
+	assert.NoError(t, err)
+	defer stopNode(node1)
+
+	node2, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node1.localNode.Node()}, 0, 1)
+	assert.NoError(t, err)
+	node2.Log = testlog.Logger(t, log.LevelInfo)
+	err = node2.Start()
+	assert.NoError(t, err)
+	defer stopNode(node2)
+
+	//store version 0
+	v0, err := node1.getOrStoreHighestVersion(node2.localNode.Node())
+	assert.NoError(t, err)
+	assert.Equal(t, uint8(1), v0)
+	assert.Equal(t, 1, node1.versionsCache.Len())
+
+	time.Sleep(2 * time.Second)
+
+	node1.versionsCache.DeleteExpired()
+	_, ok := node1.versionsCache.Get(node2.localNode.Node())
+	assert.Equal(t, false, ok)
+	assert.Equal(t, 0, node1.versionsCache.Len())
+}
+
+func TestGetOrStoreHighestVersionOverflow(t *testing.T) {
+	original := versionsCacheSize
+	versionsCacheSize = 1 // override for test
+	defer func() { versionsCacheSize = original }()
+	node1, err := setupLocalPortalNode(t, ":3321", nil, 0, 1)
+	assert.NoError(t, err)
+	node1.Log = testlog.Logger(t, log.LevelInfo)
+	err = node1.Start()
+	assert.NoError(t, err)
+	defer stopNode(node1)
+
+	node2, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node1.localNode.Node()}, 0, 1)
+	assert.NoError(t, err)
+	node2.Log = testlog.Logger(t, log.LevelInfo)
+	err = node2.Start()
+	assert.NoError(t, err)
+	defer stopNode(node2)
+
+	node3, err := setupLocalPortalNode(t, ":3323", []*enode.Node{node1.localNode.Node()}, 0, 1)
+	assert.NoError(t, err)
+	node3.Log = testlog.Logger(t, log.LevelInfo)
+	err = node3.Start()
+	assert.NoError(t, err)
+	defer stopNode(node3)
+
+	assert.Equal(t, 0, node1.versionsCache.Len())
+
+	//store first node
+	_, err = node1.getOrStoreHighestVersion(node2.localNode.Node())
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, node1.versionsCache.Len())
+
+	//store second node
+	_, err = node1.getOrStoreHighestVersion(node3.localNode.Node())
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, node1.versionsCache.Len())
 }
