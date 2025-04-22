@@ -704,7 +704,7 @@ func TestOfferV1(t *testing.T) {
 }
 
 func TestGetOrStoreHighestVersion(t *testing.T) {
-	node, err := setupLocalPortalNode(t, ":3321", nil)
+	node, err := setupLocalPortalNode(t, ":3321", nil, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node.Log = testlog.Logger(t, log.LevelInfo)
 	err = node.Start()
@@ -742,7 +742,7 @@ func TestGetOrStoreHighestVersion(t *testing.T) {
 	original := Versions
 	Versions = nil // override for test
 	defer func() { Versions = original }()
-	nodeNil, err := setupLocalPortalNode(t, ":3326", []*enode.Node{node.localNode.Node()})
+	nodeNil, err := setupLocalPortalNode(t, ":3326", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	nodeNil.Log = testlog.Logger(t, log.LevelInfo)
 	err = nodeNil.Start()
