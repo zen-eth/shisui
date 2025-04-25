@@ -90,6 +90,7 @@ func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAc
 		log:                        log.New("sub-protocol", "history"),
 		spec:                       configs.Mainnet,
 		historicalRootsAccumulator: &historicalRootsAccumulator,
+		client:                     client,
 	}
 }
 
