@@ -6,7 +6,7 @@ import (
 )
 
 // note: We changed the generated file since fastssz issues which can't be passed by the CI, so we commented the go:generate line
-///go:generate sszgen --path types.go --exclude-objs PortalReceipts
+///go:generate sszgen --path types.go --exclude-objs PortalReceipts,EphemeralHeaderPayload
 
 type HeaderRecord struct {
 	BlockHash       []byte `ssz-size:"32"`
@@ -216,4 +216,140 @@ func (b BlockProofHistoricalSummaries) GetExecutionBlockProof() []tree.Root {
 		roots = append(roots, tree.Root(proof))
 	}
 	return roots
+}
+
+type FindContentEphemeralHeadersKey struct {
+	BlockHash     []byte `ssz-size:"32"`
+	AncestorCount uint8
+}
+
+type EphemeralHeaderPayload struct {
+	Payload [][]byte `ssz-max:"256,2048"`
+}
+
+// MarshalSSZ ssz marshals the EphemeralHeaderPayload object
+func (e *EphemeralHeaderPayload) MarshalSSZ() ([]byte, error) {
+	return ssz.MarshalSSZ(e)
+}
+
+// MarshalSSZTo ssz marshals the EphemeralHeaderPayload object to a target array
+func (e *EphemeralHeaderPayload) MarshalSSZTo(buf []byte) (dst []byte, err error) {
+	dst = buf
+	offset := 0
+
+	// Field (0) 'Payload'
+	if size := len(e.Payload); size > 256 {
+		err = ssz.ErrListTooBigFn("EphemeralHeaderPayload.Payload", size, 256)
+		return
+	}
+	{
+		offset = 4 * len(e.Payload)
+		for ii := 0; ii < len(e.Payload); ii++ {
+			dst = ssz.WriteOffset(dst, offset)
+			offset += len(e.Payload[ii])
+		}
+	}
+	for ii := 0; ii < len(e.Payload); ii++ {
+		if size := len(e.Payload[ii]); size > 2048 {
+			err = ssz.ErrBytesLengthFn("EphemeralHeaderPayload.Payload[ii]", size, 2048)
+			return
+		}
+		dst = append(dst, e.Payload[ii]...)
+	}
+
+	return
+}
+
+// UnmarshalSSZ ssz unmarshals the EphemeralHeaderPayload object
+func (e *EphemeralHeaderPayload) UnmarshalSSZ(buf []byte) error {
+	var err error
+	size := uint64(len(buf))
+	if size < 4 {
+		return ssz.ErrSize
+	}
+
+	// Field (0) 'Payload'
+	{
+		num, err := ssz.DecodeDynamicLength(buf, 256)
+		if err != nil {
+			return err
+		}
+		e.Payload = make([][]byte, num)
+		err = ssz.UnmarshalDynamic(buf, num, func(indx int, buf []byte) (err error) {
+			if len(buf) > 2048 {
+				return ssz.ErrBytesLength
+			}
+			if cap(e.Payload[indx]) == 0 {
+				e.Payload[indx] = make([]byte, 0, len(buf))
+			}
+			e.Payload[indx] = append(e.Payload[indx], buf...)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return err
+}
+
+// SizeSSZ returns the ssz encoded size in bytes for the EphemeralHeaderPayload object
+func (e *EphemeralHeaderPayload) SizeSSZ() (size int) {
+	size = 4
+
+	// Field (0) 'Payload'
+	for ii := 0; ii < len(e.Payload); ii++ {
+		size += 4
+		size += len(e.Payload[ii])
+	}
+
+	return
+}
+
+// HashTreeRoot ssz hashes the EphemeralHeaderPayload object
+func (e *EphemeralHeaderPayload) HashTreeRoot() ([32]byte, error) {
+	return ssz.HashWithDefaultHasher(e)
+}
+
+// HashTreeRootWith ssz hashes the EphemeralHeaderPayload object with a hasher
+func (e *EphemeralHeaderPayload) HashTreeRootWith(hh ssz.HashWalker) (err error) {
+	indx := hh.Index()
+
+	// Field (0) 'Payload'
+	{
+		subIndx := hh.Index()
+		num := uint64(len(e.Payload))
+		if num > 256 {
+			err = ssz.ErrIncorrectListSize
+			return
+		}
+		for _, elem := range e.Payload {
+			{
+				elemIndx := hh.Index()
+				byteLen := uint64(len(elem))
+				if byteLen > 2048 {
+					err = ssz.ErrIncorrectListSize
+					return
+				}
+				hh.AppendBytes32(elem)
+				hh.MerkleizeWithMixin(elemIndx, byteLen, (2048+31)/32)
+			}
+		}
+		hh.MerkleizeWithMixin(subIndx, num, 256)
+	}
+
+	hh.Merkleize(indx)
+	return
+}
+
+// GetTree ssz hashes the EphemeralHeaderPayload object
+func (e *EphemeralHeaderPayload) GetTree() (*ssz.Node, error) {
+	return ssz.ProofTree(e)
+}
+
+type OfferEphemeralHeaderKey struct {
+	BlockHash []byte `ssz-size:"32"`
+}
+
+type OfferEphemeralHeader struct {
+	Header []byte `ssz-max:"2048"`
 }

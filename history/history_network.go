@@ -28,11 +28,12 @@ import (
 type ContentType byte
 
 const (
-	BlockHeaderType       ContentType = 0x00
-	BlockBodyType         ContentType = 0x01
-	ReceiptsType          ContentType = 0x02
-	BlockHeaderNumberType ContentType = 0x03
-	// EpochAccumulatorType ContentType = 0x03
+	BlockHeaderType          ContentType = 0x00
+	BlockBodyType            ContentType = 0x01
+	ReceiptsType             ContentType = 0x02
+	BlockHeaderNumberType    ContentType = 0x03
+	FindContentEphemeralType ContentType = 0x04
+	OfferEphemeralType       ContentType = 0x05
 )
 
 var (
