@@ -177,11 +177,7 @@ func (p *API) getBlockTransactionCount(blockNrOrHash rpc.BlockNumberOrHash) *hex
 
 	blockBody, err := p.History.GetBlockBody(hash.Bytes())
 	if err != nil {
-		log.Error("error getting block body with hash", "hash", blockHeader.Hash(), "err", err)
-		return nil
-	}
-
-	if len(blockBody.Transactions) == 0 {
+		log.Error("error getting block body with hash", "hash", hash, "err", err)
 		return nil
 	}
 
@@ -218,11 +214,7 @@ func (p *API) getUncleCount(blockNrOrHash rpc.BlockNumberOrHash) *hexutil.Uint {
 
 	blockBody, err := p.History.GetBlockBody(hash.Bytes())
 	if err != nil {
-		log.Error("error getting block body with hash", "hash", blockHeader.Hash(), "err", err)
-		return nil
-	}
-
-	if len(blockBody.Uncles) == 0 {
+		log.Error("error getting block body with hash", "hash", hash, "err", err)
 		return nil
 	}
 
