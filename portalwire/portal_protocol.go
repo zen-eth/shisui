@@ -1,7 +1,6 @@
 package portalwire
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	crand "crypto/rand"
@@ -9,7 +8,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net"
 	"slices"
@@ -31,11 +29,11 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/go-ethereum/rlp"
 	ssz "github.com/ferranbt/fastssz"
+	cache "github.com/go-pkgz/expirable-cache/v3"
 	"github.com/holiman/uint256"
-	"github.com/tetratelabs/wabin/leb128"
 	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
-	zenutp "github.com/zen-eth/utp-go"
+	utp "github.com/zen-eth/utp-go"
 )
 
 const (
@@ -58,6 +56,8 @@ const (
 	defaultUTPWriteTimeout = 60 * time.Second
 
 	defaultUTPReadTimeout = 60 * time.Second
+
+	DefaultUtpConnSize = 50
 
 	// These are the concurrent offers per Portal wire protocol that is running.
 	// Using the `offerQueue` allows for limiting the amount of offers send and
@@ -96,6 +96,10 @@ const (
 	// Failed indicates the offer failed, perhaps locally or from timeout/transfer failure
 	Failed
 )
+
+var expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
+
+var versionsCacheSize = nBuckets * (bucketSize + maxReplacements) // VersionsCacheSize ideally should have the buckets plus the replacement Buckets size
 
 type protocolVersions []uint8
 
@@ -170,6 +174,8 @@ type OfferRequest struct {
 type OfferRequestWithNode struct {
 	Request *OfferRequest
 	Node    *enode.Node
+
+	permit Permit
 }
 
 type ContentInfoResp struct {
@@ -199,10 +205,12 @@ type PortalProtocolConfig struct {
 	NodeRadius            *uint256.Int
 	RadiusCacheSize       int
 	CapabilitiesCacheSize int
+	VersionsCacheSize     int
 	NodeDBPath            string
 	NAT                   nat.Interface
 	clock                 mclock.Clock
 	TrustedBlockRoot      []byte
+	MaxUtpConnSize        int
 }
 
 func DefaultPortalProtocolConfig() *PortalProtocolConfig {
@@ -212,9 +220,11 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 		NetRestrict:           nil,
 		RadiusCacheSize:       32 * 1024 * 1024,
 		CapabilitiesCacheSize: 16 * 1024 * 1024,
+		VersionsCacheSize:     versionsCacheSize,
 		NodeDBPath:            "",
 		clock:                 mclock.System{},
 		TrustedBlockRoot:      make([]byte, 0),
+		MaxUtpConnSize:        DefaultUtpConnSize,
 	}
 }
 
@@ -232,7 +242,7 @@ type PortalProtocol struct {
 	BootstrapNodes []*enode.Node
 	conn           discover.UDPConn
 
-	Utp *ZenEthUtp
+	Utp *UtpTransportService
 
 	validSchemes            enr.IdentityScheme
 	radiusCache             *fastcache.Cache
@@ -257,6 +267,8 @@ type PortalProtocol struct {
 	disableTableInitCheck bool
 	currentVersions       protocolVersions
 	inTransferMap         sync.Map
+
+	versionsCache cache.Cache[*enode.Node, uint8]
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -270,7 +282,7 @@ func WithDisableTableInitCheckOption(disable bool) SetPortalProtocolOption {
 	}
 }
 
-func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *ZenEthUtp, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
+func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
 	// set versions in test
 	currentVersions := protocolVersions{}
 	err := localNode.Node().Load(&currentVersions)
@@ -289,6 +301,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		BootstrapNodes:    config.BootstrapNodes,
 		radiusCache:       fastcache.New(config.RadiusCacheSize),
 		capabilitiesCache: fastcache.New(config.CapabilitiesCacheSize),
+		versionsCache:     cache.NewCache[*enode.Node, uint8]().WithMaxKeys(config.VersionsCacheSize).WithTTL(expirationVersionMinutes),
 		closeCtx:          closeCtx,
 		cancelCloseCtx:    cancelCloseCtx,
 		localNode:         localNode,
@@ -304,6 +317,14 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		Utp:               utp,
 		currentVersions:   currentVersions,
 	}
+
+	ticker := time.NewTicker(expirationVersionMinutes / 2)
+	defer ticker.Stop()
+	go func() {
+		for range ticker.C {
+			protocol.versionsCache.DeleteExpired()
+		}
+	}()
 
 	for _, setOpt := range setOpts {
 		setOpt(protocol)
@@ -558,7 +579,7 @@ func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte,
 	return p.processContent(node, talkResp)
 }
 
-func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest) ([]byte, error) {
+func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, permit Permit) ([]byte, error) {
 	contentKeys := getContentKeys(offerRequest)
 
 	offer := &Offer{
@@ -580,10 +601,16 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest) ([]
 		return nil, err
 	}
 
-	return p.processOffer(node, talkResp, offerRequest)
+	return p.processOffer(node, talkResp, offerRequest, permit)
 }
 
-func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *OfferRequest) ([]byte, error) {
+func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *OfferRequest, permit Permit) ([]byte, error) {
+	notStartedUtp := true
+	defer func() {
+		if notStartedUtp {
+			permit.Release()
+		}
+	}()
 	var err error
 	if len(resp) == 0 {
 		return nil, ErrEmptyResp
@@ -643,10 +670,11 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 		}
 		return accept.GetContentKeys(), nil
 	}
-
+	notStartedUtp = false
 	connId := binary.BigEndian.Uint16(accept.GetConnectionId())
 	go func(ctx context.Context) {
-		var conn *zenutp.UtpStream
+		defer permit.Release()
+		var conn *utp.UtpStream
 		for {
 			select {
 			case <-ctx.Done():
@@ -1249,8 +1277,8 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 	} else {
 		connectionId := p.Utp.CidWithAddr(n, addr, false)
 
-		go func(bctx context.Context, connId *zenutp.ConnectionId) {
-			var conn *zenutp.UtpStream
+		go func(bctx context.Context, connId *utp.ConnectionId) {
+			var conn *utp.UtpStream
 			var connectCtx context.Context
 			var cancel context.CancelFunc
 			for {
@@ -1330,7 +1358,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 
 func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, request *Offer) ([]byte, error) {
 	var err error
-	version, err := p.getHighestVersion(node)
+	version, err := p.getOrStoreHighestVersion(node)
 	if err != nil {
 		return nil, err
 	}
@@ -1339,62 +1367,76 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 		return nil, err
 	}
 	idBuffer := make([]byte, 2)
+	idValue := uint16(0)
 	if len(contentKeys) > 0 {
-		connectionId := p.Utp.CidWithAddr(node, addr, false)
+		permit, getPermit := p.Utp.GetInboundPermit()
+		if !getPermit {
+			if acceptV1, isV1 := accept.(*AcceptV1); isV1 {
+				keysLen := len(acceptV1.ContentKeys)
+				var limitRate = make([]uint8, keysLen)
+				for i := 0; i < keysLen; i++ {
+					limitRate[i] = uint8(RateLimited)
+				}
+				acceptV1.ContentKeys = limitRate
+			}
+		} else {
+			connectionId := p.Utp.CidWithAddr(node, addr, false)
 
-		go func(bctx context.Context, connId *zenutp.ConnectionId) {
-			var conn *zenutp.UtpStream
-			for {
-				select {
-				case <-bctx.Done():
-					return
-				default:
-					defer func() {
-						for _, key := range contentKeys {
-							p.inTransferMap.Delete(hexutil.Encode(key))
+			go func(bctx context.Context, connId *utp.ConnectionId, releasePermit Permit) {
+				defer releasePermit.Release()
+				var conn *utp.UtpStream
+				for {
+					select {
+					case <-bctx.Done():
+						return
+					default:
+						defer func() {
+							for _, key := range contentKeys {
+								p.inTransferMap.Delete(hexutil.Encode(key))
+							}
+						}()
+						p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
+						connectCtx, cancel := context.WithTimeout(bctx, defaultUTPConnectTimeout)
+						defer cancel()
+						conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
+						if err != nil {
+							if metrics.Enabled() {
+								p.portalMetrics.utpInFailConn.Inc(1)
+							}
+							p.Log.Error("failed to accept utp connection for handle offer", "connId", connectionId.Send, "err", err)
+							return
 						}
-					}()
-					p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
-					connectCtx, cancel := context.WithTimeout(bctx, defaultUTPConnectTimeout)
-					defer cancel()
-					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
-					if err != nil {
+
+						// Read ALL the data from the connection until EOF and return it
+						var data []byte
+						var n int
+						readCtx, readCancel := context.WithTimeout(bctx, defaultUTPReadTimeout)
+						defer readCancel()
+						n, err = conn.ReadToEOF(readCtx, &data)
+						conn.Close()
+						// release permit fast
+						releasePermit.Release()
+						p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n, "data", data)
 						if metrics.Enabled() {
-							p.portalMetrics.utpInFailConn.Inc(1)
+							p.portalMetrics.messagesReceivedContent.Mark(1)
 						}
-						p.Log.Error("failed to accept utp connection for handle offer", "connId", connectionId.Send, "err", err)
-						return
-					}
 
-					// Read ALL the data from the connection until EOF and return it
-					var data []byte
-					var n int
-					readCtx, readCancel := context.WithTimeout(bctx, defaultUTPReadTimeout)
-					defer readCancel()
-					n, err = conn.ReadToEOF(readCtx, &data)
-					conn.Close()
-					p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n, "data", data)
-					if metrics.Enabled() {
-						p.portalMetrics.messagesReceivedContent.Mark(1)
-					}
+						err = p.handleOfferedContents(node.ID(), contentKeys, data)
+						if err != nil {
+							p.Log.Error("failed to handle offered Contents", "err", err)
+							return
+						}
 
-					err = p.handleOfferedContents(node.ID(), contentKeys, data)
-					if err != nil {
-						p.Log.Error("failed to handle offered Contents", "err", err)
-						return
-					}
-
-					if metrics.Enabled() {
-						p.portalMetrics.utpInSuccess.Inc(1)
+						if metrics.Enabled() {
+							p.portalMetrics.utpInSuccess.Inc(1)
+						}
 					}
 				}
-			}
-		}(p.closeCtx, connectionId)
-
-		binary.BigEndian.PutUint16(idBuffer, connectionId.Send)
-	} else {
-		binary.BigEndian.PutUint16(idBuffer, uint16(0))
+			}(p.closeCtx, connectionId, permit)
+			idValue = connectionId.Send
+		}
 	}
+	binary.BigEndian.PutUint16(idBuffer, idValue)
 	accept.SetConnectionId(idBuffer)
 	acceptMsgBytes, err := accept.MarshalSSZ()
 	if err != nil {
@@ -1545,7 +1587,7 @@ func (p *PortalProtocol) offerWorker() {
 			return
 		case offerRequestWithNode := <-p.offerQueue:
 			p.Log.Trace("offerWorker", "offerRequestWithNode", offerRequestWithNode)
-			_, err := p.offer(offerRequestWithNode.Node, offerRequestWithNode.Request)
+			_, err := p.offer(offerRequestWithNode.Node, offerRequestWithNode.Request, offerRequestWithNode.permit)
 			if err != nil {
 				p.Log.Error("failed to offer", "err", err)
 			}
@@ -1938,6 +1980,11 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 	}
 
 	for _, n := range finalGossipNodes {
+		permit, ok := p.Utp.GetOutboundPermit()
+		if !ok {
+			p.Log.Debug("reached utp conn limit, will drop this content", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
+			continue
+		}
 		transientOfferRequest := &TransientOfferRequest{
 			Contents: contentList,
 		}
@@ -1950,6 +1997,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 		offerRequestWithNode := &OfferRequestWithNode{
 			Node:    n,
 			Request: offerRequest,
+			permit:  permit,
 		}
 		select {
 		case p.offerQueue <- offerRequestWithNode:
@@ -1990,10 +2038,8 @@ func inRange(nodeId enode.ID, nodeRadius *uint256.Int, contentId []byte) bool {
 func encodeContents(contents [][]byte) []byte {
 	contentsBytes := make([]byte, 0)
 	for _, content := range contents {
-		contentLen := len(content)
-		contentLenBytes := leb128.EncodeUint32(uint32(contentLen))
-		contentsBytes = append(contentsBytes, contentLenBytes...)
-		contentsBytes = append(contentsBytes, content...)
+		encodedContent := encodeSingleContent(content)
+		contentsBytes = append(contentsBytes, encodedContent...)
 	}
 
 	return contentsBytes
@@ -2001,30 +2047,17 @@ func encodeContents(contents [][]byte) []byte {
 
 func decodeContents(payload []byte) ([][]byte, error) {
 	contents := make([][]byte, 0)
-	buffer := bytes.NewBuffer(payload)
+	remainingData := payload
 
-	for {
-		contentLen, contentLenLen, err := leb128.DecodeUint32(bytes.NewReader(buffer.Bytes()))
+	for len(remainingData) > 0 {
+		content, remaining, err := decodeSingleContent(remainingData)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return contents, nil
-			}
 			return nil, err
 		}
-
-		buffer.Next(int(contentLenLen))
-
-		content := make([]byte, contentLen)
-		_, err = buffer.Read(content)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return contents, nil
-			}
-			return nil, err
-		}
-
 		contents = append(contents, content)
+		remainingData = remaining
 	}
+	return contents, nil
 }
 
 func getContentKeys(request *OfferRequest) [][]byte {
