@@ -202,7 +202,7 @@ func (f MasterAccumulator) VerifyAccumulatorProof(header types.Header, proof Acc
 
 func (f MasterAccumulator) VerifyHeader(header types.Header, proof []byte) (bool, error) {
 	if len(proof)%32 != 0 {
-		return false, errors.New("proof length is not 32 bytes")
+		return false, errors.New("proof length should be 32*n bytes")
 	}
 	return f.VerifyAccumulatorProof(header, toAccumulatorProof(proof))
 }

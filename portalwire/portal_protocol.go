@@ -668,6 +668,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				Type: Declined,
 			}
 		}
+		p.Log.Warn("trace offer declined", "keys", accept.GetContentKeys())
 		return accept.GetContentKeys(), nil
 	}
 	notStartedUtp = false
@@ -1371,6 +1372,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 	if len(contentKeys) > 0 {
 		permit, getPermit := p.Utp.GetInboundPermit()
 		if !getPermit {
+			p.Log.Warn("utp rate limited")
 			if acceptV1, isV1 := accept.(*AcceptV1); isV1 {
 				keysLen := len(acceptV1.ContentKeys)
 				var limitRate = make([]uint8, keysLen)
@@ -2002,7 +2004,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 		select {
 		case p.offerQueue <- offerRequestWithNode:
 		default:
-			p.Log.Info("offer queue is full, drop offer request", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
+			p.Log.Warn("offer queue is full, drop offer request", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
 			if metrics.Enabled() {
 				p.portalMetrics.gossipDropCount.Inc(1)
 			}

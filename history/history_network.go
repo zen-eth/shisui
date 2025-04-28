@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/panjf2000/ants/v2"
 	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
@@ -48,6 +49,8 @@ var (
 )
 
 var emptyReceiptHash = hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
+
+var antsPool, _ = ants.NewPool(10, ants.WithNonblocking(true))
 
 type ContentKey struct {
 	selector ContentType
@@ -540,26 +543,24 @@ func (h *Network) processContentLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case contentElement := <-contentChan:
-			err := h.validateContents(contentElement.ContentKeys, contentElement.Contents)
-			if err != nil {
-				h.log.Error("validate content failed", "err", err)
-				continue
-			}
-
-			go func(ctx context.Context) {
-				select {
-				case <-ctx.Done():
+			err := antsPool.Submit(func() {
+				err := h.validateContents(contentElement.ContentKeys, contentElement.Contents)
+				if err != nil {
+					h.log.Error("validate contents failed", "err", err)
 					return
-				default:
+				}
+				go func() {
 					var gossippedNum int
 					gossippedNum, err := h.portalProtocol.Gossip(&contentElement.Node, contentElement.ContentKeys, contentElement.Contents)
 					h.log.Trace("gossippedNum", "gossippedNum", gossippedNum)
 					if err != nil {
 						h.log.Error("gossip failed", "err", err)
-						return
 					}
-				}
-			}(ctx)
+				}()
+			})
+			if err != nil {
+				h.log.Warn("submit to ants pool failed", "err", err)
+			}
 		}
 	}
 }
@@ -638,11 +639,16 @@ func (h *Network) validateContent(contentKey []byte, content []byte) error {
 func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) error {
 	for i, content := range contents {
 		contentKey := contentKeys[i]
-		err := h.validateContent(contentKey, content)
+		contentId := h.portalProtocol.ToContentId(contentKey)
+		_, err := h.portalProtocol.Get(contentKey, contentId)
+		// exist in db
+		if err == nil {
+			continue
+		}
+		err = h.validateContent(contentKey, content)
 		if err != nil {
 			return fmt.Errorf("content validate failed with content key %x and content %x, err is %v", contentKey, content, err)
 		}
-		contentId := h.portalProtocol.ToContentId(contentKey)
 		_ = h.portalProtocol.Put(contentKey, contentId, content)
 	}
 	return nil
