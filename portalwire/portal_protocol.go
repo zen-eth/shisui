@@ -668,7 +668,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				Type: Declined,
 			}
 		}
-		p.Log.Warn("trace offer declined", "keys", accept.GetContentKeys())
+		p.Log.Debug("trace offer declined", "keys", accept.GetContentKeys())
 		return accept.GetContentKeys(), nil
 	}
 	notStartedUtp = false
@@ -1372,7 +1372,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 	if len(contentKeys) > 0 {
 		permit, getPermit := p.Utp.GetInboundPermit()
 		if !getPermit {
-			p.Log.Warn("utp rate limited")
+			p.Log.Debug("utp rate limited")
 			if acceptV1, isV1 := accept.(*AcceptV1); isV1 {
 				keysLen := len(acceptV1.ContentKeys)
 				var limitRate = make([]uint8, keysLen)
