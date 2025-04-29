@@ -42,6 +42,7 @@ type Config struct {
 	Networks              []string
 	Metrics               *metrics.Config
 	DisableTableInitCheck bool
+	ExternalOracle        string
 }
 
 func DefaultConfig() *Config {
