@@ -2,6 +2,7 @@ package portalwire
 
 import (
 	"errors"
+
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -632,6 +633,52 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 	if err != nil {
 		return nil, err
 	}
+
+	// If gossip didn't reach the target number of peers (e.g., 8),
+	// perform a DHT lookup for nodes close to the content ID and offer directly.
+	const targetPeerCount = 8
+	if num < targetPeerCount {
+		contentIdBytes := p.portalProtocol.toContentId(contentKey)
+		var contentId enode.ID
+		copy(contentId[:], contentIdBytes)
+
+		nodes := p.portalProtocol.Lookup(contentId)
+
+		if len(nodes) > 0 {
+			offerReq := &OfferRequest{
+				Kind: TransientOfferRequestKind,
+				Request: &TransientOfferRequest{
+					Contents: []*ContentEntry{
+						{
+							ContentKey: contentKey,
+							Content:    content,
+						},
+					},
+				},
+			}
+
+			// Offer to additional nodes until the target count is reached or no more nodes are found.
+			needed := targetPeerCount - num
+			offeredCount := 0
+			for _, nodeToOffer := range nodes {
+				if offeredCount >= needed {
+					break
+				}
+
+				if nodeToOffer.ID() == p.portalProtocol.Self().ID() {
+					continue
+				}
+
+				_, err := p.portalProtocol.offer(nodeToOffer, offerReq, &NoPermit{})
+				if err != nil {
+					return nil, err
+				}
+				num++
+				offeredCount++
+			}
+		}
+	}
+
 	return &PutContentResult{
 		PeerCount:     num,
 		StoredLocally: shouldStore,
