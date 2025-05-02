@@ -193,7 +193,7 @@ func Setup(ctx *cli.Context) error {
 	)
 	if len(logFile) > 0 {
 		if err := validateLogLocation(filepath.Dir(logFile)); err != nil {
-			return fmt.Errorf("failed to initiatilize file logger: %w", err)
+			return fmt.Errorf("failed to initialize file logger: %w", err)
 		}
 	}
 	context := []interface{}{"rotate", rotation}
