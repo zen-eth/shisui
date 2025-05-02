@@ -12,9 +12,9 @@ linters:
     - whitespace
     - nilerr
     - nilnesserr
-#    - nilnil
+    - nilnil
+    - errorlint
 #    - err113
-#    - errorlint
   settings:
     revive:
       enable-all-rules: false

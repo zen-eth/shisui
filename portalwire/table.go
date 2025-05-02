@@ -209,7 +209,7 @@ func (tab *Table) setFallbackNodes(nodes []*enode.Node) error {
 	nursery := make([]*enode.Node, 0, len(nodes))
 	for _, n := range nodes {
 		if err := n.ValidateComplete(); err != nil {
-			return fmt.Errorf("bad bootstrap node %q: %v", n, err)
+			return fmt.Errorf("bad bootstrap node %q: %w", n, err)
 		}
 		if tab.cfg.NetRestrict != nil && !tab.cfg.NetRestrict.ContainsAddr(n.IPAddr()) {
 			tab.log.Error("Bootstrap node filtered by netrestrict", "id", n.ID(), "ip", n.IPAddr())

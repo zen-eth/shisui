@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -184,7 +185,7 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 		acceptGroup.Done()
 		var buf []byte
 		n, err := acceptConn.ReadToEOF(context.Background(), &buf)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			panic(err)
 		}
 		assert.Equal(t, cliSendMsgWithCid1, string(buf[:n]))
