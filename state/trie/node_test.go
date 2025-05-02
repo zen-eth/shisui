@@ -25,6 +25,7 @@ import (
 	"bytes"
 	crand "crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	mrand "math/rand"
 	"testing"
@@ -86,7 +87,8 @@ func TestDecodeFullNodeWrongSizeChild(t *testing.T) {
 	rlp.Encode(buf, fullNodeData)
 
 	_, err := decodeNode([]byte("testdecode"), buf.Bytes())
-	if _, ok := err.(*decodeError); !ok {
+	var decodeError *decodeError
+	if !errors.As(err, &decodeError) {
 		t.Fatalf("decodeNode returned wrong err: %v", err)
 	}
 }
@@ -105,7 +107,8 @@ func TestDecodeFullNodeWrongNestedFullNode(t *testing.T) {
 	rlp.Encode(buf, fullNodeData)
 
 	_, err := decodeNode([]byte("testdecode"), buf.Bytes())
-	if _, ok := err.(*decodeError); !ok {
+	var decodeError *decodeError
+	if !errors.As(err, &decodeError) {
 		t.Fatalf("decodeNode returned wrong err: %v", err)
 	}
 }

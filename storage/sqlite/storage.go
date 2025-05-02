@@ -125,7 +125,7 @@ func NewStorage(config storage.PortalStorageConfig, db *sql.DB) (storage.Content
 	// necessary to test NetworkName==history because state also initialize HistoryStorage
 	if strings.ToLower(config.NetworkName) == "history" {
 		portalStorageMetrics, err = portalwire.NewPortalStorageMetrics(config.NetworkName, db)
-		if err != nil {
+		if err != nil && !errors.Is(err, portalwire.ErrMetricsDisabled) {
 			return nil, err
 		}
 	}

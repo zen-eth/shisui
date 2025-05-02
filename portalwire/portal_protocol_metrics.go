@@ -13,6 +13,8 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 )
 
+var ErrMetricsDisabled = errors.New("metrics are disabled")
+
 type portalMetrics struct {
 	messagesReceivedAccept      *metrics.Meter
 	messagesReceivedNodes       *metrics.Meter
@@ -164,7 +166,7 @@ func CollectPortalMetrics(refresh time.Duration, networks []string, dataDir stri
 
 func NewPortalStorageMetrics(network string, db *sql.DB) (*PortalStorageMetrics, error) {
 	if !metrics.Enabled() {
-		return nil, nil
+		return nil, ErrMetricsDisabled
 	}
 
 	if network != History.Name() && network != Beacon.Name() && network != State.Name() {
