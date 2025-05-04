@@ -1921,7 +1921,8 @@ func (p *PortalProtocol) GetContent() chan *ContentElement {
 	return p.contentQueue
 }
 
-func (p *PortalProtocol) GossipReturnNodes(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) ([]*enode.Node, error) {
+// GossipAndReturnPeers sends the content to the closest nodes and returns the nodes that received the content.
+func (p *PortalProtocol) GossipAndReturnPeers(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) ([]*enode.Node, error) {
 	if len(content) == 0 {
 		return nil, errors.New("empty content")
 	}
@@ -2015,8 +2016,9 @@ func (p *PortalProtocol) GossipReturnNodes(srcNodeId *enode.ID, contentKeys [][]
 	return finalGossipNodes, nil
 }
 
+// Gossip sends the content to the closest nodes and returns the number of nodes that received the content.
 func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) (int, error) {
-	nodes, err := p.GossipReturnNodes(srcNodeId, contentKeys, content)
+	nodes, err := p.GossipAndReturnPeers(srcNodeId, contentKeys, content)
 	if err != nil {
 		if errors.Is(err, ErrNoGossipNodes) {
 			return 0, nil

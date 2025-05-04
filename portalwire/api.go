@@ -629,7 +629,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 		return nil, err
 	}
 	id := p.portalProtocol.Self().ID()
-	gossipedNodes, err := p.portalProtocol.GossipReturnNodes(&id, [][]byte{contentKey}, [][]byte{content})
+	gossipedNodes, err := p.portalProtocol.GossipAndReturnPeers(&id, [][]byte{contentKey}, [][]byte{content})
 	if err != nil {
 		if errors.Is(err, ErrNoGossipNodes) {
 			gossipedNodes = []*enode.Node{}
@@ -637,7 +637,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 			return nil, err
 		}
 	}
-	num := len(gossipedNodes)
+	peerCount := len(gossipedNodes)
 
 	gossipedNodeIDs := make(map[enode.ID]struct{})
 	for _, node := range gossipedNodes {
@@ -647,7 +647,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 	// If gossip didn't reach the target number of peers (e.g., 8),
 	// perform a DHT lookup for nodes close to the content ID and offer directly.
 	const targetPeerCount = 8
-	if num < targetPeerCount {
+	if peerCount < targetPeerCount {
 		contentIdBytes := p.portalProtocol.toContentId(contentKey)
 		var contentId enode.ID
 		copy(contentId[:], contentIdBytes)
@@ -676,7 +676,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 			}
 
 			// Offer to additional nodes until the target count is reached or no more nodes are found.
-			needed := targetPeerCount - num
+			needed := targetPeerCount - peerCount
 			offeredCount := 0
 			for _, nodeToOffer := range nodesToOffer {
 				if offeredCount >= needed {
@@ -692,7 +692,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 					p.portalProtocol.Log.Warn("Failed to offer content to lookup node", "node", nodeToOffer.ID(), "err", offerErr)
 					continue
 				}
-				num++
+				peerCount++
 				offeredCount++
 				// Add successfully offered node to the map to avoid re-offering if somehow listed again
 				gossipedNodeIDs[nodeToOffer.ID()] = struct{}{}
@@ -701,7 +701,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 	}
 
 	return &PutContentResult{
-		PeerCount:     num,
+		PeerCount:     peerCount,
 		StoredLocally: shouldStore,
 	}, nil
 }
