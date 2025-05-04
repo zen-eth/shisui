@@ -170,7 +170,7 @@ type BlockProofHistoricalHashesAccumulator struct {
 	Proof [][]byte `ssz-size:"15,32"`
 }
 
-// Proof for EL BlockHeader from TheMerge until Capella
+// Proof for EL BlockHeader from TheMerge until Capella (exclusive)
 type BlockProofHistoricalRoots struct {
 	BeaconBlockProof    [][]byte `ssz-size:"14,32" yaml:"historical_roots_proof"` // From TheMerge until Capella -> Bellatrix fork.
 	BeaconBlockRoot     []byte   `ssz-size:"32" yaml:"beacon_block_root"`
@@ -194,15 +194,15 @@ func (b BlockProofHistoricalRoots) GetExecutionBlockProof() []tree.Root {
 	return roots
 }
 
-// Proof for EL BlockHeader for Capella and onwards
-type BlockProofHistoricalSummaries struct {
+// Proof for EL BlockHeader for Capella
+type BlockProofHistoricalSummariesCapella struct {
 	BeaconBlockProof    [][]byte `ssz-size:"13,32"`
 	BeaconBlockRoot     []byte   `ssz-size:"32"`
-	ExecutionBlockProof [][]byte `ssz-size:"?,32" ssz-max:"12"` // Proof that EL block_hash is in BeaconBlock -> BeaconBlockBody -> ExecutionPayload
+	ExecutionBlockProof [][]byte `ssz-size:"11,32"` // Proof that EL block_hash is in BeaconBlock -> BeaconBlockBody -> ExecutionPayload
 	Slot                uint64
 }
 
-func (b BlockProofHistoricalSummaries) GetBeaconBlockProof() []tree.Root {
+func (b BlockProofHistoricalSummariesCapella) GetBeaconBlockProof() []tree.Root {
 	roots := make([]tree.Root, 0)
 	for _, proof := range b.BeaconBlockProof {
 		roots = append(roots, tree.Root(proof))
@@ -210,7 +210,30 @@ func (b BlockProofHistoricalSummaries) GetBeaconBlockProof() []tree.Root {
 	return roots
 }
 
-func (b BlockProofHistoricalSummaries) GetExecutionBlockProof() []tree.Root {
+func (b BlockProofHistoricalSummariesCapella) GetExecutionBlockProof() []tree.Root {
+	roots := make([]tree.Root, 0)
+	for _, proof := range b.ExecutionBlockProof {
+		roots = append(roots, tree.Root(proof))
+	}
+	return roots
+}
+
+type BlockProofHistoricalSummariesDeneb struct {
+	BeaconBlockProof    [][]byte `ssz-size:"13,32"`
+	BeaconBlockRoot     []byte   `ssz-size:"32"`
+	ExecutionBlockProof [][]byte `ssz-size:"12,32"`
+	Slot                uint64
+}
+
+func (b BlockProofHistoricalSummariesDeneb) GetBeaconBlockProof() []tree.Root {
+	roots := make([]tree.Root, 0)
+	for _, proof := range b.BeaconBlockProof {
+		roots = append(roots, tree.Root(proof))
+	}
+	return roots
+}
+
+func (b BlockProofHistoricalSummariesDeneb) GetExecutionBlockProof() []tree.Root {
 	roots := make([]tree.Root, 0)
 	for _, proof := range b.ExecutionBlockProof {
 		roots = append(roots, tree.Root(proof))

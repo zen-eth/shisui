@@ -116,8 +116,12 @@ func TestHeaderWithProof(t *testing.T) {
 		header := new(types.Header)
 		err = rlp.DecodeBytes(headerWithProof.Header, header)
 		require.NoError(t, err)
-		if header.Number.Uint64() >= shanghaiBlockNumber {
-			proof := new(BlockProofHistoricalSummaries)
+		if header.Number.Uint64() >= cancunNumber {
+			proof := new(BlockProofHistoricalSummariesDeneb)
+			err = proof.UnmarshalSSZ(headerWithProof.Proof[:])
+			require.NoError(t, err)
+		} else if header.Number.Uint64() >= shanghaiBlockNumber {
+			proof := new(BlockProofHistoricalSummariesCapella)
 			err = proof.UnmarshalSSZ(headerWithProof.Proof[:])
 			require.NoError(t, err)
 		} else if header.Number.Uint64() >= mergeBlockNumber {

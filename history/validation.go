@@ -11,7 +11,7 @@ const (
 	SlotsPerEpoch    uint64 = 32
 )
 
-func VerifyPostCapellaHeader(headerHash []byte, proof *BlockProofHistoricalSummaries, historicalSummaries capella.HistoricalSummaries) bool {
+func VerifyPostCapellaHeader(headerHash []byte, proof *BlockProofHistoricalSummariesCapella, historicalSummaries capella.HistoricalSummaries) bool {
 	if !VerifyBeaconBlock(headerHash, proof.GetExecutionBlockProof(), tree.Root(proof.BeaconBlockRoot)) {
 		return false
 	}
