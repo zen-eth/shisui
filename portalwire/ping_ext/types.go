@@ -59,10 +59,12 @@ func GetErrorPayloadBytes(code uint16) []byte {
 }
 
 type PingExtension interface {
-	// check whether support the extension
+	// IsSupported check whether support the extension
 	IsSupported(ext uint16) bool
-	// get all supported extensions
+	// Extensions get all supported extensions
 	Extensions() []uint16
+	// LatestMutuallySupportedBaseExtension get the latest mutually supported base extension
+	LatestMutuallySupportedBaseExtension(extensions []uint16) *uint16
 }
 
 func NewClientInfoAndCapabilitiesPayload(radius []byte, capabilities []uint16) ClientInfoAndCapabilitiesPayload {
