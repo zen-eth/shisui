@@ -136,6 +136,7 @@ var (
 	ErrNilContentKey   = errors.New("content key cannot be nil")
 	ErrContentNotFound = storage.ErrContentNotFound
 	ErrEmptyResp       = errors.New("empty resp")
+	ErrNoGossipNodes   = errors.New("no gossip nodes")
 
 	errClosed  = errors.New("socket closed")
 	errTimeout = errors.New("RPC timeout")
@@ -1920,9 +1921,9 @@ func (p *PortalProtocol) GetContent() chan *ContentElement {
 	return p.contentQueue
 }
 
-func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) (int, error) {
+func (p *PortalProtocol) GossipReturnNodes(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) ([]*enode.Node, error) {
 	if len(content) == 0 {
-		return 0, errors.New("empty content")
+		return nil, errors.New("empty content")
 	}
 
 	contentList := make([]*ContentEntry, 0, ContentKeysLimit)
@@ -1936,7 +1937,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 
 	contentId := p.toContentId(contentKeys[0])
 	if contentId == nil {
-		return 0, ErrNilContentKey
+		return nil, ErrNilContentKey
 	}
 
 	maxClosestNodes := 4
@@ -1954,7 +1955,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 			nodeRadius := new(uint256.Int)
 			err := nodeRadius.UnmarshalSSZ(radius)
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
 			if inRange(n.ID(), nodeRadius, contentId) {
 				if srcNodeId == nil {
@@ -1967,7 +1968,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 	}
 
 	if len(gossipNodes) == 0 {
-		return 0, nil
+		return nil, ErrNoGossipNodes
 	}
 
 	var finalGossipNodes []*enode.Node
@@ -2011,7 +2012,19 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 		}
 	}
 
-	return len(finalGossipNodes), nil
+	return finalGossipNodes, nil
+}
+
+func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) (int, error) {
+	nodes, err := p.GossipReturnNodes(srcNodeId, contentKeys, content)
+	if err != nil {
+		if errors.Is(err, ErrNoGossipNodes) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	return len(nodes), nil
 }
 
 // ShouldStore if the content is not in range, return false; else store the content and return true
