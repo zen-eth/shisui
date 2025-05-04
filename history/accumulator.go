@@ -21,6 +21,7 @@ const (
 	epochSize                  = 8192
 	mergeBlockNumber    uint64 = 15537394 // first POS block
 	shanghaiBlockNumber uint64 = 17_034_870
+	cancunNumber        uint64 = 19_426_587
 	preMergeEpochs             = (mergeBlockNumber + epochSize - 1) / epochSize
 )
 

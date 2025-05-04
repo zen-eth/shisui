@@ -273,10 +273,10 @@ func (h *Network) GetReceipts(blockHash []byte) ([]*types.Receipt, error) {
 }
 
 func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error) {
-	if header.Number.Uint64() <= mergeBlockNumber {
+	blockNumber := header.Number.Uint64()
+	if blockNumber <= mergeBlockNumber {
 		return h.masterAccumulator.VerifyHeader(*header, proof)
-	} else if header.Number.Uint64() < shanghaiBlockNumber {
-		blockNumber := header.Number.Uint64()
+	} else if blockNumber < shanghaiBlockNumber {
 		headerHash := header.Hash()
 		blockProofHistoricalRoots := &BlockProofHistoricalRoots{}
 		err := blockProofHistoricalRoots.UnmarshalSSZ(proof)
@@ -288,19 +288,23 @@ func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error)
 			return false, err
 		}
 		return true, nil
-	} else {
+	} else if blockNumber < cancunNumber {
 		blockNumber := header.Number.Uint64()
 		summaries, err := h.getHistoricalSummaries(blockNumber)
 		if err != nil {
 			return false, err
 		}
 		headerHash := header.Hash()
-		blockProof := new(BlockProofHistoricalSummaries)
+		blockProof := new(BlockProofHistoricalSummariesCapella)
 		err = blockProof.UnmarshalSSZ(proof)
 		if err != nil {
 			return false, err
 		}
 		return VerifyPostCapellaHeader(headerHash[:], blockProof, *summaries), nil
+	} else {
+		// TODO: verify header with historical summaries
+		h.log.Warn("verifyHeader: not implemented")
+		return false, nil
 	}
 }
 
