@@ -1,6 +1,7 @@
 package portalwire
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	crand "crypto/rand"
@@ -31,6 +32,7 @@ import (
 	ssz "github.com/ferranbt/fastssz"
 	cache "github.com/go-pkgz/expirable-cache/v3"
 	"github.com/holiman/uint256"
+	"github.com/protolambda/ztyp/view"
 	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
 	utp "github.com/zen-eth/utp-go"
@@ -199,32 +201,34 @@ type OfferTrace struct {
 type SetPortalProtocolOption func(p *PortalProtocol)
 
 type PortalProtocolConfig struct {
-	BootstrapNodes        []*enode.Node
-	ListenAddr            string
-	NetRestrict           *netutil.Netlist
-	NodeRadius            *uint256.Int
-	RadiusCacheSize       int
-	CapabilitiesCacheSize int
-	VersionsCacheSize     int
-	NodeDBPath            string
-	NAT                   nat.Interface
-	clock                 mclock.Clock
-	TrustedBlockRoot      []byte
-	MaxUtpConnSize        int
+	BootstrapNodes                []*enode.Node
+	ListenAddr                    string
+	NetRestrict                   *netutil.Netlist
+	NodeRadius                    *uint256.Int
+	RadiusCacheSize               int
+	CapabilitiesCacheSize         int
+	EphemeralHeaderCountCacheSize int
+	VersionsCacheSize             int
+	NodeDBPath                    string
+	NAT                           nat.Interface
+	clock                         mclock.Clock
+	TrustedBlockRoot              []byte
+	MaxUtpConnSize                int
 }
 
 func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 	return &PortalProtocolConfig{
-		BootstrapNodes:        make([]*enode.Node, 0),
-		ListenAddr:            ":9009",
-		NetRestrict:           nil,
-		RadiusCacheSize:       32 * 1024 * 1024,
-		CapabilitiesCacheSize: 16 * 1024 * 1024,
-		VersionsCacheSize:     versionsCacheSize,
-		NodeDBPath:            "",
-		clock:                 mclock.System{},
-		TrustedBlockRoot:      make([]byte, 0),
-		MaxUtpConnSize:        DefaultUtpConnSize,
+		BootstrapNodes:                make([]*enode.Node, 0),
+		ListenAddr:                    ":9009",
+		NetRestrict:                   nil,
+		RadiusCacheSize:               32 * 1024 * 1024,
+		CapabilitiesCacheSize:         32 * 1024 * 1024,
+		EphemeralHeaderCountCacheSize: 32 * 1024 * 1024,
+		VersionsCacheSize:             versionsCacheSize,
+		NodeDBPath:                    "",
+		clock:                         mclock.System{},
+		TrustedBlockRoot:              make([]byte, 0),
+		MaxUtpConnSize:                DefaultUtpConnSize,
 	}
 }
 
@@ -244,15 +248,17 @@ type PortalProtocol struct {
 
 	Utp *UtpTransportService
 
-	validSchemes            enr.IdentityScheme
-	radiusCache             *fastcache.Cache
-	radiusCacheRWLock       sync.RWMutex
-	capabilitiesCache       *fastcache.Cache
-	capabilitiesCacheRWLock sync.RWMutex
-	closeCtx                context.Context
-	cancelCloseCtx          context.CancelFunc
-	storage                 storage.ContentStorage
-	toContentId             func(contentKey []byte) []byte
+	validSchemes                    enr.IdentityScheme
+	radiusCache                     *fastcache.Cache
+	radiusCacheRWLock               sync.RWMutex
+	capabilitiesCache               *fastcache.Cache
+	capabilitiesCacheRWLock         sync.RWMutex
+	ephemeralHeaderCountCache       *fastcache.Cache
+	ephemeralHeaderCountCacheRWLock sync.RWMutex
+	closeCtx                        context.Context
+	cancelCloseCtx                  context.CancelFunc
+	storage                         storage.ContentStorage
+	toContentId                     func(contentKey []byte) []byte
 
 	contentQueue chan *ContentElement
 	offerQueue   chan *OfferRequestWithNode
@@ -293,29 +299,30 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 
 	protocol := &PortalProtocol{
-		protocolId:        string(protocolId),
-		protocolName:      protocolId.Name(),
-		Log:               log.New("protocol", protocolId.Name()),
-		PrivateKey:        privateKey,
-		NetRestrict:       config.NetRestrict,
-		BootstrapNodes:    config.BootstrapNodes,
-		radiusCache:       fastcache.New(config.RadiusCacheSize),
-		capabilitiesCache: fastcache.New(config.CapabilitiesCacheSize),
-		versionsCache:     cache.NewCache[*enode.Node, uint8]().WithMaxKeys(config.VersionsCacheSize).WithTTL(expirationVersionMinutes),
-		closeCtx:          closeCtx,
-		cancelCloseCtx:    cancelCloseCtx,
-		localNode:         localNode,
-		validSchemes:      enode.ValidSchemes,
-		storage:           storage,
-		toContentId:       defaultContentIdFunc,
-		contentQueue:      contentQueue,
-		offerQueue:        make(chan *OfferRequestWithNode, offerQueueSize),
-		conn:              conn,
-		DiscV5:            discV5,
-		NAT:               config.NAT,
-		clock:             config.clock,
-		Utp:               utp,
-		currentVersions:   currentVersions,
+		protocolId:                string(protocolId),
+		protocolName:              protocolId.Name(),
+		Log:                       log.New("protocol", protocolId.Name()),
+		PrivateKey:                privateKey,
+		NetRestrict:               config.NetRestrict,
+		BootstrapNodes:            config.BootstrapNodes,
+		radiusCache:               fastcache.New(config.RadiusCacheSize),
+		capabilitiesCache:         fastcache.New(config.CapabilitiesCacheSize),
+		ephemeralHeaderCountCache: fastcache.New(config.EphemeralHeaderCountCacheSize),
+		versionsCache:             cache.NewCache[*enode.Node, uint8]().WithMaxKeys(config.VersionsCacheSize).WithTTL(expirationVersionMinutes),
+		closeCtx:                  closeCtx,
+		cancelCloseCtx:            cancelCloseCtx,
+		localNode:                 localNode,
+		validSchemes:              enode.ValidSchemes,
+		storage:                   storage,
+		toContentId:               defaultContentIdFunc,
+		contentQueue:              contentQueue,
+		offerQueue:                make(chan *OfferRequestWithNode, offerQueueSize),
+		conn:                      conn,
+		DiscV5:                    discV5,
+		NAT:                       config.NAT,
+		clock:                     config.clock,
+		Utp:                       utp,
+		currentVersions:           currentVersions,
 	}
 
 	ticker := time.NewTicker(expirationVersionMinutes / 2)
@@ -445,18 +452,37 @@ func (p *PortalProtocol) ping(node *enode.Node) (uint64, error) {
 }
 
 func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, []byte, error) {
-	radiusBytes, err := p.Radius().MarshalSSZ()
+	p.capabilitiesCacheRWLock.RLock()
+	capabilitiesBytes := p.capabilitiesCache.Get(nil, []byte(node.ID().String()))
+	p.capabilitiesCacheRWLock.RUnlock()
+
+	var payloadType = pingext.ClientInfo
+
+	if capabilitiesBytes != nil {
+		capabilities := &pingext.CapabilitiesPayload{}
+		if err := capabilities.UnmarshalSSZ(capabilitiesBytes); err == nil {
+			uint16Capabilities := make([]uint16, 0, len(*capabilities))
+			for _, value := range *capabilities {
+				uint16Capabilities = append(uint16Capabilities, uint16(value))
+			}
+
+			if ext := p.PingExtensions.LatestMutuallySupportedBaseExtension(uint16Capabilities); ext != nil {
+				switch *ext {
+				case pingext.BasicRadius:
+					payloadType = pingext.BasicRadius
+				case pingext.HistoryRadius:
+					payloadType = pingext.HistoryRadius
+				}
+			}
+		}
+	}
+
+	payload, err := p.genPayloadByType(payloadType)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	payload := pingext.NewClientInfoAndCapabilitiesPayload(radiusBytes, p.PingExtensions.Extensions())
-
-	data, err := payload.MarshalSSZ()
-	if err != nil {
-		return nil, nil, err
-	}
-	return p.pingInnerWithPayload(node, pingext.ClientInfo, data)
+	return p.pingInnerWithPayload(node, payloadType, payload)
 }
 
 func (p *PortalProtocol) pingInnerWithPayload(node *enode.Node, payloadType uint16, payload []byte) (*Pong, []byte, error) {
@@ -1063,16 +1089,40 @@ func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 	} else {
 		switch ping.PayloadType {
 		case pingext.ClientInfo:
-			pong, err = p.handleClientInfo(id, ping.Payload)
+			payload := &pingext.ClientInfoAndCapabilitiesPayload{}
+			err = payload.UnmarshalSSZ(ping.Payload)
+			if err != nil {
+				errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
+				pong = p.createPong(pingext.Error, errPayload)
+				break
+			}
+			go p.processPing(id, ping, payload)
+			pong, err = p.handleClientInfo()
 			if err != nil {
 				return nil, err
 			}
 		case pingext.BasicRadius:
+			payload := &pingext.BasicRadiusPayload{}
+			err = payload.UnmarshalSSZ(ping.Payload)
+			if err != nil {
+				errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
+				pong = p.createPong(pingext.Error, errPayload)
+				break
+			}
+			go p.processPing(id, ping, payload)
 			pong, err = p.handleBasicRadius()
 			if err != nil {
 				return nil, err
 			}
 		case pingext.HistoryRadius:
+			payload := &pingext.HistoryRadiusPayload{}
+			err = payload.UnmarshalSSZ(ping.Payload)
+			if err != nil {
+				errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
+				pong = p.createPong(pingext.Error, errPayload)
+				break
+			}
+			go p.processPing(id, ping, payload)
 			pong, err = p.handleHistoryRadius()
 			if err != nil {
 				return nil, err
@@ -1099,24 +1149,180 @@ func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 	return talkRespBytes, nil
 }
 
-func (p *PortalProtocol) handleClientInfo(id enode.ID, data []byte) (Pong, error) {
-	payload := &pingext.ClientInfoAndCapabilitiesPayload{}
-	err := payload.UnmarshalSSZ(data)
-	if err != nil {
-		errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
-		return p.createPong(pingext.Error, errPayload), nil
+func (p *PortalProtocol) processPing(id enode.ID, ping *Ping, payload interface{}) {
+	if n := p.table.getNode(id); n != nil {
+		if n.Seq() < ping.EnrSeq {
+			// Update the node in the routing table
+			_, err := p.RequestENR(n)
+			if err != nil {
+				p.Log.Error("failed to request ENR", "err", err)
+			}
+		}
+
+		if !p.PingExtensions.IsSupported(ping.PayloadType) {
+			return
+		}
+
+		switch pld := payload.(type) {
+		case *pingext.ClientInfoAndCapabilitiesPayload:
+			p.processClientInfo(id, pld)
+		case *pingext.BasicRadiusPayload:
+			p.processBasicRadius(id, pld)
+		case *pingext.HistoryRadiusPayload:
+			p.processHistoryRadius(id, pld)
+		default:
+			p.Log.Error("unknown payload type", "type", ping.PayloadType)
+		}
 	}
-	p.radiusCacheRWLock.Lock()
-	p.radiusCache.Set([]byte(id.String()), payload.DataRadius[:])
-	p.radiusCacheRWLock.Unlock()
-	capBytes, err := payload.Capabilities.MarshalSSZ()
+}
+
+func (p *PortalProtocol) processClientInfo(id enode.ID, payload *pingext.ClientInfoAndCapabilitiesPayload) {
+	nodeIdStr := id.String()
+	nodeIdBytes := []byte(nodeIdStr)
+	updated := false
+
+	// --- Compare and Update Radius ---
+	p.radiusCacheRWLock.RLock()
+	cachedDataRadiusBytes := p.radiusCache.Get(nil, nodeIdBytes)
+	p.radiusCacheRWLock.RUnlock()
+
+	radiusMatch := false
+	if cachedDataRadiusBytes != nil && len(cachedDataRadiusBytes) == common.HashLength {
+		if bytes.Equal(payload.DataRadius[:], cachedDataRadiusBytes) {
+			radiusMatch = true
+		}
+	}
+
+	if !radiusMatch {
+		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", payload.DataRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
+		p.radiusCacheRWLock.Lock()
+		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:]) // Store the 32-byte hash slice
+		p.radiusCacheRWLock.Unlock()
+		updated = true
+	}
+
+	// --- Compare and Update Capabilities ---
+	incomingCapBytes, err := payload.Capabilities.MarshalSSZ()
 	if err != nil {
-		p.Log.Error("failed to marshal capabilities", "err", err)
+		p.Log.Error("Failed to marshal incoming capabilities", "node", id, "err", err)
 	} else {
-		p.capabilitiesCacheRWLock.Lock()
-		p.capabilitiesCache.Set([]byte(id.String()), capBytes)
-		p.capabilitiesCacheRWLock.Unlock()
+		p.capabilitiesCacheRWLock.RLock()
+		cachedCapBytes := p.capabilitiesCache.Get(nil, nodeIdBytes)
+		p.capabilitiesCacheRWLock.RUnlock()
+
+		capabilitiesMatch := false
+		if cachedCapBytes != nil {
+			if bytes.Equal(incomingCapBytes, cachedCapBytes) {
+				capabilitiesMatch = true
+			}
+		}
+
+		if !capabilitiesMatch {
+			p.Log.Debug("Capabilities mismatch or cache miss, updating capabilities cache", "node", id, "payloadCaps", hexutil.Encode(incomingCapBytes), "cachedCaps", hexutil.Encode(cachedCapBytes))
+			p.capabilitiesCacheRWLock.Lock()
+			p.capabilitiesCache.Set(nodeIdBytes, incomingCapBytes)
+			p.capabilitiesCacheRWLock.Unlock()
+			updated = true
+		}
 	}
+
+	if !updated {
+		p.Log.Trace("Radius and Capabilities match cached values", "node", id)
+	}
+}
+
+func (p *PortalProtocol) processBasicRadius(id enode.ID, payload *pingext.BasicRadiusPayload) {
+	nodeIdStr := id.String()
+	nodeIdBytes := []byte(nodeIdStr)
+	updated := false
+
+	// --- Compare and Update Radius ---
+	p.radiusCacheRWLock.RLock()
+	cachedDataRadiusBytes := p.radiusCache.Get(nil, nodeIdBytes)
+	p.radiusCacheRWLock.RUnlock()
+
+	radiusMatch := false
+	if cachedDataRadiusBytes != nil && len(cachedDataRadiusBytes) == common.HashLength {
+		if bytes.Equal(payload.DataRadius[:], cachedDataRadiusBytes) {
+			radiusMatch = true
+		}
+	}
+
+	if !radiusMatch {
+		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", payload.DataRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
+		p.radiusCacheRWLock.Lock()
+		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:]) // Store the 32-byte hash slice
+		p.radiusCacheRWLock.Unlock()
+		updated = true
+	}
+
+	if !updated {
+		p.Log.Trace("Basic Radius match cached values", "node", id)
+	}
+}
+
+func (p *PortalProtocol) processHistoryRadius(id enode.ID, payload *pingext.HistoryRadiusPayload) {
+	nodeIdStr := id.String()
+	nodeIdBytes := []byte(nodeIdStr)
+	updated := false
+
+	// --- Compare and Update Radius ---
+	p.radiusCacheRWLock.RLock()
+	cachedDataRadiusBytes := p.radiusCache.Get(nil, nodeIdBytes)
+	p.radiusCacheRWLock.RUnlock()
+
+	radiusMatch := false
+	if cachedDataRadiusBytes != nil && len(cachedDataRadiusBytes) == common.HashLength {
+		if bytes.Equal(payload.DataRadius[:], cachedDataRadiusBytes) {
+			radiusMatch = true
+		}
+	}
+
+	if !radiusMatch {
+		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", payload.DataRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
+		p.radiusCacheRWLock.Lock()
+		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:]) // Store the 32-byte hash slice
+		p.radiusCacheRWLock.Unlock()
+		updated = true
+	}
+
+	// --- Compare and Update Ephemeral Header Count ---
+	p.ephemeralHeaderCountCacheRWLock.RLock()
+	cachedEphemeralHeaderCountBytes := p.ephemeralHeaderCountCache.Get(nil, nodeIdBytes)
+	p.ephemeralHeaderCountCacheRWLock.RUnlock()
+	ephemeralHeaderCountMatch := false
+
+	if cachedEphemeralHeaderCountBytes != nil {
+		cachedView := new(view.Uint16View)
+		err := cachedView.Decode(cachedEphemeralHeaderCountBytes)
+		if err == nil {
+			if uint16(*cachedView) == uint16(payload.EphemeralHeaderCount) {
+				ephemeralHeaderCountMatch = true
+			}
+		} else {
+			p.Log.Warn("Failed to decode cached ephemeral header count", "node", id, "err", err)
+		}
+	}
+
+	if !ephemeralHeaderCountMatch {
+		p.Log.Debug("Ephemeral header count mismatch or cache miss, updating cache", "node", id)
+		newCountBytes, err := payload.EphemeralHeaderCount.Encode()
+		if err != nil {
+			p.Log.Error("Failed to marshal new ephemeral header count", "node", id, "err", err)
+		} else {
+			p.ephemeralHeaderCountCacheRWLock.Lock()
+			p.ephemeralHeaderCountCache.Set(nodeIdBytes, newCountBytes)
+			p.ephemeralHeaderCountCacheRWLock.Unlock()
+			updated = true
+		}
+	}
+
+	if !updated {
+		p.Log.Trace("History Radius match cached values", "node", id)
+	}
+}
+
+func (p *PortalProtocol) handleClientInfo() (Pong, error) {
 	radiusBytes, err := p.storage.Radius().MarshalSSZ()
 	if err != nil {
 		return Pong{}, err

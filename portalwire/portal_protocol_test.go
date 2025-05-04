@@ -15,6 +15,7 @@ import (
 
 	"github.com/OffchainLabs/go-bitfield"
 	"github.com/ethereum/go-ethereum/p2p/discover"
+	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
 	"github.com/zen-eth/shisui/testlog"
 	zenutp "github.com/zen-eth/utp-go"
@@ -406,6 +407,29 @@ func TestPortalWireProtocol(t *testing.T) {
 
 	offerTrace1 := <-testTransientOfferRequestWithResult1.Result
 	assert.Equal(t, Declined, offerTrace1.Type)
+
+	capabilitiesBytes := node1.capabilitiesCache.Get(nil, []byte(node2.localNode.ID().String()))
+
+	capabilities := &pingext.CapabilitiesPayload{}
+	err = capabilities.UnmarshalSSZ(capabilitiesBytes)
+	assert.NoError(t, err)
+	uint16Capabilities := make([]uint16, 0, len(*capabilities))
+	for _, value := range *capabilities {
+		uint16Capabilities = append(uint16Capabilities, uint16(value))
+	}
+	assert.Equal(t, pingext.HistoryRadius, *node1.PingExtensions.LatestMutuallySupportedBaseExtension(uint16Capabilities))
+
+	capabilitiesBytes1 := node1.capabilitiesCache.Get(nil, []byte(node3.localNode.ID().String()))
+
+	capabilities1 := &pingext.CapabilitiesPayload{}
+	err = capabilities1.UnmarshalSSZ(capabilitiesBytes1)
+	assert.NoError(t, err)
+	uint16Capabilities1 := make([]uint16, 0, len(*capabilities1))
+	for _, value := range *capabilities1 {
+		uint16Capabilities1 = append(uint16Capabilities1, uint16(value))
+	}
+
+	assert.Equal(t, pingext.HistoryRadius, *node1.PingExtensions.LatestMutuallySupportedBaseExtension(uint16Capabilities1))
 }
 
 func TestCancel(t *testing.T) {
