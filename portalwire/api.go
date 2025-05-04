@@ -688,11 +688,11 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 					p.portalProtocol.Log.Warn("Failed to offer content to lookup node", "node", nodeToOffer.ID(), "err", offerErr)
 					continue
 				}
-				offeredPeerCount++
+				offeredCount++
 				// Add successfully offered node to the map to avoid re-offering if somehow listed again
 				gossipedNodeIDs[nodeToOffer.ID()] = struct{}{}
 			}
-			peerCount += offeredPeerCount
+			peerCount += offeredCount
 		}
 	}
 
