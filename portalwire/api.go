@@ -631,11 +631,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 	id := p.portalProtocol.Self().ID()
 	gossipedNodes, err := p.portalProtocol.GossipAndReturnPeers(&id, [][]byte{contentKey}, [][]byte{content})
 	if err != nil {
-		if errors.Is(err, ErrNoGossipNodes) {
-			gossipedNodes = []*enode.Node{}
-		} else {
-			return nil, err
-		}
+		return nil, err
 	}
 	peerCount := len(gossipedNodes)
 
