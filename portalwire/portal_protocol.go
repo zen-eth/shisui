@@ -136,7 +136,6 @@ var (
 	ErrNilContentKey   = errors.New("content key cannot be nil")
 	ErrContentNotFound = storage.ErrContentNotFound
 	ErrEmptyResp       = errors.New("empty resp")
-	ErrNoGossipNodes   = errors.New("no gossip nodes")
 
 	errClosed  = errors.New("socket closed")
 	errTimeout = errors.New("RPC timeout")
@@ -1969,7 +1968,7 @@ func (p *PortalProtocol) GossipAndReturnPeers(srcNodeId *enode.ID, contentKeys [
 	}
 
 	if len(gossipNodes) == 0 {
-		return nil, ErrNoGossipNodes
+		return gossipNodes, nil
 	}
 
 	var finalGossipNodes []*enode.Node
@@ -2020,9 +2019,6 @@ func (p *PortalProtocol) GossipAndReturnPeers(srcNodeId *enode.ID, contentKeys [
 func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) (int, error) {
 	nodes, err := p.GossipAndReturnPeers(srcNodeId, contentKeys, content)
 	if err != nil {
-		if errors.Is(err, ErrNoGossipNodes) {
-			return 0, nil
-		}
 		return 0, err
 	}
 
