@@ -1096,6 +1096,9 @@ func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 				pong = p.createPong(pingext.Error, errPayload)
 				break
 			}
+			// Process the ping asynchronously. Any errors occurring in processPing
+			// will not affect the synchronous pong response. This is an intentional
+			// design choice to decouple ping processing from the response.
 			go p.processPing(id, ping, payload)
 			pong, err = p.handleClientInfo()
 			if err != nil {
