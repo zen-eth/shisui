@@ -629,9 +629,19 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 		return nil, err
 	}
 	id := p.portalProtocol.Self().ID()
-	num, err := p.portalProtocol.Gossip(&id, [][]byte{contentKey}, [][]byte{content})
+	gossipedNodes, err := p.portalProtocol.GossipReturnNodes(&id, [][]byte{contentKey}, [][]byte{content})
 	if err != nil {
-		return nil, err
+		if errors.Is(err, ErrNoGossipNodes) {
+			gossipedNodes = []*enode.Node{}
+		} else {
+			return nil, err
+		}
+	}
+	num := len(gossipedNodes)
+
+	gossipedNodeIDs := make(map[enode.ID]struct{})
+	for _, node := range gossipedNodes {
+		gossipedNodeIDs[node.ID()] = struct{}{}
 	}
 
 	// If gossip didn't reach the target number of peers (e.g., 8),
@@ -642,9 +652,17 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 		var contentId enode.ID
 		copy(contentId[:], contentIdBytes)
 
-		nodes := p.portalProtocol.Lookup(contentId)
+		lookupNodes := p.portalProtocol.Lookup(contentId)
 
-		if len(nodes) > 0 {
+		// Filter out nodes that were already gossiped to
+		nodesToOffer := make([]*enode.Node, 0, len(lookupNodes))
+		for _, node := range lookupNodes {
+			if _, exists := gossipedNodeIDs[node.ID()]; !exists {
+				nodesToOffer = append(nodesToOffer, node)
+			}
+		}
+
+		if len(nodesToOffer) > 0 {
 			offerReq := &OfferRequest{
 				Kind: TransientOfferRequestKind,
 				Request: &TransientOfferRequest{
@@ -660,7 +678,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 			// Offer to additional nodes until the target count is reached or no more nodes are found.
 			needed := targetPeerCount - num
 			offeredCount := 0
-			for _, nodeToOffer := range nodes {
+			for _, nodeToOffer := range nodesToOffer {
 				if offeredCount >= needed {
 					break
 				}
@@ -669,12 +687,15 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 					continue
 				}
 
-				_, err := p.portalProtocol.offer(nodeToOffer, offerReq, &NoPermit{})
-				if err != nil {
-					return nil, err
+				_, offerErr := p.portalProtocol.offer(nodeToOffer, offerReq, &NoPermit{})
+				if offerErr != nil {
+					p.portalProtocol.Log.Warn("Failed to offer content to lookup node", "node", nodeToOffer.ID(), "err", offerErr)
+					continue
 				}
 				num++
 				offeredCount++
+				// Add successfully offered node to the map to avoid re-offering if somehow listed again
+				gossipedNodeIDs[nodeToOffer.ID()] = struct{}{}
 			}
 		}
 	}
