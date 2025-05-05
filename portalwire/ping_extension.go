@@ -23,6 +23,8 @@ func (h DefaultPingExtension) Extensions() []uint16 {
 	return defaultPingExtensions
 }
 
+// LatestMutuallySupportedBaseExtension intentionally returns nil to indicate
+// that DefaultPingExtension does not support any base extensions.
 func (h DefaultPingExtension) LatestMutuallySupportedBaseExtension(extensions []uint16) *uint16 {
 	return nil
 }
