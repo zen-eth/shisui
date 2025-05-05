@@ -1419,6 +1419,7 @@ func (b *BlockProofHistoricalSummariesCapella) MarshalSSZTo(buf []byte) (dst []b
 	dst = append(dst, b.BeaconBlockRoot...)
 
 	// Field (2) 'ExecutionBlockProof'
+	// The length of ExecutionBlockProof is fixed at 11 as per the Capella specification.
 	if size := len(b.ExecutionBlockProof); size != 11 {
 		err = ssz.ErrVectorLengthFn("BlockProofHistoricalSummariesCapella.ExecutionBlockProof", size, 11)
 		return
