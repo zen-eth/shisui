@@ -196,6 +196,30 @@ func (tab *Table) getNode(id enode.ID) *enode.Node {
 	return nil
 }
 
+// getNodeOrReplacement returns the node with the given ID if it exists
+// in the live entries or the replacement list of the corresponding bucket.
+// It returns nil if the node isn't found in either list.
+func (tab *Table) getNodeOrReplacement(id enode.ID) *enode.Node {
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+
+	b := tab.bucket(id)
+	// Check live entries first
+	for _, e := range b.entries {
+		if e.ID() == id {
+			return e.Node
+		}
+	}
+	// Check replacements if not found in live entries
+	for _, r := range b.replacements {
+		if r.ID() == id {
+			return r.Node
+		}
+	}
+	// Node not found in either list
+	return nil
+}
+
 // close terminates the network listener and flushes the node database.
 func (tab *Table) close() {
 	close(tab.closeReq)
