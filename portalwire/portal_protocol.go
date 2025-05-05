@@ -974,10 +974,6 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []
 	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedPong.Mark(1)
 	}
-	dataRadius, err := pingext.GetDataRadiusByType(pong.PayloadType, pong.Payload)
-	if err != nil {
-		return nil, nil, err
-	}
 
 	isAdded := p.table.addFoundNode(target, true)
 	if isAdded {
@@ -985,10 +981,61 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []
 	} else {
 		log.Debug("Node added to replacements list", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	}
-	p.radiusCacheRWLock.Lock()
-	defer p.radiusCacheRWLock.Unlock()
-	p.radiusCache.Set([]byte(target.ID().String()), dataRadius)
+
+	dataRadius, err := p.processPongPayload(target, pong)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return pong, dataRadius, nil
+}
+
+func (p *PortalProtocol) processPongPayload(target *enode.Node, pong *Pong) ([]byte, error) {
+	if n := p.table.getNodeOrReplacement(target.ID()); n != nil {
+		if n.Seq() < pong.EnrSeq {
+			// Update the node in the routing table
+			_, err := p.RequestENR(n)
+			if err != nil {
+				p.Log.Error("failed to request ENR", "err", err)
+			}
+		}
+
+		if !p.PingExtensions.IsSupported(pong.PayloadType) {
+			return nil, pingext.ErrPayloadTypeIsNotSupported{}
+		}
+
+		switch pong.PayloadType {
+		case pingext.ClientInfo:
+			payload := &pingext.ClientInfoAndCapabilitiesPayload{}
+			err := payload.UnmarshalSSZ(pong.Payload)
+			if err != nil {
+				return nil, err
+			}
+			p.processClientInfo(target.ID(), payload)
+		case pingext.BasicRadius:
+			payload := &pingext.BasicRadiusPayload{}
+			err := payload.UnmarshalSSZ(pong.Payload)
+			if err != nil {
+				return nil, err
+			}
+			p.processBasicRadius(target.ID(), payload)
+		case pingext.HistoryRadius:
+			payload := &pingext.HistoryRadiusPayload{}
+			err := payload.UnmarshalSSZ(pong.Payload)
+			if err != nil {
+				return nil, err
+			}
+			p.processHistoryRadius(target.ID(), payload)
+		default:
+			return nil, pingext.ErrPayloadTypeIsNotSupported{}
+		}
+
+		p.radiusCacheRWLock.RLock()
+		defer p.radiusCacheRWLock.RUnlock()
+		radiusBytes := p.radiusCache.Get(nil, []byte(target.ID().String()))
+		return radiusBytes, nil
+	}
+	return nil, nil
 }
 
 func (p *PortalProtocol) handleTalkRequest(node *enode.Node, addr *net.UDPAddr, msg []byte) []byte {
@@ -1153,7 +1200,7 @@ func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 }
 
 func (p *PortalProtocol) processPing(id enode.ID, ping *Ping, payload interface{}) {
-	if n := p.table.getNode(id); n != nil {
+	if n := p.table.getNodeOrReplacement(id); n != nil {
 		if n.Seq() < ping.EnrSeq {
 			// Update the node in the routing table
 			_, err := p.RequestENR(n)
@@ -1199,7 +1246,7 @@ func (p *PortalProtocol) processClientInfo(id enode.ID, payload *pingext.ClientI
 	if !radiusMatch {
 		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", payload.DataRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
 		p.radiusCacheRWLock.Lock()
-		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:]) // Store the 32-byte hash slice
+		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:])
 		p.radiusCacheRWLock.Unlock()
 		updated = true
 	}
@@ -1254,7 +1301,7 @@ func (p *PortalProtocol) processBasicRadius(id enode.ID, payload *pingext.BasicR
 	if !radiusMatch {
 		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", payload.DataRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
 		p.radiusCacheRWLock.Lock()
-		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:]) // Store the 32-byte hash slice
+		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:])
 		p.radiusCacheRWLock.Unlock()
 		updated = true
 	}
@@ -1284,7 +1331,7 @@ func (p *PortalProtocol) processHistoryRadius(id enode.ID, payload *pingext.Hist
 	if !radiusMatch {
 		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", payload.DataRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
 		p.radiusCacheRWLock.Lock()
-		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:]) // Store the 32-byte hash slice
+		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:])
 		p.radiusCacheRWLock.Unlock()
 		updated = true
 	}
