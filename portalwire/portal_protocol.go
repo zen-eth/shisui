@@ -32,6 +32,7 @@ import (
 	ssz "github.com/ferranbt/fastssz"
 	cache "github.com/go-pkgz/expirable-cache/v3"
 	"github.com/holiman/uint256"
+	zrntcommon "github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/ztyp/view"
 	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
@@ -1210,6 +1211,7 @@ func (p *PortalProtocol) processPing(id enode.ID, ping *Ping, payload interface{
 		}
 
 		if !p.PingExtensions.IsSupported(ping.PayloadType) {
+			p.Log.Error("unsupported ping payload type", "type", ping.PayloadType)
 			return
 		}
 
@@ -1226,30 +1228,35 @@ func (p *PortalProtocol) processPing(id enode.ID, ping *Ping, payload interface{
 	}
 }
 
-func (p *PortalProtocol) processClientInfo(id enode.ID, payload *pingext.ClientInfoAndCapabilitiesPayload) {
-	nodeIdStr := id.String()
-	nodeIdBytes := []byte(nodeIdStr)
-	updated := false
-
-	// --- Compare and Update Radius ---
+// updateRadiusCacheIfNeeded compares the incoming radius with the cached value and updates the cache if necessary.
+// It returns true if the cache was updated, false otherwise.
+func (p *PortalProtocol) updateRadiusCacheIfNeeded(id enode.ID, nodeIdBytes []byte, incomingRadius zrntcommon.Root) bool {
 	p.radiusCacheRWLock.RLock()
 	cachedDataRadiusBytes := p.radiusCache.Get(nil, nodeIdBytes)
 	p.radiusCacheRWLock.RUnlock()
 
 	radiusMatch := false
 	if cachedDataRadiusBytes != nil && len(cachedDataRadiusBytes) == common.HashLength {
-		if bytes.Equal(payload.DataRadius[:], cachedDataRadiusBytes) {
+		if bytes.Equal(incomingRadius[:], cachedDataRadiusBytes) {
 			radiusMatch = true
 		}
 	}
 
 	if !radiusMatch {
-		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", payload.DataRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
+		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", incomingRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
 		p.radiusCacheRWLock.Lock()
-		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:])
+		p.radiusCache.Set(nodeIdBytes, incomingRadius[:])
 		p.radiusCacheRWLock.Unlock()
-		updated = true
+		return true 
 	}
+	return false
+}
+
+func (p *PortalProtocol) processClientInfo(id enode.ID, payload *pingext.ClientInfoAndCapabilitiesPayload) {
+	nodeIdStr := id.String()
+	nodeIdBytes := []byte(nodeIdStr)
+	// --- Compare and Update Radius ---
+	updated := p.updateRadiusCacheIfNeeded(id, nodeIdBytes, payload.DataRadius)
 
 	// --- Compare and Update Capabilities ---
 	incomingCapBytes, err := payload.Capabilities.MarshalSSZ()
@@ -1284,27 +1291,9 @@ func (p *PortalProtocol) processClientInfo(id enode.ID, payload *pingext.ClientI
 func (p *PortalProtocol) processBasicRadius(id enode.ID, payload *pingext.BasicRadiusPayload) {
 	nodeIdStr := id.String()
 	nodeIdBytes := []byte(nodeIdStr)
-	updated := false
 
 	// --- Compare and Update Radius ---
-	p.radiusCacheRWLock.RLock()
-	cachedDataRadiusBytes := p.radiusCache.Get(nil, nodeIdBytes)
-	p.radiusCacheRWLock.RUnlock()
-
-	radiusMatch := false
-	if cachedDataRadiusBytes != nil && len(cachedDataRadiusBytes) == common.HashLength {
-		if bytes.Equal(payload.DataRadius[:], cachedDataRadiusBytes) {
-			radiusMatch = true
-		}
-	}
-
-	if !radiusMatch {
-		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", payload.DataRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
-		p.radiusCacheRWLock.Lock()
-		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:])
-		p.radiusCacheRWLock.Unlock()
-		updated = true
-	}
+	updated := p.updateRadiusCacheIfNeeded(id, nodeIdBytes, payload.DataRadius)
 
 	if !updated {
 		p.Log.Trace("Basic Radius match cached values", "node", id)
@@ -1314,27 +1303,9 @@ func (p *PortalProtocol) processBasicRadius(id enode.ID, payload *pingext.BasicR
 func (p *PortalProtocol) processHistoryRadius(id enode.ID, payload *pingext.HistoryRadiusPayload) {
 	nodeIdStr := id.String()
 	nodeIdBytes := []byte(nodeIdStr)
-	updated := false
 
 	// --- Compare and Update Radius ---
-	p.radiusCacheRWLock.RLock()
-	cachedDataRadiusBytes := p.radiusCache.Get(nil, nodeIdBytes)
-	p.radiusCacheRWLock.RUnlock()
-
-	radiusMatch := false
-	if cachedDataRadiusBytes != nil && len(cachedDataRadiusBytes) == common.HashLength {
-		if bytes.Equal(payload.DataRadius[:], cachedDataRadiusBytes) {
-			radiusMatch = true
-		}
-	}
-
-	if !radiusMatch {
-		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", payload.DataRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
-		p.radiusCacheRWLock.Lock()
-		p.radiusCache.Set(nodeIdBytes, payload.DataRadius[:])
-		p.radiusCacheRWLock.Unlock()
-		updated = true
-	}
+	updated := p.updateRadiusCacheIfNeeded(id, nodeIdBytes, payload.DataRadius)
 
 	// --- Compare and Update Ephemeral Header Count ---
 	p.ephemeralHeaderCountCacheRWLock.RLock()
@@ -1355,7 +1326,7 @@ func (p *PortalProtocol) processHistoryRadius(id enode.ID, payload *pingext.Hist
 	}
 
 	if !ephemeralHeaderCountMatch {
-		p.Log.Debug("Ephemeral header count mismatch or cache miss, updating cache", "node", id)
+		p.Log.Debug("Ephemeral header count mismatch or cache miss, updating cache", "node", id, "payloadCount", payload.EphemeralHeaderCount)
 		newCountBytes, err := payload.EphemeralHeaderCount.Encode()
 		if err != nil {
 			p.Log.Error("Failed to marshal new ephemeral header count", "node", id, "err", err)
