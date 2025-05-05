@@ -1247,7 +1247,7 @@ func (p *PortalProtocol) updateRadiusCacheIfNeeded(id enode.ID, nodeIdBytes []by
 		p.radiusCacheRWLock.Lock()
 		p.radiusCache.Set(nodeIdBytes, incomingRadius[:])
 		p.radiusCacheRWLock.Unlock()
-		return true 
+		return true
 	}
 	return false
 }
