@@ -278,7 +278,7 @@ func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber 
 	if blockNumber >= shanghaiBlockNumber {
 		return errors.New("invalid historicalRootsBlockProof found for post-Shanghai header")
 	}
-	if !VerifyBeaconBlock(headerHash[:], proof.GetExecutionBlockProof(), tree.Root(proof.BeaconBlockRoot)) {
+	if !VerifyBellatrixToDenebExecutionBlockProof(headerHash[:], proof.GetExecutionBlockProof(), tree.Root(proof.BeaconBlockRoot)) {
 		return errors.New("merkle proof validation failed for BeaconBlockBodyProof")
 	}
 

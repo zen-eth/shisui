@@ -288,24 +288,29 @@ func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error)
 			return false, err
 		}
 		return true, nil
-	} else if blockNumber < cancunNumber {
+	} else {
 		blockNumber := header.Number.Uint64()
 		summaries, err := h.getHistoricalSummaries(blockNumber)
 		if err != nil {
 			return false, err
 		}
 		headerHash := header.Hash()
-		blockProof := new(BlockProofHistoricalSummariesCapella)
-		err = blockProof.UnmarshalSSZ(proof)
-		if err != nil {
-			return false, err
+
+		if blockNumber < cancunNumber {
+			blockProof := new(BlockProofHistoricalSummariesCapella)
+			err = blockProof.UnmarshalSSZ(proof)
+			if err != nil {
+				return false, err
+			}
+			return VerifyCapellaToDenebHeader(headerHash[:], blockProof, *summaries), nil
+		} else {
+			blockProof := new(BlockProofHistoricalSummariesDeneb)
+			err = blockProof.UnmarshalSSZ(proof)
+			if err != nil {
+				return false, err
+			}
+			return VerifyPostDenebHeader(headerHash[:], blockProof, *summaries), nil
 		}
-		return VerifyPostCapellaHeader(headerHash[:], blockProof, *summaries), nil
-	} else {
-		// TODO: Implement header verification for blocks >= cancunNumber.
-		//       See issue #1234 for details.
-		h.log.Warn("verifyHeader: not implemented")
-		return false, nil
 	}
 }
 
