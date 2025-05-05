@@ -302,7 +302,8 @@ func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error)
 		}
 		return VerifyPostCapellaHeader(headerHash[:], blockProof, *summaries), nil
 	} else {
-		// TODO: verify header with historical summaries
+		// TODO: Implement header verification for blocks >= cancunNumber.
+		//       See issue #1234 for details.
 		h.log.Warn("verifyHeader: not implemented")
 		return false, nil
 	}
