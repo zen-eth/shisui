@@ -266,6 +266,9 @@ func (bn *Network) validateContent(contentKey []byte, content []byte) error {
 		}
 		// TODO get root from light client
 		header := bn.lightClient.GetFinalityHeader()
+		if header == nil {
+			return fmt.Errorf("finality header is nil")
+		}
 		latestFinalizedRoot := header.StateRoot
 
 		valid := bn.stateSummariesValidation(*forkedHistoricalSummariesWithProof, latestFinalizedRoot)
