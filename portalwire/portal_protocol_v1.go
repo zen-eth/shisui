@@ -146,12 +146,6 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 		ContentKeys: make([]uint8, len(request.ContentKeys)),
 	}
 	acceptContentKeys := make([][]byte, 0)
-	if len(p.contentQueue) >= cap(p.contentQueue) {
-		for i := 0; i < len(request.ContentKeys); i++ {
-			acceptV1.ContentKeys[i] = uint8(RateLimited)
-		}
-		return acceptV1, acceptContentKeys, nil
-	}
 	for i, contentKey := range request.ContentKeys {
 		contentId := p.toContentId(contentKey)
 		if contentId == nil {
