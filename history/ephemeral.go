@@ -22,7 +22,7 @@ func (h *Network) handleEphemeralContents(contentKeys [][]byte, contents [][]byt
 	for i, content := range contents {
 		contentKey := contentKeys[i]
 		if !h.isEphemeralOfferType(contentKey) {
-			return fmt.Errorf("content key diferent of type Ephemeral: content key %x", contentKey)
+			return fmt.Errorf("content key different of type Ephemeral: content key %x", contentKey)
 		}
 
 		header, err := DecodeBlockHeader(content)
@@ -45,11 +45,11 @@ func (h *Network) handleEphemeralContents(contentKeys [][]byte, contents [][]byt
 			return nil
 		} else {
 			if headHash.Cmp(header.Hash()) != 0 && parentHash.Cmp(headerhash) != 0 {
-				return fmt.Errorf("hash diferent from last block paretHash: hash %x, paretHash %x", headerhash, parentHash)
+				return fmt.Errorf("hash different from last block paretHash: hash %x, paretHash %x", headerhash, parentHash)
 			}
 
 			if !bytes.Equal(headerhash.Bytes(), contentKey[1:]) {
-				return fmt.Errorf("header hash diferent from block_hash: header hash %x, content key %x", headerhash, contentKey[1:])
+				return fmt.Errorf("header hash different from block_hash: header hash %x, content key %x", headerhash, contentKey[1:])
 			}
 
 			he, err := header.MarshalJSON()

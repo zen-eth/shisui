@@ -393,11 +393,11 @@ func (bn *Network) GetHeadHashFromExternal(externalOracle string) (*gcommon.Hash
 	headeStr.WriteString("/eth/v1/beacon/light_client/optimistic_update")
 	reqHead, err := http.NewRequest(http.MethodGet, externalOracle+headeStr.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("could not create request to external oracle, err: %s", err)
+		return nil, fmt.Errorf("could not create request to external oracle, err: %w", err)
 	}
 	resHead, err := http.DefaultClient.Do(reqHead)
 	if err != nil {
-		return nil, fmt.Errorf("could not get head from external oracle, err: %s", err)
+		return nil, fmt.Errorf("could not get head from external oracle, err: %w", err)
 	}
 	defer resHead.Body.Close()
 
