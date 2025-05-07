@@ -80,9 +80,10 @@ type Network struct {
 	log                        log.Logger
 	client                     *rpc.Client
 	spec                       *common.Spec
+	externalOracle             *ExternalOracle
 }
 
-func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAccumulator, client *rpc.Client) *Network {
+func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAccumulator, client *rpc.Client, externalOracle *ExternalOracle) *Network {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	historicalRootsAccumulator := NewHistoricalRootsAccumulator(configs.Mainnet)
@@ -95,6 +96,7 @@ func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAc
 		spec:                       configs.Mainnet,
 		historicalRootsAccumulator: &historicalRootsAccumulator,
 		client:                     client,
+		externalOracle:             externalOracle,
 	}
 }
 
@@ -554,10 +556,19 @@ func (h *Network) processContentLoop(ctx context.Context) {
 			return
 		case contentElement := <-contentChan:
 			err := antsPool.Submit(func() {
-				err := h.validateContents(contentElement.ContentKeys, contentElement.Contents)
-				if err != nil {
-					h.log.Error("validate contents failed", "err", err)
-					return
+				//ephemeral type offers only contain content keys for ephemeral headers
+				if h.isEphemeralOfferType(contentElement.ContentKeys[0]) {
+					err := h.handleEphemeralContents(contentElement.ContentKeys, contentElement.Contents)
+					if err != nil {
+						h.log.Error("handle ephemeral contents failed", "err", err)
+						return
+					}
+				} else {
+					err := h.validateContents(contentElement.ContentKeys, contentElement.Contents)
+					if err != nil {
+						h.log.Error("validate contents failed", "err", err)
+						return
+					}
 				}
 				go func() {
 					var gossippedNum int

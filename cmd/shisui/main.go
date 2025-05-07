@@ -43,6 +43,7 @@ var (
 		utils.PortalTrustedBlockRootFlag,
 		utils.PortalTableInitFlag,
 		utils.PortalUtpConnSizeLimitFlag,
+		utils.PortalExternalOracleFlag,
 	}
 	historyRpcFlags = []cli.Flag{
 		utils.PortalRPCListenAddrFlag,
@@ -113,6 +114,8 @@ func shisui(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	utils.VerifyExternalOracle(config)
 
 	// Start metrics export if enabled
 	utils.SetupMetrics(config.Metrics)

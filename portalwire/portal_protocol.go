@@ -118,6 +118,13 @@ const Tag ClientTag = "shisui"
 
 var MaxDistance = hexutil.MustDecode("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 
+// Maximum header length is 2048 bytes
+// Expects clients to store the full window of 8192 blocks of this data
+// 100 slots for reorgs
+// Max size in bytes is 2048 * (8192 + 100)
+// https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#ephemeral-block-headers
+var headerStoreCacheSize = 2048 * (8192 + 100)
+
 var PortalBootnodes = []string{
 	// Trin team's bootnodes
 	"enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
@@ -276,6 +283,9 @@ type PortalProtocol struct {
 	inTransferMap         sync.Map
 
 	versionsCache cache.Cache[*enode.Node, uint8]
+
+	EphemeralHeaderCache       *fastcache.Cache
+	EphemeralHeaderCacheRWLock sync.RWMutex
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -345,6 +355,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 	switch protocolId.Name() {
 	case "history":
 		protocol.PingExtensions = HistoryPingExtension{}
+		protocol.EphemeralHeaderCache = fastcache.New(headerStoreCacheSize)
 	case "state":
 		protocol.PingExtensions = StatePingExtension{}
 	case "beacon":

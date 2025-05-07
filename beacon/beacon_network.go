@@ -3,14 +3,20 @@ package beacon
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"time"
 
+	gcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	ssz "github.com/ferranbt/fastssz"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
+	"github.com/protolambda/zrnt/eth2/beacon/deneb"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/zrnt/eth2/util/merkle"
 	"github.com/protolambda/ztyp/codec"
@@ -352,4 +358,65 @@ func (bn *Network) stateSummariesValidation(f ForkedHistoricalSummariesWithProof
 
 	gIndex := 59
 	return merkle.VerifyMerkleBranch(summariesRoot, proof.Proof[:], 5, uint64(gIndex), latestFinalizedRoot)
+}
+
+func (bn *Network) GetHeadHash() (*gcommon.Hash, error) {
+	header := bn.lightClient.GetHeader()
+	if header == nil {
+		return nil, fmt.Errorf("could not get history head, no optimistic beacon header")
+	}
+
+	lcUpdateSpec, err := bn.GetUpdates(getStartPeriod(uint64(header.Slot)), 1)
+	if err != nil {
+		return nil, err
+	}
+
+	lcUpdates := make([]deneb.LightClientUpdate, 1)
+	var buf bytes.Buffer
+	err = lcUpdateSpec[0].Serialize(bn.spec, codec.NewEncodingWriter(&buf))
+	if err != nil {
+		return nil, err
+	}
+	dec := codec.NewDecodingReader(bytes.NewReader(buf.Bytes()), uint64(len(buf.Bytes())))
+	err = lcUpdates[0].Deserialize(bn.spec, dec)
+	if err != nil {
+		return nil, err
+	}
+
+	hBytes := [32]byte(lcUpdates[0].FinalizedHeader.Execution.BlockHash)
+	h := gcommon.BytesToHash(hBytes[:])
+	return &h, nil
+}
+
+func (bn *Network) GetHeadHashFromExternal(externalOracle string) (*gcommon.Hash, error) {
+	var headeStr strings.Builder
+	headeStr.WriteString("/eth/v1/beacon/light_client/optimistic_update")
+	reqHead, err := http.NewRequest(http.MethodGet, externalOracle+headeStr.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("could not create request to external oracle, err: %s", err)
+	}
+	resHead, err := http.DefaultClient.Do(reqHead)
+	if err != nil {
+		return nil, fmt.Errorf("could not get head from external oracle, err: %s", err)
+	}
+	defer resHead.Body.Close()
+
+	var responseHead ConsensusCliOptimisticUpdateResponse
+	body, err := io.ReadAll(resHead.Body)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(body, &responseHead)
+	if err != nil {
+		return nil, err
+	}
+
+	h := gcommon.BytesToHash([]byte(responseHead.Data.Header.Execution.BlockHash))
+	return &h, nil
+}
+
+func getStartPeriod(slot uint64) uint64 {
+	epoch := slot / 32
+	period := epoch / 256
+	return period
 }

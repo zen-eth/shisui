@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics/influxdb"
 	"github.com/urfave/cli/v2"
 	"github.com/zen-eth/shisui/internal/flags"
+	"github.com/zen-eth/shisui/portal"
 	"github.com/zen-eth/shisui/portalwire"
 )
 
@@ -178,7 +180,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:     "networks",
 		Usage:    "Portal sub networks: history, beacon, state",
 		Category: flags.PortalNetworkCategory,
-		Value:    cli.NewStringSlice(portalwire.History.Name()),
+		Value:    cli.NewStringSlice(portalwire.History.Name(), portalwire.Beacon.Name()),
 	}
 	PortalDiscv5GnetFlag = &cli.BoolFlag{
 		Name:     "discv5.gnet",
@@ -204,7 +206,21 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    portalwire.DefaultUtpConnSize,
 		Category: flags.PortalNetworkCategory,
 	}
+	PortalExternalOracleFlag = &cli.StringFlag{
+		Name:     "external.oracle",
+		Usage:    "External oracle for knowing the HEAD of the history chain",
+		Category: flags.PortalNetworkCategory,
+	}
 )
+
+// verify availability of external oracle for history
+func VerifyExternalOracle(config *portal.Config) {
+	if slices.Contains(config.Networks, portalwire.History.Name()) {
+		if !slices.Contains(config.Networks, portalwire.Beacon.Name()) && len(config.ExternalOracle) <= 0 {
+			Fatalf("History sub network require or beacon network or an external oracle provided")
+		}
+	}
+}
 
 func SetupMetrics(cfg *metrics.Config) {
 	if !cfg.Enabled {

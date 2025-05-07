@@ -42,6 +42,7 @@ type Config struct {
 	Networks              []string
 	Metrics               *metrics.Config
 	DisableTableInitCheck bool
+	ExternalOracle        string
 }
 
 func DefaultConfig() *Config {
@@ -110,15 +111,15 @@ func NewNode(config *Config) (*Node, error) {
 	}
 
 	// Initialize services based on config
-	if slices.Contains(config.Networks, portalwire.History.Name()) {
-		err = node.initHistoryNetwork()
+	if slices.Contains(config.Networks, portalwire.Beacon.Name()) {
+		err = node.initBeaconNetwork()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if slices.Contains(config.Networks, portalwire.Beacon.Name()) {
-		err = node.initBeaconNetwork()
+	if slices.Contains(config.Networks, portalwire.History.Name()) {
+		err = node.initHistoryNetwork()
 		if err != nil {
 			return nil, err
 		}
@@ -361,8 +362,10 @@ func (n *Node) initHistoryNetwork() error {
 		return err
 	}
 
+	externalOracle := history.NewExternalOracle(n.config.ExternalOracle, n.beaconNetwork)
+
 	client := rpc.DialInProc(n.rpcServer)
-	n.historyNetwork = history.NewHistoryNetwork(protocol, &accumulator, client)
+	n.historyNetwork = history.NewHistoryNetwork(protocol, &accumulator, client, externalOracle)
 	return nil
 }
 
