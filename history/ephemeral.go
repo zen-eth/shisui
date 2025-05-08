@@ -45,7 +45,7 @@ func (h *Network) handleEphemeralContents(contentKeys [][]byte, contents [][]byt
 			return nil
 		} else {
 			if headHash.Cmp(header.Hash()) != 0 && parentHash.Cmp(headerhash) != 0 {
-				return fmt.Errorf("hash different from last block paretHash: hash %x, paretHash %x", headerhash, parentHash)
+				return fmt.Errorf("hash different from last block paretHash: hash %x, parentHash %x", headerhash, parentHash)
 			}
 
 			if !bytes.Equal(headerhash.Bytes(), contentKey[1:]) {

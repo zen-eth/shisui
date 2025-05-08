@@ -411,7 +411,11 @@ func (bn *Network) GetHeadHashFromExternal(externalOracle string) (*gcommon.Hash
 		return nil, err
 	}
 
-	h := gcommon.BytesToHash([]byte(responseHead.Data.Header.Execution.BlockHash))
+	blockHashBytes, err := hexutil.Decode(responseHead.Data.Header.Execution.BlockHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode block hash: %w", err)
+	}
+	h := gcommon.BytesToHash(blockHashBytes)
 	return &h, nil
 }
 
