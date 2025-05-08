@@ -217,7 +217,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 func VerifyExternalOracle(config *portal.Config) {
 	if slices.Contains(config.Networks, portalwire.History.Name()) {
 		if !slices.Contains(config.Networks, portalwire.Beacon.Name()) && len(config.ExternalOracle) <= 0 {
-			Fatalf("History sub network require or beacon network or an external oracle provided")
+			Fatalf("History sub network requires either the beacon network or an external oracle to be provided")
 		}
 	}
 }
