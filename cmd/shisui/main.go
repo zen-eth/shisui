@@ -43,7 +43,6 @@ var (
 		utils.PortalTrustedBlockRootFlag,
 		utils.PortalTableInitFlag,
 		utils.PortalUtpConnSizeLimitFlag,
-		utils.PortalExternalOracleFlag,
 	}
 	historyRpcFlags = []cli.Flag{
 		utils.PortalRPCListenAddrFlag,

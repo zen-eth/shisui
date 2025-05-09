@@ -8,7 +8,9 @@ import (
 	"math/big"
 	"time"
 
+	gcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/panjf2000/ants/v2"
 	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
@@ -48,6 +50,11 @@ var (
 	ErrInvalidBlockNumber       = errors.New("invalid block number")
 )
 
+// Expects clients to store the full window of 8192 blocks of this data
+// plus 100 slots for reorgs
+// https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#ephemeral-block-headers
+var ephemeralHeadersMaxQuantity = 8192 + 100
+
 var emptyReceiptHash = hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
 var antsPool, _ = ants.NewPool(10, ants.WithNonblocking(true))
@@ -71,6 +78,10 @@ func (c *ContentKey) encode() []byte {
 	return res
 }
 
+type HeadOracle interface {
+	GetHeadHash() (*gcommon.Hash, error)
+}
+
 type Network struct {
 	portalProtocol             *portalwire.PortalProtocol
 	masterAccumulator          *MasterAccumulator
@@ -80,10 +91,10 @@ type Network struct {
 	log                        log.Logger
 	client                     *rpc.Client
 	spec                       *common.Spec
-	externalOracle             *ExternalOracle
+	headOracle                 HeadOracle
 }
 
-func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAccumulator, client *rpc.Client, externalOracle *ExternalOracle) *Network {
+func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAccumulator, client *rpc.Client, oracle HeadOracle) *Network {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	historicalRootsAccumulator := NewHistoricalRootsAccumulator(configs.Mainnet)
@@ -96,7 +107,7 @@ func NewHistoryNetwork(portalProtocol *portalwire.PortalProtocol, accu *MasterAc
 		spec:                       configs.Mainnet,
 		historicalRootsAccumulator: &historicalRootsAccumulator,
 		client:                     client,
-		externalOracle:             externalOracle,
+		headOracle:                 oracle,
 	}
 }
 
@@ -558,7 +569,7 @@ func (h *Network) processContentLoop(ctx context.Context) {
 			err := antsPool.Submit(func() {
 				//ephemeral type offers only contain content keys for ephemeral headers
 				if h.isEphemeralOfferType(contentElement.ContentKeys[0]) {
-					err := h.handleEphemeralContents(contentElement.ContentKeys, contentElement.Contents)
+					err := h.validateEphemeralContents(contentElement.ContentKeys, contentElement.Contents)
 					if err != nil {
 						h.log.Error("handle ephemeral contents failed", "err", err)
 						return
@@ -671,6 +682,71 @@ func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) erro
 			return fmt.Errorf("content validate failed with content key %x and content %x, err is %w", contentKey, content, err)
 		}
 		_ = h.portalProtocol.Put(contentKey, contentId, content)
+	}
+	return nil
+}
+
+func (h *Network) isEphemeralOfferType(contentKey []byte) bool {
+	return ContentType(contentKey[0]) == OfferEphemeralType
+}
+
+func (h *Network) validateEphemeralContents(contentKeys [][]byte, contents [][]byte) error {
+	if len(contents) > ephemeralHeadersMaxQuantity {
+		return fmt.Errorf("contents length bigger than allowed: content len  %d", len(contents))
+	}
+	var parentHash gcommon.Hash
+	gotHead := false
+	headHash, err := h.headOracle.GetHeadHash()
+	if err != nil {
+		return err
+	}
+	for i, content := range contents {
+		contentKey := contentKeys[i]
+		if !h.isEphemeralOfferType(contentKey) {
+			return fmt.Errorf("content key different of type Ephemeral: content key %x", contentKey)
+		}
+
+		header, err := DecodeBlockHeader(content)
+		if err != nil {
+			return err
+		}
+
+		if !gotHead && headHash.Cmp(header.Hash()) != 0 {
+			h.log.Info("ephemeral header is not HEAD", "hash", header.Hash())
+			continue
+		} else if headHash.Cmp(header.Hash()) == 0 {
+			gotHead = true
+		}
+
+		contentId := h.portalProtocol.ToContentId(contentKey)
+		_, err = h.portalProtocol.GetEphemeral(contentKey, contentId)
+		// if exist in db
+		if err == nil {
+			return nil
+		} else {
+			headerhash := header.Hash()
+			if headHash.Cmp(headerhash) != 0 && parentHash.Cmp(headerhash) != 0 {
+				return fmt.Errorf("hash different from last block paretHash: hash %x, parentHash %x", headerhash, parentHash)
+			}
+
+			if !bytes.Equal(headerhash.Bytes(), contentKey[1:]) {
+				return fmt.Errorf("header hash different from content key: header hash %x, content key %x", headerhash, contentKey[1:])
+			}
+
+			var buf *bytes.Buffer
+			err = header.EncodeRLP(buf)
+			if err != nil {
+				return err
+			}
+			keccakHeader := crypto.Keccak256(buf.Bytes())
+			if !bytes.Equal(headerhash.Bytes(), keccakHeader) {
+				return fmt.Errorf("header keccak different from header_hash: header_hash %x, header keccak %x", headerhash, keccakHeader)
+			}
+
+			_ = h.portalProtocol.PutEphemeral(contentKey, contentId, content)
+		}
+
+		parentHash = header.ParentHash
 	}
 	return nil
 }

@@ -3,12 +3,8 @@ package beacon
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
 	"time"
 
 	gcommon "github.com/ethereum/go-ethereum/common"
@@ -385,37 +381,6 @@ func (bn *Network) GetHeadHash() (*gcommon.Hash, error) {
 
 	hBytes := [32]byte(lcUpdates[0].FinalizedHeader.Execution.BlockHash)
 	h := gcommon.BytesToHash(hBytes[:])
-	return &h, nil
-}
-
-func (bn *Network) GetHeadHashFromExternal(externalOracle string) (*gcommon.Hash, error) {
-	var headeStr strings.Builder
-	headeStr.WriteString("/eth/v1/beacon/light_client/optimistic_update")
-	reqHead, err := http.NewRequest(http.MethodGet, externalOracle+headeStr.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("could not create request to external oracle, err: %w", err)
-	}
-	resHead, err := http.DefaultClient.Do(reqHead)
-	if err != nil {
-		return nil, fmt.Errorf("could not get head from external oracle, err: %w", err)
-	}
-	defer resHead.Body.Close()
-
-	var responseHead ConsensusCliOptimisticUpdateResponse
-	body, err := io.ReadAll(resHead.Body)
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal(body, &responseHead)
-	if err != nil {
-		return nil, err
-	}
-
-	blockHashBytes, err := hexutil.Decode(responseHead.Data.Header.Execution.BlockHash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode block hash: %w", err)
-	}
-	h := gcommon.BytesToHash(blockHashBytes)
 	return &h, nil
 }
 

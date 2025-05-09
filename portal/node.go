@@ -42,7 +42,6 @@ type Config struct {
 	Networks              []string
 	Metrics               *metrics.Config
 	DisableTableInitCheck bool
-	ExternalOracle        string
 }
 
 func DefaultConfig() *Config {
@@ -333,6 +332,15 @@ func (n *Node) initHistoryNetwork() error {
 		return err
 	}
 
+	dbEphemeral, err := pebble.NewDB(n.config.DataDir, 16, 400, "history_ephemeral")
+	if err != nil {
+		return err
+	}
+	ephemeralStorage, err := history.NewEphemeralStorage(dbEphemeral)
+	if err != nil {
+		return err
+	}
+
 	contentQueue := make(chan *portalwire.ContentElement, 50)
 
 	protocol, err := portalwire.NewPortalProtocol(
@@ -344,6 +352,7 @@ func (n *Node) initHistoryNetwork() error {
 		n.discV5,
 		n.utp,
 		contentStorage,
+		ephemeralStorage,
 		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
@@ -362,10 +371,8 @@ func (n *Node) initHistoryNetwork() error {
 		return err
 	}
 
-	externalOracle := history.NewExternalOracle(n.config.ExternalOracle, n.beaconNetwork)
-
 	client := rpc.DialInProc(n.rpcServer)
-	n.historyNetwork = history.NewHistoryNetwork(protocol, &accumulator, client, externalOracle)
+	n.historyNetwork = history.NewHistoryNetwork(protocol, &accumulator, client, n.beaconNetwork)
 	return nil
 }
 
@@ -398,6 +405,7 @@ func (n *Node) initBeaconNetwork() error {
 		n.discV5,
 		n.utp,
 		contentStorage,
+		nil,
 		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
@@ -456,6 +464,7 @@ func (n *Node) initStateNetwork() error {
 		n.discV5,
 		n.utp,
 		stateStore,
+		nil,
 		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {

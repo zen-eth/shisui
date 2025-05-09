@@ -37,8 +37,6 @@ func getPortalConfig(ctx *cli.Context) (*portal.Config, error) {
 		config.PortalProtocolConfig.ListenAddr = port
 	}
 
-	config.ExternalOracle = ctx.String(utils.PortalExternalOracleFlag.Name)
-
 	trustedBlockRoot := ctx.String(utils.PortalTrustedBlockRootFlag.Name)
 	if trustedBlockRoot != "" {
 		if !strings.HasPrefix(trustedBlockRoot, "0x") && !strings.HasPrefix(trustedBlockRoot, "0X") {

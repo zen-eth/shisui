@@ -206,19 +206,12 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    portalwire.DefaultUtpConnSize,
 		Category: flags.PortalNetworkCategory,
 	}
-	PortalExternalOracleFlag = &cli.StringFlag{
-		Name:     "external.oracle",
-		Usage:    "External oracle for knowing the HEAD of the history chain",
-		Category: flags.PortalNetworkCategory,
-	}
 )
 
 // verify availability of external oracle for history
 func VerifyExternalOracle(config *portal.Config) {
-	if slices.Contains(config.Networks, portalwire.History.Name()) {
-		if !slices.Contains(config.Networks, portalwire.Beacon.Name()) && len(config.ExternalOracle) <= 0 {
-			Fatalf("History sub network requires either the beacon network or an external oracle to be provided")
-		}
+	if slices.Contains(config.Networks, portalwire.History.Name()) && !slices.Contains(config.Networks, portalwire.Beacon.Name()) {
+		Fatalf("History sub network requires the beacon sub network")
 	}
 }
 

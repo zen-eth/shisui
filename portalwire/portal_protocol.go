@@ -118,13 +118,6 @@ const Tag ClientTag = "shisui"
 
 var MaxDistance = hexutil.MustDecode("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 
-// Maximum header length is 2048 bytes
-// Expects clients to store the full window of 8192 blocks of this data
-// 100 slots for reorgs
-// Max size in bytes is 2048 * (8192 + 100)
-// https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#ephemeral-block-headers
-var headerStoreCacheSize = 2048 * (8192 + 100)
-
 var PortalBootnodes = []string{
 	// Trin team's bootnodes
 	"enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
@@ -284,8 +277,7 @@ type PortalProtocol struct {
 
 	versionsCache cache.Cache[*enode.Node, uint8]
 
-	EphemeralHeaderCache       *fastcache.Cache
-	EphemeralHeaderCacheRWLock sync.RWMutex
+	ephemeralStorage storage.ContentStorage
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -299,7 +291,7 @@ func WithDisableTableInitCheckOption(disable bool) SetPortalProtocolOption {
 	}
 }
 
-func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
+func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, ephemeralStorage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
 	// set versions in test
 	currentVersions := protocolVersions{}
 	err := localNode.Node().Load(&currentVersions)
@@ -355,7 +347,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 	switch protocolId.Name() {
 	case "history":
 		protocol.PingExtensions = HistoryPingExtension{}
-		protocol.EphemeralHeaderCache = fastcache.New(headerStoreCacheSize)
+		protocol.ephemeralStorage = ephemeralStorage
 	case "state":
 		protocol.PingExtensions = StatePingExtension{}
 	case "beacon":
@@ -2148,9 +2140,21 @@ func (p *PortalProtocol) Get(contentKey []byte, contentId []byte) ([]byte, error
 	return content, err
 }
 
+func (p *PortalProtocol) GetEphemeral(contentKey []byte, contentId []byte) ([]byte, error) {
+	content, err := p.ephemeralStorage.Get(contentKey, contentId)
+	p.Log.Trace("get ephemeral storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
+	return content, err
+}
+
 func (p *PortalProtocol) Put(contentKey []byte, contentId []byte, content []byte) error {
 	err := p.storage.Put(contentKey, contentId, content)
 	p.Log.Trace("put local storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
+	return err
+}
+
+func (p *PortalProtocol) PutEphemeral(contentKey []byte, contentId []byte, content []byte) error {
+	err := p.ephemeralStorage.Put(contentKey, contentId, content)
+	p.Log.Trace("put ephemeral storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
 	return err
 }
 
