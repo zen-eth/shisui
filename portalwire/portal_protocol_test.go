@@ -118,7 +118,6 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, ra
 		discV5,
 		utpSocket,
 		&storage.MockStorage{Db: make(map[string][]byte)},
-		nil,
 		contentQueue, WithDisableTableInitCheckOption(true))
 	if err != nil {
 		return nil, err

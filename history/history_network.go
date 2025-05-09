@@ -50,10 +50,7 @@ var (
 	ErrInvalidBlockNumber       = errors.New("invalid block number")
 )
 
-// Expects clients to store the full window of 8192 blocks of this data
-// plus 100 slots for reorgs
-// https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#ephemeral-block-headers
-var ephemeralHeadersMaxQuantity = 8192 + 100
+var maxOfferLength = 31
 
 var emptyReceiptHash = hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
@@ -568,7 +565,7 @@ func (h *Network) processContentLoop(ctx context.Context) {
 		case contentElement := <-contentChan:
 			err := antsPool.Submit(func() {
 				//ephemeral type offers only contain content keys for ephemeral headers
-				if h.isEphemeralOfferType(contentElement.ContentKeys[0]) {
+				if isEphemeralOfferType(contentElement.ContentKeys[0]) {
 					err := h.validateEphemeralContents(contentElement.ContentKeys, contentElement.Contents)
 					if err != nil {
 						h.log.Error("handle ephemeral contents failed", "err", err)
@@ -686,12 +683,8 @@ func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) erro
 	return nil
 }
 
-func (h *Network) isEphemeralOfferType(contentKey []byte) bool {
-	return ContentType(contentKey[0]) == OfferEphemeralType
-}
-
 func (h *Network) validateEphemeralContents(contentKeys [][]byte, contents [][]byte) error {
-	if len(contents) > ephemeralHeadersMaxQuantity {
+	if len(contents) > maxOfferLength {
 		return fmt.Errorf("contents length bigger than allowed: content len  %d", len(contents))
 	}
 	var parentHash gcommon.Hash
@@ -702,7 +695,7 @@ func (h *Network) validateEphemeralContents(contentKeys [][]byte, contents [][]b
 	}
 	for i, content := range contents {
 		contentKey := contentKeys[i]
-		if !h.isEphemeralOfferType(contentKey) {
+		if !isEphemeralOfferType(contentKey) {
 			return fmt.Errorf("content key different of type Ephemeral: content key %x", contentKey)
 		}
 
@@ -719,7 +712,7 @@ func (h *Network) validateEphemeralContents(contentKeys [][]byte, contents [][]b
 		}
 
 		contentId := h.portalProtocol.ToContentId(contentKey)
-		_, err = h.portalProtocol.GetEphemeral(contentKey, contentId)
+		_, err = h.portalProtocol.Get(contentKey, contentId)
 		// if exist in db
 		if err == nil {
 			return nil
@@ -743,7 +736,7 @@ func (h *Network) validateEphemeralContents(contentKeys [][]byte, contents [][]b
 				return fmt.Errorf("header keccak different from header_hash: header_hash %x, header keccak %x", headerhash, keccakHeader)
 			}
 
-			_ = h.portalProtocol.PutEphemeral(contentKey, contentId, content)
+			_ = h.portalProtocol.Put(contentKey, contentId, content)
 		}
 
 		parentHash = header.ParentHash

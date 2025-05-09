@@ -229,7 +229,7 @@ func (c *ContentStorage) Put(contentKey []byte, contentId []byte, content []byte
 }
 
 // Radius implements storage.ContentStorage.
-func (c *ContentStorage) Radius() *uint256.Int {
+func (c *ContentStorage) Radius(contentId []byte) *uint256.Int {
 	radius := c.radius.Load()
 	val := radius.(*uint256.Int)
 	return val

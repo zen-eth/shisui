@@ -328,7 +328,7 @@ func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 
 	contentQueue := make(chan *portalwire.ContentElement, 50)
 	utpSocket := portalwire.NewZenEthUtp(context.Background(), conf, discV5, conn)
-	portalProtocol, err := portalwire.NewPortalProtocol(conf, portalwire.History, privKey, conn, localNode, discV5, utpSocket, &storage.MockStorage{Db: make(map[string][]byte)}, nil, contentQueue)
+	portalProtocol, err := portalwire.NewPortalProtocol(conf, portalwire.History, privKey, conn, localNode, discV5, utpSocket, &storage.MockStorage{Db: make(map[string][]byte)}, contentQueue)
 	if err != nil {
 		return nil, err
 	}

@@ -12,6 +12,11 @@ import (
 	"github.com/zen-eth/shisui/storage"
 )
 
+// Expects clients to store the full window of 8192 blocks of this data
+// plus 100 slots for reorgs
+// https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#ephemeral-block-headers
+var ephemeralHeadersMaxQuantity = 8192 + 100
+
 type EphemeralStorage struct {
 	maxCapacityQuantity uint64
 	db                  *pebble.DB
@@ -103,7 +108,7 @@ func (es *EphemeralStorage) prune(quantity uint64) error {
 }
 
 // ephemeral storage always returns the maximum distance
-func (es *EphemeralStorage) Radius() *uint256.Int {
+func (es *EphemeralStorage) Radius(contentId []byte) *uint256.Int {
 	return storage.MaxDistance
 }
 

@@ -126,7 +126,7 @@ func (p *PortalProtocol) filterContentKeysV0(request *Offer) (CommonAccept, [][]
 			if contentId == nil {
 				return nil, nil, ErrNilContentKey
 			}
-			if !inRange(p.Self().ID(), p.Radius(), contentId) {
+			if !inRange(p.Self().ID(), p.Radius(contentId), contentId) {
 				continue
 			}
 			if _, err := p.storage.Get(contentKey, contentId); err != nil {
@@ -157,7 +157,7 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 		if contentId == nil {
 			return nil, nil, ErrNilContentKey
 		}
-		if !inRange(p.Self().ID(), p.Radius(), contentId) {
+		if !inRange(p.Self().ID(), p.Radius(contentId), contentId) {
 			acceptV1.ContentKeys[i] = uint8(NotWithinRadius)
 			continue
 		}

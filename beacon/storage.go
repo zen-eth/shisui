@@ -216,7 +216,7 @@ func (bs *Storage) Put(contentKey []byte, contentId []byte, content []byte) erro
 }
 
 // beacon network always returns the maximum distance
-func (bs *Storage) Radius() *uint256.Int {
+func (bs *Storage) Radius(contentId []byte) *uint256.Int {
 	return storage.MaxDistance
 }
 

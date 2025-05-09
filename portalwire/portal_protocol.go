@@ -276,8 +276,6 @@ type PortalProtocol struct {
 	inTransferMap         sync.Map
 
 	versionsCache cache.Cache[*enode.Node, uint8]
-
-	ephemeralStorage storage.ContentStorage
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -291,7 +289,7 @@ func WithDisableTableInitCheckOption(disable bool) SetPortalProtocolOption {
 	}
 }
 
-func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, ephemeralStorage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
+func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
 	// set versions in test
 	currentVersions := protocolVersions{}
 	err := localNode.Node().Load(&currentVersions)
@@ -347,7 +345,6 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 	switch protocolId.Name() {
 	case "history":
 		protocol.PingExtensions = HistoryPingExtension{}
-		protocol.ephemeralStorage = ephemeralStorage
 	case "state":
 		protocol.PingExtensions = StatePingExtension{}
 	case "beacon":
@@ -405,8 +402,8 @@ func (p *PortalProtocol) AddEnr(n *enode.Node) {
 	p.radiusCache.Set([]byte(id), MaxDistance)
 }
 
-func (p *PortalProtocol) Radius() *uint256.Int {
-	return p.storage.Radius()
+func (p *PortalProtocol) Radius(contentId []byte) *uint256.Int {
+	return p.storage.Radius(contentId)
 }
 
 func (p *PortalProtocol) setupUDPListening() error {
@@ -522,7 +519,7 @@ func (p *PortalProtocol) pingInnerWithPayload(node *enode.Node, payloadType uint
 }
 
 func (p *PortalProtocol) genPayloadByType(payloadType uint16) ([]byte, error) {
-	radiusBytes, err := p.Radius().MarshalSSZ()
+	radiusBytes, err := p.Radius(nil).MarshalSSZ()
 	if err != nil {
 		return nil, err
 	}
@@ -1347,7 +1344,7 @@ func (p *PortalProtocol) processHistoryRadius(id enode.ID, payload *pingext.Hist
 }
 
 func (p *PortalProtocol) handleClientInfo() (Pong, error) {
-	radiusBytes, err := p.storage.Radius().MarshalSSZ()
+	radiusBytes, err := p.storage.Radius(nil).MarshalSSZ()
 	if err != nil {
 		return Pong{}, err
 	}
@@ -1360,7 +1357,7 @@ func (p *PortalProtocol) handleClientInfo() (Pong, error) {
 }
 
 func (p *PortalProtocol) handleBasicRadius() (Pong, error) {
-	radius, err := p.Radius().MarshalSSZ()
+	radius, err := p.Radius(nil).MarshalSSZ()
 	if err != nil {
 		return Pong{}, err
 	}
@@ -1368,7 +1365,7 @@ func (p *PortalProtocol) handleBasicRadius() (Pong, error) {
 }
 
 func (p *PortalProtocol) handleHistoryRadius() (Pong, error) {
-	radius, err := p.Radius().MarshalSSZ()
+	radius, err := p.Radius(nil).MarshalSSZ()
 	if err != nil {
 		return Pong{}, err
 	}
@@ -2131,7 +2128,7 @@ func (p *PortalProtocol) ToContentId(contentKey []byte) []byte {
 }
 
 func (p *PortalProtocol) InRange(contentId []byte) bool {
-	return inRange(p.Self().ID(), p.Radius(), contentId)
+	return inRange(p.Self().ID(), p.Radius(contentId), contentId)
 }
 
 func (p *PortalProtocol) Get(contentKey []byte, contentId []byte) ([]byte, error) {
@@ -2140,21 +2137,9 @@ func (p *PortalProtocol) Get(contentKey []byte, contentId []byte) ([]byte, error
 	return content, err
 }
 
-func (p *PortalProtocol) GetEphemeral(contentKey []byte, contentId []byte) ([]byte, error) {
-	content, err := p.ephemeralStorage.Get(contentKey, contentId)
-	p.Log.Trace("get ephemeral storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
-	return content, err
-}
-
 func (p *PortalProtocol) Put(contentKey []byte, contentId []byte, content []byte) error {
 	err := p.storage.Put(contentKey, contentId, content)
 	p.Log.Trace("put local storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
-	return err
-}
-
-func (p *PortalProtocol) PutEphemeral(contentKey []byte, contentId []byte, content []byte) error {
-	err := p.ephemeralStorage.Put(contentKey, contentId, content)
-	p.Log.Trace("put ephemeral storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
 	return err
 }
 
