@@ -332,7 +332,7 @@ func (h *Network) getHistoricalSummaries(blockNumber uint64) (*capella.Historica
 
 	arg := hexutil.Encode(contentKey)
 	res := &portalwire.ContentInfo{}
-	err = h.client.CallContext(ctx, res, "beacon_historyGetContent", arg)
+	err = h.client.CallContext(ctx, res, "portal_beaconGetContent", arg)
 	if err != nil {
 		return nil, err
 	}
