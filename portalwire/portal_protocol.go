@@ -402,8 +402,8 @@ func (p *PortalProtocol) AddEnr(n *enode.Node) {
 	p.radiusCache.Set([]byte(id), MaxDistance)
 }
 
-func (p *PortalProtocol) Radius() *uint256.Int {
-	return p.storage.Radius()
+func (p *PortalProtocol) Radius(contentId []byte) *uint256.Int {
+	return p.storage.Radius(contentId)
 }
 
 func (p *PortalProtocol) setupUDPListening() error {
@@ -519,7 +519,7 @@ func (p *PortalProtocol) pingInnerWithPayload(node *enode.Node, payloadType uint
 }
 
 func (p *PortalProtocol) genPayloadByType(payloadType uint16) ([]byte, error) {
-	radiusBytes, err := p.Radius().MarshalSSZ()
+	radiusBytes, err := p.Radius(nil).MarshalSSZ()
 	if err != nil {
 		return nil, err
 	}
@@ -1344,7 +1344,7 @@ func (p *PortalProtocol) processHistoryRadius(id enode.ID, payload *pingext.Hist
 }
 
 func (p *PortalProtocol) handleClientInfo() (Pong, error) {
-	radiusBytes, err := p.storage.Radius().MarshalSSZ()
+	radiusBytes, err := p.storage.Radius(nil).MarshalSSZ()
 	if err != nil {
 		return Pong{}, err
 	}
@@ -1357,7 +1357,7 @@ func (p *PortalProtocol) handleClientInfo() (Pong, error) {
 }
 
 func (p *PortalProtocol) handleBasicRadius() (Pong, error) {
-	radius, err := p.Radius().MarshalSSZ()
+	radius, err := p.Radius(nil).MarshalSSZ()
 	if err != nil {
 		return Pong{}, err
 	}
@@ -1365,7 +1365,7 @@ func (p *PortalProtocol) handleBasicRadius() (Pong, error) {
 }
 
 func (p *PortalProtocol) handleHistoryRadius() (Pong, error) {
-	radius, err := p.Radius().MarshalSSZ()
+	radius, err := p.Radius(nil).MarshalSSZ()
 	if err != nil {
 		return Pong{}, err
 	}
@@ -2128,7 +2128,7 @@ func (p *PortalProtocol) ToContentId(contentKey []byte) []byte {
 }
 
 func (p *PortalProtocol) InRange(contentId []byte) bool {
-	return inRange(p.Self().ID(), p.Radius(), contentId)
+	return inRange(p.Self().ID(), p.Radius(contentId), contentId)
 }
 
 func (p *PortalProtocol) Get(contentKey []byte, contentId []byte) ([]byte, error) {

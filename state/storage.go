@@ -58,8 +58,8 @@ func (s *Storage) Put(contentKey []byte, contentId []byte, content []byte) error
 }
 
 // Radius implements storage.ContentStorage.
-func (s *Storage) Radius() *uint256.Int {
-	return s.store.Radius()
+func (s *Storage) Radius(contentId []byte) *uint256.Int {
+	return s.store.Radius(contentId)
 }
 
 func (s *Storage) putAccountTrieNode(contentKey []byte, contentId []byte, content []byte) error {

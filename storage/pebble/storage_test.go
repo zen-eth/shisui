@@ -65,7 +65,7 @@ func TestContentStoragePutAndGet(t *testing.T) {
 
 func TestRadius(t *testing.T) {
 	db := setupTestStorage(t)
-	radius := db.Radius()
+	radius := db.Radius(nil)
 	assert.NotNil(t, radius)
 	assert.True(t, radius.Eq(storage.MaxDistance))
 }
@@ -155,7 +155,7 @@ func TestPrune(t *testing.T) {
 			assert.Equal(t, val.err, err)
 		}
 	}
-	radius := db.Radius()
+	radius := db.Radius(nil)
 	data, err := radius.MarshalSSZ()
 	assert.NoError(t, err)
 	actual := uint256.NewInt(2).Bytes32()

@@ -114,6 +114,8 @@ func shisui(ctx *cli.Context) error {
 		return err
 	}
 
+	utils.VerifyExternalOracle(config)
+
 	// Start metrics export if enabled
 	utils.SetupMetrics(config.Metrics)
 

@@ -421,3 +421,23 @@ func (fhswp ForkedHistoricalSummariesWithProof) ByteLength(spec *common.Spec) ui
 func (fhswp ForkedHistoricalSummariesWithProof) HashTreeRoot(spec *common.Spec, h tree.HashFn) common.Root {
 	return h.HashTreeRoot(fhswp.ForkDigest, spec.Wrap(common.SpecObj(&fhswp.HistoricalSummariesWithProof)))
 }
+
+type ConsensusCliOptimisticUpdateExecution struct {
+	BlockHash     string `json:"block_hash"`
+	ProposerIndex string `json:"proposer_index"`
+	ParentRoot    string `json:"parent_root"`
+	StateRoot     string `json:"state_root"`
+	BodyRoot      string `json:"body_root"`
+}
+
+type ConsensusCliOptimisticUpdateHeader struct {
+	Execution ConsensusCliOptimisticUpdateExecution `json:"execution"`
+}
+
+type ConsensusCliOptimisticUpdateData struct {
+	Header ConsensusCliOptimisticUpdateHeader `json:"attested_header"`
+}
+
+type ConsensusCliOptimisticUpdateResponse struct {
+	Data ConsensusCliOptimisticUpdateData `json:"data"`
+}

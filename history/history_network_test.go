@@ -343,7 +343,7 @@ func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 		return nil, err
 	}
 
-	return NewHistoryNetwork(portalProtocol, &accu, nil), nil
+	return NewHistoryNetwork(portalProtocol, &accu, nil, nil), nil
 }
 
 func parseDataForBlock() (map[string]contentEntry, error) {

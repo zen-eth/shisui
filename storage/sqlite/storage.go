@@ -168,7 +168,7 @@ func newPutResultWithErr(err error) PutResult {
 	}
 }
 
-func (p *ContentStorage) Radius() *uint256.Int {
+func (p *ContentStorage) Radius(contentId []byte) *uint256.Int {
 	radius := p.radius.Load()
 	val := radius.(*uint256.Int)
 	return val

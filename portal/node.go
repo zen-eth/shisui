@@ -110,15 +110,15 @@ func NewNode(config *Config) (*Node, error) {
 	}
 
 	// Initialize services based on config
-	if slices.Contains(config.Networks, portalwire.History.Name()) {
-		err = node.initHistoryNetwork()
+	if slices.Contains(config.Networks, portalwire.Beacon.Name()) {
+		err = node.initBeaconNetwork()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if slices.Contains(config.Networks, portalwire.Beacon.Name()) {
-		err = node.initBeaconNetwork()
+	if slices.Contains(config.Networks, portalwire.History.Name()) {
+		err = node.initHistoryNetwork()
 		if err != nil {
 			return nil, err
 		}
@@ -323,11 +323,12 @@ func (n *Node) initHistoryNetwork() error {
 		return err
 	}
 
-	contentStorage, err := pebble.NewStorage(storage.PortalStorageConfig{
-		StorageCapacityMB: n.config.DataCapacity,
-		NodeId:            n.localNode.ID(),
-		NetworkName:       networkName,
-	}, db)
+	dbEphemeral, err := pebble.NewDB(n.config.DataDir, 16, 400, "history_ephemeral")
+	if err != nil {
+		return err
+	}
+
+	historyStorage, err := history.NewHistoyStorage(db, dbEphemeral, n.config.DataCapacity, n.localNode.ID(), networkName)
 	if err != nil {
 		return err
 	}
@@ -342,7 +343,7 @@ func (n *Node) initHistoryNetwork() error {
 		n.localNode,
 		n.discV5,
 		n.utp,
-		contentStorage,
+		historyStorage,
 		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
@@ -362,7 +363,7 @@ func (n *Node) initHistoryNetwork() error {
 	}
 
 	client := rpc.DialInProc(n.rpcServer)
-	n.historyNetwork = history.NewHistoryNetwork(protocol, &accumulator, client)
+	n.historyNetwork = history.NewHistoryNetwork(protocol, &accumulator, client, n.beaconNetwork)
 	return nil
 }
 
