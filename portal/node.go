@@ -332,6 +332,11 @@ func (n *Node) initHistoryNetwork() error {
 		return err
 	}
 
+	hybridContentStorage, err := history.NewHistoyStorage(contentStorage, db)
+	if err != nil {
+		return err
+	}
+
 	contentQueue := make(chan *portalwire.ContentElement, 50)
 
 	protocol, err := portalwire.NewPortalProtocol(
@@ -342,7 +347,7 @@ func (n *Node) initHistoryNetwork() error {
 		n.localNode,
 		n.discV5,
 		n.utp,
-		contentStorage,
+		hybridContentStorage,
 		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
