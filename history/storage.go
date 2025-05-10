@@ -30,11 +30,6 @@ type HistoryStorage struct {
 	ephemeralPrefix []byte
 }
 
-func (hs *HistoryStorage) setPrefix(key []byte) []byte {
-	ret := append(hs.ephemeralPrefix, key...)
-	return ret
-}
-
 func NewHistoyStorage(historyOriginal storage.ContentStorage, dbHistory *cpebble.DB) (storage.ContentStorage, error) {
 	hh := &HistoryStorage{
 		contentStorage:  historyOriginal,
@@ -49,12 +44,12 @@ func NewHistoyStorage(historyOriginal storage.ContentStorage, dbHistory *cpebble
 	return hh, nil
 }
 
-func (hh *HistoryStorage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
+func (hs *HistoryStorage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	if !isEphemeralOfferType(contentKey) {
-		return hh.contentStorage.Get(contentKey, contentId)
+		return hs.contentStorage.Get(contentKey, contentId)
 	}
-	distance := hh.setPrefix(contentKey)
-	data, closer, err := hh.db.Get(distance)
+	distance := hs.setPrefix(contentKey)
+	data, closer, err := hs.db.Get(distance)
 	if err != nil {
 		if errors.Is(err, cpebble.ErrNotFound) {
 			return nil, storage.ErrContentNotFound
@@ -65,25 +60,25 @@ func (hh *HistoryStorage) Get(contentKey []byte, contentId []byte) ([]byte, erro
 	return data, nil
 }
 
-func (hh *HistoryStorage) Put(contentKey []byte, contentId []byte, content []byte) error {
+func (hs *HistoryStorage) Put(contentKey []byte, contentId []byte, content []byte) error {
 	if !isEphemeralOfferType(contentKey) {
-		return hh.contentStorage.Put(contentKey, contentId, content)
+		return hs.contentStorage.Put(contentKey, contentId, content)
 	}
-	distance := hh.setPrefix(contentKey)
-	newSize := hh.quantity.Add(1)
+	distance := hs.setPrefix(contentKey)
+	newSize := hs.quantity.Add(1)
 
-	batch := hh.db.NewBatch()
-	err := batch.Set(distance, content, hh.writeOptions)
+	batch := hs.db.NewBatch()
+	err := batch.Set(distance, content, hs.writeOptions)
 	if err != nil {
 		return err
 	}
-	err = batch.Commit(hh.writeOptions)
+	err = batch.Commit(hs.writeOptions)
 	if err != nil {
 		return err
 	}
 
 	if newSize > ephemeralHeadersMaxQuantity {
-		err := hh.prune(newSize - ephemeralHeadersMaxQuantity)
+		err := hs.prune(newSize - ephemeralHeadersMaxQuantity)
 		if err != nil {
 			return err
 		}
@@ -91,19 +86,19 @@ func (hh *HistoryStorage) Put(contentKey []byte, contentId []byte, content []byt
 	return nil
 }
 
-func (hh *HistoryStorage) prune(quantity uint64) error {
+func (hs *HistoryStorage) prune(quantity uint64) error {
 	//TODO
 	//prune may consider reorgs
 	//prune may store headers inside radius into history store
-	hh.log.Debug("start pruning ephemeral")
+	hs.log.Debug("start pruning ephemeral")
 	copyQuantity := quantity
 
-	iter, err := hh.db.NewIter(nil)
+	iter, err := hs.db.NewIter(nil)
 	if err != nil {
 		return err
 	}
 
-	batch := hh.db.NewBatch()
+	batch := hs.db.NewBatch()
 	for iter.SeekPrefixGE([]byte{EPHEMERAL_PREFIX}); iter.Valid(); iter.Next() {
 		if bytes.Equal(iter.Key(), storage.SizeKey) {
 			continue
@@ -123,16 +118,21 @@ func (hh *HistoryStorage) prune(quantity uint64) error {
 		return err
 	}
 
-	hh.log.Debug("ephemeral prune finished", "pruneCount", copyQuantity-quantity)
+	hs.log.Debug("ephemeral prune finished", "pruneCount", copyQuantity-quantity)
 	return nil
 }
 
-func (hh *HistoryStorage) Radius() *uint256.Int {
-	return hh.contentStorage.Radius()
+func (hs *HistoryStorage) Radius() *uint256.Int {
+	return hs.contentStorage.Radius()
 }
 
-func (hh *HistoryStorage) Close() error {
-	return hh.contentStorage.Close()
+func (hs *HistoryStorage) Close() error {
+	return hs.contentStorage.Close()
+}
+
+func (hs *HistoryStorage) setPrefix(key []byte) []byte {
+	ret := append(hs.ephemeralPrefix, key...)
+	return ret
 }
 
 func isEphemeralOfferType(contentKey []byte) bool {
