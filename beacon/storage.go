@@ -17,7 +17,7 @@ import (
 
 const BytesInMB uint64 = 1000 * 1000
 
-// var portalStorageMetrics *portalwire.PortalStorageMetrics
+var historicalSummariesKey = []byte("historical_summaries")
 
 type beaconStorageCache struct {
 	rwLock           sync.RWMutex
@@ -95,7 +95,7 @@ func NewBeaconStorage(config storage.PortalStorageConfig, db *pebble.DB) (storag
 
 func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	switch storage.ContentType(contentKey[0]) {
-	case LightClientBootstrap, HistoricalSummaries:
+	case LightClientBootstrap:
 		data, _, err := bs.db.Get(contentId)
 		if err != nil {
 			return nil, handleNotFound(err)
@@ -152,6 +152,16 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 		var buf bytes.Buffer
 		err = data.Serialize(bs.spec, codec.NewEncodingWriter(&buf))
 		return buf.Bytes(), err
+	case HistoricalSummaries:
+		// return the historical summaries when epoch is bigger than contentKey[1:]
+		data, _, err := bs.db.Get(historicalSummariesKey)
+		if err != nil {
+			return nil, handleNotFound(err)
+		}
+		if reverseCompare(data[:8], contentKey[1:]) != -1 {
+			return data[8:], nil
+		}
+		return nil, storage.ErrContentNotFound
 	}
 	return nil, nil
 }
@@ -162,7 +172,7 @@ func (bs *Storage) Put(contentKey []byte, contentId []byte, content []byte) erro
 	batch := bs.db.NewBatch()
 	var err error
 	switch storage.ContentType(contentKey[0]) {
-	case LightClientBootstrap, HistoricalSummaries:
+	case LightClientBootstrap:
 		err = batch.Set(contentId, content, bs.writeOptions)
 		if err != nil {
 			return err
@@ -211,6 +221,34 @@ func (bs *Storage) Put(contentKey []byte, contentId []byte, content []byte) erro
 		}
 		bs.cache.SetOptimisticUpdate(data)
 		return nil
+	case HistoricalSummaries:
+		// contentKey is uint64 in bytes
+		// key is a constant, value is contentKey[1:] + content
+		data, _, err := bs.db.Get(historicalSummariesKey)
+		if errors.Is(err, pebble.ErrNotFound) {
+			value := make([]byte, 0)
+			value = append(value, contentKey[1:]...)
+			value = append(value, content...)
+			err = batch.Set(historicalSummariesKey, value, bs.writeOptions)
+			if err != nil {
+				return err
+			}
+			return batch.Commit(bs.writeOptions)
+		}
+		if err != nil {
+			return err
+		}
+		epochBytes := data[:8]
+		if reverseCompare(contentKey[1:], epochBytes) == 1 {
+			value := make([]byte, 0)
+			value = append(value, contentKey[1:]...)
+			value = append(value, content...)
+			err = batch.Set(historicalSummariesKey, value, bs.writeOptions)
+			if err != nil {
+				return err
+			}
+			return batch.Commit(bs.writeOptions)
+		}
 	}
 	return nil
 }
@@ -236,4 +274,16 @@ func handleNotFound(err error) error {
 		return storage.ErrContentNotFound
 	}
 	return err
+}
+
+func reverseCompare(a, b []byte) int {
+	for i := len(a) - 1; i >= 0; i-- {
+		if a[i] > b[i] {
+			return 1
+		}
+		if a[i] < b[i] {
+			return -1
+		}
+	}
+	return 0
 }
