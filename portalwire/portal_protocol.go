@@ -2133,13 +2133,13 @@ func (p *PortalProtocol) InRange(contentId []byte) bool {
 
 func (p *PortalProtocol) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	content, err := p.storage.Get(contentKey, contentId)
-	p.Log.Trace("get local storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
+	p.Log.Trace("get local storage", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
 	return content, err
 }
 
 func (p *PortalProtocol) Put(contentKey []byte, contentId []byte, content []byte) error {
 	err := p.storage.Put(contentKey, contentId, content)
-	p.Log.Trace("put local storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
+	p.Log.Trace("put local storage", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
 	return err
 }
 

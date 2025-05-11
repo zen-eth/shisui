@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	ssz "github.com/ferranbt/fastssz"
 	"github.com/golang/snappy"
-	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/beacon/deneb"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
@@ -161,35 +160,35 @@ func GetLightClientOptimisticUpdate(number uint8) (ForkedLightClientOptimisticUp
 	return *bootstrap, nil
 }
 
-func GetHistorySummariesWithProof() (HistoricalSummariesWithProof, common.Root, error) {
-	file, err := os.ReadFile("testdata/beacon/BeaconState/ssz_random/case_0/serialized.ssz_snappy")
-	if err != nil {
-		return HistoricalSummariesWithProof{}, common.Root{}, err
-	}
-	data, err := snappy.Decode(nil, file)
-	if err != nil {
-		return HistoricalSummariesWithProof{}, common.Root{}, err
-	}
+// func GetHistorySummariesWithProof() (HistoricalSummariesWithProof, common.Root, error) {
+// 	file, err := os.ReadFile("testdata/beacon/BeaconState/ssz_random/case_0/serialized.ssz_snappy")
+// 	if err != nil {
+// 		return HistoricalSummariesWithProof{}, common.Root{}, err
+// 	}
+// 	data, err := snappy.Decode(nil, file)
+// 	if err != nil {
+// 		return HistoricalSummariesWithProof{}, common.Root{}, err
+// 	}
 
-	beaconState := &deneb.BeaconState{}
-	err = beaconState.Deserialize(configs.Mainnet, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
-	if err != nil {
-		return HistoricalSummariesWithProof{}, common.Root{}, err
-	}
-	root := beaconState.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
-	proof, err := BuildHistoricalSummariesProof(*beaconState)
-	if err != nil {
-		return HistoricalSummariesWithProof{}, common.Root{}, err
-	}
-	summariesProof := [5]common.Bytes32{tree.Root(proof[0]), tree.Root(proof[1]), tree.Root(proof[2]), tree.Root(proof[3]), tree.Root(proof[4])}
-	return HistoricalSummariesWithProof{
-		EPOCH:               common.Epoch(uint64(beaconState.Slot) / 32),
-		HistoricalSummaries: beaconState.HistoricalSummaries,
-		Proof: HistoricalSummariesProof{
-			Proof: summariesProof,
-		},
-	}, root, nil
-}
+// 	beaconState := &deneb.BeaconState{}
+// 	err = beaconState.Deserialize(configs.Mainnet, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
+// 	if err != nil {
+// 		return HistoricalSummariesWithProof{}, common.Root{}, err
+// 	}
+// 	root := beaconState.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
+// 	proof, err := BuildHistoricalSummariesProof(*beaconState)
+// 	if err != nil {
+// 		return HistoricalSummariesWithProof{}, common.Root{}, err
+// 	}
+// 	summariesProof := [5]common.Bytes32{tree.Root(proof[0]), tree.Root(proof[1]), tree.Root(proof[2]), tree.Root(proof[3]), tree.Root(proof[4])}
+// 	return HistoricalSummariesWithProof{
+// 		EPOCH:               common.Epoch(uint64(beaconState.Slot) / 32),
+// 		HistoricalSummaries: beaconState.HistoricalSummaries,
+// 		Proof: HistoricalSummariesProof{
+// 			Proof: summariesProof,
+// 		},
+// 	}, root, nil
+// }
 
 func BuildHistoricalSummariesProof(beaconState deneb.BeaconState) ([][]byte, error) {
 	leaves := make([][32]byte, 32)

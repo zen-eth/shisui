@@ -290,22 +290,26 @@ func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error)
 		return true, nil
 	} else {
 		blockNumber := header.Number.Uint64()
-		summaries, err := h.getHistoricalSummaries(blockNumber)
-		if err != nil {
-			return false, err
-		}
 		headerHash := header.Hash()
 
 		if blockNumber < cancunNumber {
 			blockProof := new(BlockProofHistoricalSummariesCapella)
-			err = blockProof.UnmarshalSSZ(proof)
+			err := blockProof.UnmarshalSSZ(proof)
+			if err != nil {
+				return false, err
+			}
+			summaries, err := h.getHistoricalSummaries(blockProof.Slot)
 			if err != nil {
 				return false, err
 			}
 			return VerifyCapellaToDenebHeader(headerHash[:], blockProof, *summaries), nil
 		} else {
 			blockProof := new(BlockProofHistoricalSummariesDeneb)
-			err = blockProof.UnmarshalSSZ(proof)
+			err := blockProof.UnmarshalSSZ(proof)
+			if err != nil {
+				return false, err
+			}
+			summaries, err := h.getHistoricalSummaries(blockProof.Slot)
 			if err != nil {
 				return false, err
 			}
@@ -314,10 +318,10 @@ func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error)
 	}
 }
 
-func (h *Network) getHistoricalSummaries(blockNumber uint64) (*capella.HistoricalSummaries, error) {
+func (h *Network) getHistoricalSummaries(slot uint64) (*capella.HistoricalSummaries, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*4)
 	defer cancel()
-	epoch := GetEpochIndex(blockNumber)
+	epoch := slot / 32
 	key := beacon.HistoricalSummariesWithProofKey{
 		Epoch: epoch,
 	}
@@ -340,12 +344,12 @@ func (h *Network) getHistoricalSummaries(blockNumber uint64) (*capella.Historica
 	if err != nil {
 		return nil, err
 	}
-	proof := new(beacon.HistoricalSummariesWithProof)
+	proof := new(beacon.ForkedHistoricalSummariesWithProof)
 	err = proof.Deserialize(h.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 	if err != nil {
 		return nil, err
 	}
-	return &proof.HistoricalSummaries, nil
+	return &proof.HistoricalSummariesWithProof.HistoricalSummaries, nil
 }
 
 func ValidateBlockBodyBytes(bodyBytes []byte, header *types.Header) (*types.Body, error) {
