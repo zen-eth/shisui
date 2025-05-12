@@ -12,7 +12,7 @@ import (
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/stretchr/testify/require"
-	"github.com/zen-eth/shisui/history"
+	"github.com/zen-eth/shisui/types/history"
 	"gopkg.in/yaml.v3"
 )
 
