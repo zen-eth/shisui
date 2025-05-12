@@ -318,21 +318,30 @@ func (n *Node) initDiscV5() error {
 // initHistoryNetwork initializes the history network
 func (n *Node) initHistoryNetwork() error {
 	networkName := portalwire.History.Name()
-	db, err := pebble.NewDB(n.config.DataDir, 16, 400, networkName)
+	eternalDB, err := pebble.NewDB(n.config.DataDir, 16, 400, networkName)
 	if err != nil {
 		return err
 	}
 
-	contentStorage, err := pebble.NewStorage(storage.PortalStorageConfig{
+	storageConfig := storage.PortalStorageConfig{
 		StorageCapacityMB: n.config.DataCapacity,
 		NodeId:            n.localNode.ID(),
 		NetworkName:       networkName,
-	}, db)
+	}
+
+	eternalStorage, err := pebble.NewStorage(storageConfig, eternalDB)
 	if err != nil {
 		return err
 	}
 
-	hybridContentStorage, err := history.NewHistoyStorage(contentStorage, db)
+	ephemeralDB, err := pebble.NewDB(n.config.DataDir, 64, 400, networkName+"_ephemeral")
+	if err != nil {
+		return err
+	}
+
+	ephemeralStorage := history.NewEphemeralStorage(storageConfig, ephemeralDB)
+
+	hybridContentStorage, err := history.NewHistoryStorage(eternalStorage, ephemeralStorage)
 	if err != nil {
 		return err
 	}
