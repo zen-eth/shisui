@@ -8,7 +8,7 @@ import (
 	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	"github.com/protolambda/zrnt/eth2/util/merkle"
 	"github.com/protolambda/ztyp/tree"
-	"github.com/zen-eth/shisui/history"
+	"github.com/zen-eth/shisui/types/history"
 )
 
 const (
@@ -28,7 +28,7 @@ var (
 type HeaderValidator struct {
 	preMergeAcc                 PreMergeAccumulator
 	historicalRootsAcc          HistoricalRootsAccumulator
-	historicalSummariesProvider HistoricalSummariesProvider
+	historicalSummariesProvider *HistoricalSummariesProvider
 }
 
 func NewHeaderValidatorWithOracle(oracle *Oracle) HeaderValidator {

@@ -49,10 +49,10 @@ func (o Oracle) GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummarie
 	if err != nil {
 		return nil, err
 	}
-	proof := new(beacon.HistoricalSummariesWithProof)
+	proof := new(beacon.ForkedHistoricalSummariesWithProof)
 	err = proof.Deserialize(configs.Mainnet, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 	if err != nil {
 		return nil, err
 	}
-	return proof.HistoricalSummaries, nil
+	return proof.HistoricalSummariesWithProof.HistoricalSummaries, nil
 }
