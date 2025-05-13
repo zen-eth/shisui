@@ -7,8 +7,10 @@ replace github.com/protolambda/zrnt v0.34.1 => github.com/optimism-java/zrnt v0.
 require (
 	github.com/OffchainLabs/go-bitfield v0.0.0-20250408211841-ad7364de91a5
 	github.com/VictoriaMetrics/fastcache v1.12.2
+	github.com/aws/smithy-go v1.15.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/ethereum/go-ethereum v1.15.8
+	github.com/felixge/fgprof v0.9.5
 	github.com/ferranbt/fastssz v0.1.4
 	github.com/go-pkgz/expirable-cache/v3 v3.0.0
 	github.com/golang/snappy v1.0.0
@@ -25,7 +27,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834
 	github.com/urfave/cli/v2 v2.27.6
-	github.com/zen-eth/utp-go v0.0.0-20250409100709-911715a704db
+	github.com/zen-eth/utp-go v0.0.0-20250516160253-cb5dd09540ef
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/sync v0.14.0
@@ -64,6 +66,7 @@ require (
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/btree v1.1.3 // indirect
+	github.com/google/pprof v0.0.0-20240227163752-401108e1b7e7 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
@@ -76,7 +79,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
@@ -115,4 +117,4 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250501011816-d20703698f34
+replace github.com/ethereum/go-ethereum => github.com/optimism-java/shisui v1.14.6-0.20250516133529-e5d979e5825f
