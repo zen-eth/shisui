@@ -14,23 +14,23 @@ import (
 	"github.com/zen-eth/shisui/portalwire"
 )
 
-type ProofOracle interface {
+type Oracle interface {
 	GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummaries, error)
 }
 
-var _ ProofOracle = &Oracle{}
+var _ Oracle = &ValidationOracle{}
 
-type Oracle struct {
+type ValidationOracle struct {
 	client *rpc.Client
 }
 
-func NewOracle(client *rpc.Client) *Oracle {
-	return &Oracle{
+func NewOracle(client *rpc.Client) *ValidationOracle {
+	return &ValidationOracle{
 		client: client,
 	}
 }
 
-func (o *Oracle) GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummaries, error) {
+func (o *ValidationOracle) GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummaries, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*4)
 	defer cancel()
 	key := beacon.HistoricalSummariesWithProofKey{
