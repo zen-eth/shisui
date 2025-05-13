@@ -4,19 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/sync/semaphore"
-	"io"
-	"net"
-	"net/netip"
-	"sync"
-	"sync/atomic"
-
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/discover/v5wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	utp "github.com/zen-eth/utp-go"
+	"golang.org/x/sync/semaphore"
+	"io"
+	"net"
+	"net/netip"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 var (
@@ -201,9 +201,7 @@ func NewZenEthUtp(ctx context.Context, config *PortalProtocolConfig, discV5 *dis
 		ListenAddr:    config.ListenAddr,
 		utpController: newUtpController(config.MaxUtpConnSize),
 	}
-
-	uts.log.Warn("utp transport limit size", "size", config.MaxUtpConnSize)
-
+	uts.socketConfig.InitialTimeout = 4 * time.Second
 	return uts
 }
 
