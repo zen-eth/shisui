@@ -22,7 +22,7 @@ type HeaderValidator struct {
 	historicalSummariesProvider *HistoricalSummariesProvider
 }
 
-func NewHeaderValidatorWithOracle(oracle *Oracle) HeaderValidator {
+func NewHeaderValidatorWithOracle(oracle Oracle) HeaderValidator {
 	return HeaderValidator{
 		preMergeAcc:                 DefaultPreMergeAccumulator(),
 		historicalRootsAcc:          DefaultHistoricalRootsAccumulator(),

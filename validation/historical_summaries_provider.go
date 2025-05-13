@@ -15,10 +15,10 @@ const (
 // post capella history summaries provider
 type HistoricalSummariesProvider struct {
 	cache  []capella.HistoricalSummary
-	oracle ProofOracle
+	oracle Oracle
 }
 
-func NewWithOracle(oracle ProofOracle) *HistoricalSummariesProvider {
+func NewWithOracle(oracle Oracle) *HistoricalSummariesProvider {
 	return &HistoricalSummariesProvider{
 		oracle: oracle,
 		cache:  make([]capella.HistoricalSummary, 0),
