@@ -1,6 +1,10 @@
 package validation
 
-import "github.com/protolambda/zrnt/eth2/beacon/capella"
+import (
+	"errors"
+
+	"github.com/protolambda/zrnt/eth2/beacon/capella"
+)
 
 const (
 	epochSize               = 8192
@@ -11,10 +15,10 @@ const (
 // post capella history summaries provider
 type HistoricalSummariesProvider struct {
 	cache  []capella.HistoricalSummary
-	oracle *Oracle
+	oracle ProofOracle
 }
 
-func NewWithOracle(oracle *Oracle) *HistoricalSummariesProvider {
+func NewWithOracle(oracle ProofOracle) *HistoricalSummariesProvider {
 	return &HistoricalSummariesProvider{
 		oracle: oracle,
 		cache:  make([]capella.HistoricalSummary, 0),
@@ -34,13 +38,15 @@ func (h *HistoricalSummariesProvider) GetHistoricalSummary(slot uint64) (capella
 		return h.cache[historicalSummarieIndex], nil
 	}
 	if h.oracle == nil {
-		return capella.HistoricalSummary{}, nil
+		return capella.HistoricalSummary{}, errors.New("oracle is nil")
 	}
 	historicalSummaries, err := h.oracle.GetHistoricalSummaries(epoch)
 	if err != nil {
 		return capella.HistoricalSummary{}, err
 	}
-	root := historicalSummaries[historicalSummarieIndex]
-	h.cache = historicalSummaries
-	return root, nil
+	if historicalSummarieIndex < uint64(len(historicalSummaries)) {
+		h.cache = historicalSummaries
+		return historicalSummaries[historicalSummarieIndex], nil
+	}
+	return capella.HistoricalSummary{}, errors.New("historical summary index out of bounds")
 }
