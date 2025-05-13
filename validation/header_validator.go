@@ -11,15 +11,6 @@ import (
 	"github.com/zen-eth/shisui/types/history"
 )
 
-const (
-	slotsPerHistoricalRoot        = 8192
-	mergeBlockNumber       uint64 = 15537394 // first POS block
-	shanghaiBlockNumber    uint64 = 17_034_870
-	// cancunNumber represents the block number at which the Cancun hard fork activates.
-	// Reference: https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/cancun.md
-	cancunNumber uint64 = 19_426_587
-)
-
 var (
 	ErrMerkleValidation    = errors.New("merkle validation error")
 	ErrExecutionBlockProof = errors.New("execution block proof error")
@@ -57,16 +48,16 @@ func (h HeaderValidator) ValidateHeaderWithProof(headerWithProof *history.BlockH
 
 func (h HeaderValidator) validateHeaderWithProof(header *types.Header, proof []byte) error {
 	blockNumber := header.Number.Uint64()
-	if blockNumber <= mergeBlockNumber {
+	if blockNumber <= history.MergeBlockNumber {
 		return h.validatePreMergeHeader(header, proof)
-	} else if blockNumber < shanghaiBlockNumber {
+	} else if blockNumber < history.ShanghaiBlockNumber {
 		blockProofHistoricalRoots := &history.BlockProofHistoricalRoots{}
 		err := blockProofHistoricalRoots.UnmarshalSSZ(proof)
 		if err != nil {
 			return err
 		}
 		return h.validateMergeToCapellaHeader(header.Hash().Bytes(), blockProofHistoricalRoots)
-	} else if blockNumber < cancunNumber {
+	} else if blockNumber < history.CancunNumber {
 		blockProof := new(history.BlockProofHistoricalSummariesCapella)
 		err := blockProof.UnmarshalSSZ(proof)
 		if err != nil {

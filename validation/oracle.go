@@ -14,17 +14,23 @@ import (
 	"github.com/zen-eth/shisui/portalwire"
 )
 
+type ProofOracle interface {
+	GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummaries, error)
+}
+
+var _ ProofOracle = &Oracle{}
+
 type Oracle struct {
 	client *rpc.Client
 }
 
-func NewOracle(client *rpc.Client) Oracle {
-	return Oracle{
+func NewOracle(client *rpc.Client) *Oracle {
+	return &Oracle{
 		client: client,
 	}
 }
 
-func (o Oracle) GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummaries, error) {
+func (o *Oracle) GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummaries, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*4)
 	defer cancel()
 	key := beacon.HistoricalSummariesWithProofKey{
@@ -35,7 +41,7 @@ func (o Oracle) GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummarie
 	if err != nil {
 		return nil, err
 	}
-	contentKey := make([]byte, 0)
+	contentKey := make([]byte, 0, 1+len(buf.Bytes()))
 	contentKey = append(contentKey, byte(beacon.HistoricalSummaries))
 	contentKey = append(contentKey, buf.Bytes()...)
 

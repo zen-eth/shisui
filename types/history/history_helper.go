@@ -21,7 +21,7 @@ func DecodeBlockHeader(headerBytes []byte) (*types.Header, error) {
 }
 
 func GetEpochIndex(blockNumber uint64) uint64 {
-	return blockNumber / epochSize
+	return blockNumber / EpochSize
 }
 
 func GetEpochIndexByHeader(header types.Header) uint64 {
@@ -33,5 +33,5 @@ func GetHeaderRecordIndexByHeader(header types.Header) uint64 {
 }
 
 func GetHeaderRecordIndex(blockNumber uint64) uint64 {
-	return blockNumber % epochSize
+	return blockNumber % EpochSize
 }
