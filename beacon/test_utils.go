@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	ssz "github.com/ferranbt/fastssz"
+	cache "github.com/go-pkgz/expirable-cache/v3"
 	"github.com/golang/snappy"
 	"github.com/protolambda/zrnt/eth2/beacon/deneb"
 	"github.com/protolambda/zrnt/eth2/configs"
@@ -22,6 +24,7 @@ import (
 
 func SetupBeaconNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 	conf := portalwire2.DefaultPortalProtocolConfig()
+	conf.VersionsCacheTTL = 1 * time.Second
 	if addr != "" {
 		conf.ListenAddr = addr
 	}
@@ -67,10 +70,26 @@ func SetupBeaconNetwork(addr string, bootNodes []*enode.Node) (*Network, error) 
 	contentQueue := make(chan *portalwire2.ContentElement, 50)
 
 	utpSocket := portalwire2.NewZenEthUtp(context.Background(), conf, discV5, conn)
-	portalProtocol, err := portalwire2.NewPortalProtocol(conf, portalwire2.Beacon, privKey, conn, localNode, discV5, utpSocket, &storage.MockStorage{Db: make(map[string][]byte)}, contentQueue)
+
+	versionsCache := cache.NewCache[*enode.Node, uint8]().WithMaxKeys(conf.VersionsCacheSize).WithTTL(conf.VersionsCacheTTL)
+
+	portalProtocol, err := portalwire2.NewPortalProtocol(conf, portalwire2.Beacon, privKey, conn, localNode, discV5, utpSocket, &storage.MockStorage{Db: make(map[string][]byte)}, contentQueue, versionsCache)
 	if err != nil {
 		return nil, err
 	}
+
+	versionsCacheTicker := time.NewTicker(conf.VersionsCacheTTL / 2)
+	go func() {
+		defer versionsCacheTicker.Stop()
+		for {
+			select {
+			case <-versionsCacheTicker.C:
+				versionsCache.DeleteExpired()
+			case <-portalProtocol.WaitForClose():
+				return
+			}
+		}
+	}()
 
 	return NewBeaconNetwork(portalProtocol, nil), nil
 }
