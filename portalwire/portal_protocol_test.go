@@ -29,6 +29,7 @@ import (
 
 func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, rateLimit int, versions ...uint8) (*PortalProtocol, error) {
 	conf := DefaultPortalProtocolConfig()
+	conf.VersionsCacheTTL = 1 * time.Second
 	conf.MaxUtpConnSize = rateLimit
 	conf.NAT = nil
 	if addr != "" {
@@ -894,9 +895,6 @@ func TestGetOrStoreHighestVersion(t *testing.T) {
 }
 
 func TestGetOrStoreHighestVersionExpiry(t *testing.T) {
-	original := expirationVersionMinutes
-	expirationVersionMinutes = 1 * time.Second // override for test
-	defer func() { expirationVersionMinutes = original }()
 	node1, err := setupLocalPortalNode(t, ":3321", nil, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LevelInfo)
@@ -919,7 +917,6 @@ func TestGetOrStoreHighestVersionExpiry(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	node1.versionsCache.DeleteExpired()
 	_, ok := node1.versionsCache.Get(node2.localNode.Node())
 	assert.Equal(t, false, ok)
 	assert.Equal(t, 0, node1.versionsCache.Len())
