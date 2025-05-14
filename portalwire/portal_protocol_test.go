@@ -739,9 +739,8 @@ func TestOfferV1(t *testing.T) {
 	}
 
 	// one reject
-	var value []byte
 	node1.storage.Put(testEntry1.ContentKey, node2.toContentId(testEntry1.ContentKey), testEntry1.Content)
-	node1.filterKeyCache.Set(testEntry2.ContentKey, value)
+	node1.filterKeyCache.Set(testEntry2.ContentKey, EmptyBytes)
 	acceptCodes, err := node2.offer(node1.localNode.Node(), offerRequest, &NoPermit{})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(acceptCodes))
