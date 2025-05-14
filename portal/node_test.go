@@ -24,7 +24,9 @@ func TestDoPortMapping(t *testing.T) {
 	localNode, _ := newLocalNodeForTesting()
 	listenerAddr := &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: 1234}
 
-	doPortMapping(extIP, localNode, listenerAddr)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	doPortMapping(extIP, localNode, listenerAddr, stopCh)
 
 	initialSeq := localNode.Seq()
 	if initialSeq < timestamp {

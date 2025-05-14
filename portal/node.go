@@ -313,7 +313,7 @@ func (n *Node) initDiscV5() error {
 	listenerAddr := n.conn.LocalAddr().(*net.UDPAddr)
 	natConf := n.config.PortalProtocolConfig.NAT
 	if natConf != nil && !listenerAddr.IP.IsLoopback() {
-		doPortMapping(natConf, n.localNode, listenerAddr)
+		doPortMapping(natConf, n.localNode, listenerAddr, n.stop)
 	}
 
 	n.discV5, err = discover.ListenV5(n.conn, n.localNode, discCfg)
@@ -513,7 +513,7 @@ func (n *Node) initStateNetwork() error {
 	return nil
 }
 
-func doPortMapping(natm nat.Interface, ln *enode.LocalNode, addr *net.UDPAddr) {
+func doPortMapping(natm nat.Interface, ln *enode.LocalNode, addr *net.UDPAddr, stop <-chan struct{}) {
 	const (
 		protocol = "udp"
 		name     = "ethereum discovery"
@@ -557,9 +557,15 @@ func doPortMapping(natm nat.Interface, ln *enode.LocalNode, addr *net.UDPAddr) {
 	go func() {
 		refresh := time.NewTimer(mapTimeout)
 		defer refresh.Stop()
-		for range refresh.C {
-			addMapping()
-			refresh.Reset(mapTimeout)
+		for {
+			select {
+			case <-refresh.C:
+				addMapping()
+				refresh.Reset(mapTimeout)
+			case <-stop:
+				log.Info("Stopping NAT port mapping refresh.")
+				return
+			}
 		}
 	}()
 }
