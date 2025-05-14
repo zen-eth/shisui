@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	bitfield "github.com/OffchainLabs/go-bitfield"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 )
@@ -22,6 +21,10 @@ const (
 	RateLimited               // rate limit reached. Node can't handle anymore connections
 	InboundTransferInProgress // inbound rate limit reached for accepting a specific content_id, used to protect against thundering herds
 	Unspecified
+)
+
+var (
+	emptyFlag []byte
 )
 
 type CommonAccept interface {
@@ -160,11 +163,12 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 			acceptV1.ContentKeys[i] = uint8(AlreadyStored)
 			continue
 		}
-		if _, exist := p.inTransferMap.Load(hexutil.Encode(contentKey)); exist {
+		// todo leak?
+		if exist := p.filterKeyCache.Has(contentKey); exist {
 			acceptV1.ContentKeys[i] = uint8(InboundTransferInProgress)
 			continue
 		}
-		p.inTransferMap.Store(hexutil.Encode(contentKey), struct{}{})
+		p.filterKeyCache.Set(contentKey, emptyFlag)
 		acceptV1.ContentKeys[i] = uint8(Accepted)
 		acceptContentKeys = append(acceptContentKeys, contentKey)
 	}
