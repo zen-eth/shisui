@@ -17,8 +17,8 @@ func VerifyCapellaToDenebHeader(headerHash []byte, proof *BlockProofHistoricalSu
 	}
 	blockRootIndex := proof.Slot % epochSize
 	genIndex := epochSize + blockRootIndex
-	historicalSummarieIndex := (proof.Slot - CapellaForkEpoch*SlotsPerEpoch) / epochSize
-	historicalSummary := historicalSummaries[historicalSummarieIndex].BlockSummaryRoot
+	historicalSummaryIndex := (proof.Slot - CapellaForkEpoch*SlotsPerEpoch) / epochSize
+	historicalSummary := historicalSummaries[historicalSummaryIndex].BlockSummaryRoot
 	return merkle.VerifyMerkleBranch(tree.Root(proof.BeaconBlockRoot), proof.GetBeaconBlockProof(), 13, genIndex, historicalSummary)
 }
 
@@ -28,8 +28,8 @@ func VerifyPostDenebHeader(headerHash []byte, proof *BlockProofHistoricalSummari
 	}
 	blockRootIndex := proof.Slot % epochSize
 	genIndex := epochSize + blockRootIndex
-	historicalSummarieIndex := (proof.Slot - CapellaForkEpoch*SlotsPerEpoch) / epochSize
-	historicalSummary := historicalSummaries[historicalSummarieIndex].BlockSummaryRoot
+	historicalSummaryIndex := (proof.Slot - CapellaForkEpoch*SlotsPerEpoch) / epochSize
+	historicalSummary := historicalSummaries[historicalSummaryIndex].BlockSummaryRoot
 	return merkle.VerifyMerkleBranch(tree.Root(proof.BeaconBlockRoot), proof.GetBeaconBlockProof(), 13, genIndex, historicalSummary)
 }
 

@@ -18,9 +18,9 @@ import (
 
 func TestPreMergeHeader(t *testing.T) {
 	validator := NewHeaderValidatorWithOracle(nil)
-	entrys, err := parsePreMergeData()
+	entries, err := parsePreMergeData()
 	require.NoError(t, err)
-	for _, entry := range entrys {
+	for _, entry := range entries {
 		headerWithProof, err := history.DecodeBlockHeaderWithProof(entry.value)
 		require.NoError(t, err)
 		err = validator.ValidateHeaderWithProof(headerWithProof)
@@ -30,9 +30,9 @@ func TestPreMergeHeader(t *testing.T) {
 
 func TestMergeToCapellaHeader(t *testing.T) {
 	validator := NewHeaderValidatorWithOracle(nil)
-	entrys, err := parseBeaconBlockProof("./testdata/block_proofs_bellatrix")
+	entries, err := parseBeaconBlockProof("./testdata/block_proofs_bellatrix")
 	require.NoError(t, err)
-	for _, entry := range entrys {
+	for _, entry := range entries {
 		proof := entry.ToBellatrixProof()
 		err = validator.validateMergeToCapellaHeader(entry.GetExecutionBlockHeader(), proof)
 		require.NoError(t, err)
@@ -43,9 +43,9 @@ func TestCapellaToDenebHeader(t *testing.T) {
 	summaries, err := parseHistorySummaries()
 	require.NoError(t, err)
 	validator := NewHeaderValidatorWithHistorySummaries(summaries)
-	entrys, err := parseBeaconBlockProof("./testdata/block_proofs_capella")
+	entries, err := parseBeaconBlockProof("./testdata/block_proofs_capella")
 	require.NoError(t, err)
-	for _, entry := range entrys {
+	for _, entry := range entries {
 		proof := entry.ToCapellaProof()
 		err = validator.validateCapellaToDenebHeader(entry.GetExecutionBlockHeader(), proof)
 		require.NoError(t, err)
@@ -56,9 +56,9 @@ func TestPostDenebHeader(t *testing.T) {
 	summaries, err := parseHistorySummaries()
 	require.NoError(t, err)
 	validator := NewHeaderValidatorWithHistorySummaries(summaries)
-	entrys, err := parseBeaconBlockProof("./testdata/block_proofs_deneb")
+	entries, err := parseBeaconBlockProof("./testdata/block_proofs_deneb")
 	require.NoError(t, err)
-	for _, entry := range entrys {
+	for _, entry := range entries {
 		proof := entry.ToPostDenebProof()
 		err = validator.validatePostDenebHeader(entry.GetExecutionBlockHeader(), proof)
 		require.NoError(t, err)
