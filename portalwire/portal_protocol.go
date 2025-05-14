@@ -210,6 +210,7 @@ type PortalProtocolConfig struct {
 	CapabilitiesCacheSize         int
 	EphemeralHeaderCountCacheSize int
 	VersionsCacheSize             int
+	VersionsCacheTTL              time.Duration
 	NodeDBPath                    string
 	NAT                           nat.Interface
 	clock                         mclock.Clock
@@ -226,6 +227,7 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 		CapabilitiesCacheSize:         32 * 1024 * 1024,
 		EphemeralHeaderCountCacheSize: 32 * 1024 * 1024,
 		VersionsCacheSize:             versionsCacheSize,
+		VersionsCacheTTL:              expirationVersionMinutes,
 		NodeDBPath:                    "",
 		clock:                         mclock.System{},
 		TrustedBlockRoot:              make([]byte, 0),
@@ -309,7 +311,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		radiusCache:               fastcache.New(config.RadiusCacheSize),
 		capabilitiesCache:         fastcache.New(config.CapabilitiesCacheSize),
 		ephemeralHeaderCountCache: fastcache.New(config.EphemeralHeaderCountCacheSize),
-		versionsCache:             cache.NewCache[*enode.Node, uint8]().WithMaxKeys(config.VersionsCacheSize).WithTTL(expirationVersionMinutes),
+		versionsCache:             cache.NewCache[*enode.Node, uint8]().WithMaxKeys(config.VersionsCacheSize).WithTTL(config.VersionsCacheTTL),
 		closeCtx:                  closeCtx,
 		cancelCloseCtx:            cancelCloseCtx,
 		localNode:                 localNode,
@@ -326,11 +328,16 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		currentVersions:           currentVersions,
 	}
 
-	ticker := time.NewTicker(expirationVersionMinutes / 2)
-	defer ticker.Stop()
+	versionsCacheTicker := time.NewTicker(config.VersionsCacheTTL / 2)
 	go func() {
-		for range ticker.C {
-			protocol.versionsCache.DeleteExpired()
+		defer versionsCacheTicker.Stop()
+		for {
+			select {
+			case <-versionsCacheTicker.C:
+				protocol.versionsCache.DeleteExpired()
+			case <-protocol.closeCtx.Done():
+				return
+			}
 		}
 	}()
 
@@ -1193,9 +1200,9 @@ func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 		return nil, err
 	}
 
-	talkRespBytes := make([]byte, 0, len(pongBytes)+1)
-	talkRespBytes = append(talkRespBytes, PONG)
-	talkRespBytes = append(talkRespBytes, pongBytes...)
+	talkRespBytes := make([]byte, 1+len(pongBytes))
+	talkRespBytes[0] = PONG
+	copy(talkRespBytes[1:], pongBytes)
 
 	return talkRespBytes, nil
 }
