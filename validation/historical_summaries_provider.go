@@ -33,9 +33,9 @@ func NewWithHistorySummaries(historySummaries []capella.HistoricalSummary) *Hist
 
 func (h *HistoricalSummariesProvider) GetHistoricalSummary(slot uint64) (capella.HistoricalSummary, error) {
 	epoch := slot % epochSize
-	historicalSummarieIndex := (slot - capellaForkEpoch*slotsPerEpoch) / epochSize
-	if historicalSummarieIndex < uint64(len(h.cache)) {
-		return h.cache[historicalSummarieIndex], nil
+	historicalSummaryIndex := (slot - capellaForkEpoch*slotsPerEpoch) / epochSize
+	if historicalSummaryIndex < uint64(len(h.cache)) {
+		return h.cache[historicalSummaryIndex], nil
 	}
 	if h.oracle == nil {
 		return capella.HistoricalSummary{}, errors.New("oracle is nil")
@@ -44,9 +44,9 @@ func (h *HistoricalSummariesProvider) GetHistoricalSummary(slot uint64) (capella
 	if err != nil {
 		return capella.HistoricalSummary{}, err
 	}
-	if historicalSummarieIndex < uint64(len(historicalSummaries)) {
+	if historicalSummaryIndex < uint64(len(historicalSummaries)) {
 		h.cache = historicalSummaries
-		return historicalSummaries[historicalSummarieIndex], nil
+		return historicalSummaries[historicalSummaryIndex], nil
 	}
 	return capella.HistoricalSummary{}, errors.New("historical summary index out of bounds")
 }

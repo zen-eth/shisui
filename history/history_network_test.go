@@ -36,11 +36,11 @@ func ContentId(contentKey []byte) []byte {
 }
 
 func TestValidateHeader(t *testing.T) {
-	entrys, err := parseBlockHeaderKeyContent()
+	entries, err := parseBlockHeaderKeyContent()
 	require.NoError(t, err)
 	historyNetwork, err := genHistoryNetwork(":7891", nil)
 	require.NoError(t, err)
-	for _, entry := range entrys {
+	for _, entry := range entries {
 		err = historyNetwork.validateContent(entry.key, entry.value)
 		require.NoError(t, err)
 
