@@ -1600,13 +1600,13 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 
 			go func(bctx context.Context, connId *utp.ConnectionId, releasePermit Permit) {
 				defer releasePermit.Release()
+				defer cleanKeys()
 				var conn *utp.UtpStream
 				for {
 					select {
 					case <-bctx.Done():
 						return
 					default:
-						defer cleanKeys()
 						p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
 						connectCtx, cancel := context.WithTimeout(bctx, defaultUTPConnectTimeout)
 						defer cancel()

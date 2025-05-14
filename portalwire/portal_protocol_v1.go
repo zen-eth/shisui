@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	emptyFlag []byte
+	EmptyBytes = make([]byte, 0)
 )
 
 type CommonAccept interface {
@@ -163,12 +163,11 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 			acceptV1.ContentKeys[i] = uint8(AlreadyStored)
 			continue
 		}
-		// todo leak?
 		if exist := p.filterKeyCache.Has(contentKey); exist {
 			acceptV1.ContentKeys[i] = uint8(InboundTransferInProgress)
 			continue
 		}
-		p.filterKeyCache.Set(contentKey, emptyFlag)
+		p.filterKeyCache.Set(contentKey, EmptyBytes)
 		acceptV1.ContentKeys[i] = uint8(Accepted)
 		acceptContentKeys = append(acceptContentKeys, contentKey)
 	}
