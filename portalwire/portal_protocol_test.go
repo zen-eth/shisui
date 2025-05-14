@@ -15,6 +15,7 @@ import (
 
 	"github.com/OffchainLabs/go-bitfield"
 	"github.com/ethereum/go-ethereum/p2p/discover"
+	cache "github.com/go-pkgz/expirable-cache/v3"
 	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
 	"github.com/zen-eth/shisui/testlog"
@@ -110,6 +111,9 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, ra
 	utpSocket.log = testlog.Logger(t, log.LvlTrace)
 
 	contentQueue := make(chan *ContentElement, 50)
+
+	versionsCache := cache.NewCache[*enode.Node, uint8]().WithMaxKeys(conf.VersionsCacheSize).WithTTL(conf.VersionsCacheTTL)
+
 	portalProtocol, err := NewPortalProtocol(
 		conf,
 		History,
@@ -119,10 +123,25 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, ra
 		discV5,
 		utpSocket,
 		&storage.MockStorage{Db: make(map[string][]byte)},
-		contentQueue, WithDisableTableInitCheckOption(true))
+		contentQueue,
+		versionsCache,
+		WithDisableTableInitCheckOption(true))
 	if err != nil {
 		return nil, err
 	}
+
+	versionsCacheTicker := time.NewTicker(conf.VersionsCacheTTL / 2)
+	go func() {
+		defer versionsCacheTicker.Stop()
+		for {
+			select {
+			case <-versionsCacheTicker.C:
+				versionsCache.DeleteExpired()
+			case <-portalProtocol.WaitForClose():
+				return
+			}
+		}
+	}()
 
 	return portalProtocol, nil
 }

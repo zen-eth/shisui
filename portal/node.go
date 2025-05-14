@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/rpc"
+	cache "github.com/go-pkgz/expirable-cache/v3"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/zen-eth/shisui/beacon"
@@ -65,6 +66,7 @@ type Node struct {
 	conn           discover.UDPConn
 	utp            *portalwire.UtpTransportService
 	discV5API      *portalwire.DiscV5API
+	versionsCache  cache.Cache[*enode.Node, uint8]
 	rpcServer      *rpc.Server
 	httpServer     *http.Server
 	historyNetwork *history.Network
@@ -108,6 +110,9 @@ func NewNode(config *Config) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Initialize versions cache
+	node.initVersionsCache()
 
 	// Initialize services based on config
 	if slices.Contains(config.Networks, portalwire.History.Name()) {
@@ -315,6 +320,23 @@ func (n *Node) initDiscV5() error {
 	return err
 }
 
+func (n *Node) initVersionsCache() {
+	n.versionsCache = cache.NewCache[*enode.Node, uint8]().WithMaxKeys(n.config.PortalProtocolConfig.VersionsCacheSize).WithTTL(n.config.PortalProtocolConfig.VersionsCacheTTL)
+
+	versionsCacheTicker := time.NewTicker(n.config.PortalProtocolConfig.VersionsCacheTTL / 2)
+	go func() {
+		defer versionsCacheTicker.Stop()
+		for {
+			select {
+			case <-versionsCacheTicker.C:
+				n.versionsCache.DeleteExpired()
+			case <-n.stop:
+				return
+			}
+		}
+	}()
+}
+
 // initHistoryNetwork initializes the history network
 func (n *Node) initHistoryNetwork() error {
 	networkName := portalwire.History.Name()
@@ -357,7 +379,9 @@ func (n *Node) initHistoryNetwork() error {
 		n.discV5,
 		n.utp,
 		hybridContentStorage,
-		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
+		contentQueue,
+		n.versionsCache,
+		portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
 		return err
@@ -409,7 +433,9 @@ func (n *Node) initBeaconNetwork() error {
 		n.discV5,
 		n.utp,
 		contentStorage,
-		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
+		contentQueue,
+		n.versionsCache,
+		portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
 		return err
@@ -467,7 +493,9 @@ func (n *Node) initStateNetwork() error {
 		n.discV5,
 		n.utp,
 		stateStore,
-		contentQueue, portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
+		contentQueue,
+		n.versionsCache,
+		portalwire.WithDisableTableInitCheckOption(n.config.DisableTableInitCheck))
 
 	if err != nil {
 		return err

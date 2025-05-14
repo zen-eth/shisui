@@ -291,7 +291,7 @@ func WithDisableTableInitCheckOption(disable bool) SetPortalProtocolOption {
 	}
 }
 
-func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
+func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, contentQueue chan *ContentElement, versionsCache cache.Cache[*enode.Node, uint8], setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
 	// set versions in test
 	currentVersions := protocolVersions{}
 	err := localNode.Node().Load(&currentVersions)
@@ -391,6 +391,11 @@ func (p *PortalProtocol) Start() error {
 func (p *PortalProtocol) Stop() {
 	p.cancelCloseCtx()
 	p.table.close()
+}
+
+// Only used for testing
+func (p *PortalProtocol) WaitForClose() <-chan struct{} {
+	return p.closeCtx.Done()
 }
 
 func (p *PortalProtocol) RoutingTableInfo() [][]string {
