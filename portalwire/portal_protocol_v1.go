@@ -163,15 +163,26 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 			acceptV1.ContentKeys[i] = uint8(AlreadyStored)
 			continue
 		}
-		if exist := p.filterKeyCache.Has(contentKey); exist {
+		if exist := p.transferringKeyCache.Has(contentKey); exist {
 			acceptV1.ContentKeys[i] = uint8(InboundTransferInProgress)
 			continue
 		}
-		p.filterKeyCache.Set(contentKey, EmptyBytes)
 		acceptV1.ContentKeys[i] = uint8(Accepted)
 		acceptContentKeys = append(acceptContentKeys, contentKey)
 	}
 	return acceptV1, acceptContentKeys, nil
+}
+
+func (p *PortalProtocol) cacheTransferringKeys(contentKeys [][]byte) {
+	for _, key := range contentKeys {
+		p.transferringKeyCache.Set(key, EmptyBytes)
+	}
+}
+
+func (p *PortalProtocol) deleteTransferringContentKeys(contentKeys [][]byte) {
+	for _, key := range contentKeys {
+		p.transferringKeyCache.Del(key)
+	}
 }
 
 func (p *PortalProtocol) parseOfferResp(node *enode.Node, data []byte) (CommonAccept, error) {

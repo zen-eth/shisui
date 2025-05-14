@@ -274,7 +274,7 @@ type PortalProtocol struct {
 
 	disableTableInitCheck bool
 	currentVersions       protocolVersions
-	filterKeyCache        *fastcache.Cache
+	transferringKeyCache  *fastcache.Cache
 
 	versionsCache cache.Cache[*enode.Node, uint8]
 }
@@ -325,7 +325,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		clock:                     config.clock,
 		Utp:                       utp,
 		currentVersions:           currentVersions,
-		filterKeyCache:            fastcache.New(config.ContentKeyCacheSize),
+		transferringKeyCache:      fastcache.New(config.ContentKeyCacheSize),
 	}
 
 	for _, setOpt := range setOpts {
@@ -1578,15 +1578,9 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 	idBuffer := make([]byte, 2)
 	idValue := uint16(0)
 	if len(contentKeys) > 0 {
-		cleanKeys := func() {
-			for _, key := range contentKeys {
-				p.filterKeyCache.Del(key)
-			}
-		}
 		permit, getPermit := p.Utp.GetInboundPermit()
 		if !getPermit {
 			p.Log.Debug("utp rate limited")
-			cleanKeys()
 			if acceptV1, isV1 := accept.(*AcceptV1); isV1 {
 				keysLen := len(acceptV1.ContentKeys)
 				var limitRate = make([]uint8, keysLen)
@@ -1597,16 +1591,16 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 			}
 		} else {
 			connectionId := p.Utp.CidWithAddr(node, addr, false)
-
 			go func(bctx context.Context, connId *utp.ConnectionId, releasePermit Permit) {
 				defer releasePermit.Release()
-				defer cleanKeys()
+				defer p.deleteTransferringContentKeys(contentKeys)
 				var conn *utp.UtpStream
 				for {
 					select {
 					case <-bctx.Done():
 						return
 					default:
+						p.cacheTransferringKeys(contentKeys)
 						p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
 						connectCtx, cancel := context.WithTimeout(bctx, defaultUTPConnectTimeout)
 						defer cancel()
