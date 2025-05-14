@@ -311,7 +311,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		radiusCache:               fastcache.New(config.RadiusCacheSize),
 		capabilitiesCache:         fastcache.New(config.CapabilitiesCacheSize),
 		ephemeralHeaderCountCache: fastcache.New(config.EphemeralHeaderCountCacheSize),
-		versionsCache:             cache.NewCache[*enode.Node, uint8]().WithMaxKeys(config.VersionsCacheSize).WithTTL(config.VersionsCacheTTL),
+		versionsCache:             versionsCache,
 		closeCtx:                  closeCtx,
 		cancelCloseCtx:            cancelCloseCtx,
 		localNode:                 localNode,
@@ -327,19 +327,6 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		Utp:                       utp,
 		currentVersions:           currentVersions,
 	}
-
-	versionsCacheTicker := time.NewTicker(config.VersionsCacheTTL / 2)
-	go func() {
-		defer versionsCacheTicker.Stop()
-		for {
-			select {
-			case <-versionsCacheTicker.C:
-				protocol.versionsCache.DeleteExpired()
-			case <-protocol.closeCtx.Done():
-				return
-			}
-		}
-	}()
 
 	for _, setOpt := range setOpts {
 		setOpt(protocol)
