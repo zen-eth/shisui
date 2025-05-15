@@ -1,5 +1,5 @@
 package validation
 
-type Validation interface {
-	ValidationContent(contentKey []byte, content []byte) error
+type Validator interface {
+	ValidateContent(contentKey []byte, content []byte) error
 }

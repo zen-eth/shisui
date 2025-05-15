@@ -6,16 +6,21 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/zen-eth/shisui/beacon"
 	"github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/types/history"
 )
+
+var defaultTimeout = time.Second * 4
 
 type Oracle interface {
 	GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummaries, error)
+	GetBlockHeaderByHash(hash []byte) (*types.Header, error)
 }
 
 var _ Oracle = &ValidationOracle{}
@@ -31,7 +36,7 @@ func NewOracle(client *rpc.Client) *ValidationOracle {
 }
 
 func (o *ValidationOracle) GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummaries, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*4)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 	key := beacon.HistoricalSummariesWithProofKey{
 		Epoch: epoch,
@@ -61,4 +66,28 @@ func (o *ValidationOracle) GetHistoricalSummaries(epoch uint64) (capella.Histori
 		return nil, err
 	}
 	return proof.HistoricalSummariesWithProof.HistoricalSummaries, nil
+}
+
+// GetBlockHeaderByHash implements Oracle.
+func (o *ValidationOracle) GetBlockHeaderByHash(hash []byte) (*types.Header, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+	contentKey := make([]byte, 0, len(hash)+1)
+	contentKey = append(contentKey, 0x00)
+	contentKey = append(contentKey, hash...)
+	arg := hexutil.Encode(contentKey)
+	res := &portalwire.ContentInfo{}
+	err := o.client.CallContext(ctx, res, "portal_historyGetContent", arg)
+	if err != nil {
+		return nil, err
+	}
+	data, err := hexutil.Decode(res.Content)
+	if err != nil {
+		return nil, err
+	}
+	headerWithProof, err := history.DecodeBlockHeaderWithProof(data)
+	if err != nil {
+		return nil, err
+	}
+	return history.DecodeBlockHeader(headerWithProof.Header)
 }

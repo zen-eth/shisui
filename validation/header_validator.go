@@ -43,10 +43,10 @@ func (h HeaderValidator) ValidateHeaderWithProof(headerWithProof *history.BlockH
 	if err != nil {
 		return err
 	}
-	return h.validateHeaderWithProof(header, headerWithProof.Proof)
+	return h.ValidateHeaderAndProof(header, headerWithProof.Proof)
 }
 
-func (h HeaderValidator) validateHeaderWithProof(header *types.Header, proof []byte) error {
+func (h HeaderValidator) ValidateHeaderAndProof(header *types.Header, proof []byte) error {
 	blockNumber := header.Number.Uint64()
 	if blockNumber <= history.MergeBlockNumber {
 		return h.validatePreMergeHeader(header, proof)
