@@ -108,7 +108,7 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, ra
 	}
 
 	utpSocket := NewZenEthUtp(context.Background(), conf, discV5, conn)
-	utpSocket.log = testlog.Logger(t, log.LvlTrace)
+	utpSocket.log = testlog.Logger(t, log.LvlInfo)
 
 	contentQueue := make(chan *ContentElement, 50)
 
