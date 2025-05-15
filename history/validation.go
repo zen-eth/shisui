@@ -1,9 +1,17 @@
 package history
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
+
 	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	"github.com/protolambda/zrnt/eth2/util/merkle"
+	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/tree"
+	"github.com/protolambda/ztyp/view"
+	"github.com/zen-eth/shisui/types/history"
+	"github.com/zen-eth/shisui/validation"
 )
 
 const (
@@ -65,4 +73,77 @@ func VerifyPostDenebExecutionBlockProof(headerHash []byte, elProof []tree.Root, 
 	// let gen_index = (gen_index_mid_level * 32 + 12) = 6444
 	var gIndex uint64 = 6444
 	return merkle.VerifyMerkleBranch(tree.Root(headerHash), elProof, uint64(len(elProof)), gIndex, root)
+}
+
+var _ validation.Validator = &HistoryValidator{}
+
+type HistoryValidator struct {
+	validationOracle validation.Oracle
+	headerValidator  validation.HeaderValidator
+}
+
+func NewHistoryValidator(oracle validation.Oracle) *HistoryValidator {
+	headerValidator := validation.NewHeaderValidatorWithOracle(oracle)
+	return &HistoryValidator{
+		headerValidator:  headerValidator,
+		validationOracle: oracle,
+	}
+}
+
+// ValidationContent implements validation.Validator.
+func (h *HistoryValidator) ValidateContent(contentKey []byte, content []byte) error {
+	switch ContentType(contentKey[0]) {
+	case BlockHeaderType:
+		headerWithProof, err := history.DecodeBlockHeaderWithProof(content)
+		if err != nil {
+			return err
+		}
+		header, err := history.DecodeBlockHeader(headerWithProof.Header)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(header.Hash().Bytes(), contentKey[1:]) {
+			return ErrInvalidBlockHash
+		}
+		return h.headerValidator.ValidateHeaderAndProof(header, headerWithProof.Proof)
+	case BlockHeaderNumberType:
+		headerWithProof, err := DecodeBlockHeaderWithProof(content)
+		if err != nil {
+			return err
+		}
+		header, err := DecodeBlockHeader(headerWithProof.Header)
+		if err != nil {
+			return err
+		}
+		blockNumber := view.Uint64View(0)
+		err = blockNumber.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey[1:]), uint64(len(contentKey[1:]))))
+		if err != nil {
+			return err
+		}
+		if header.Number.Uint64() != uint64(blockNumber) {
+			return ErrInvalidBlockNumber
+		}
+		return h.headerValidator.ValidateHeaderAndProof(header, headerWithProof.Proof)
+	case BlockBodyType:
+		header, err := h.validationOracle.GetBlockHeaderByHash(contentKey[1:])
+		if err != nil {
+			return err
+		}
+		_, err = ValidateBlockBodyBytes(content, header)
+		return err
+	case ReceiptsType:
+		header, err := h.validationOracle.GetBlockHeaderByHash(contentKey[1:])
+		if err != nil {
+			return err
+		}
+		if bytes.Equal(header.ReceiptHash.Bytes(), emptyReceiptHash) {
+			if len(content) > 0 {
+				return fmt.Errorf("content should be empty, but received %v", content)
+			}
+			return nil
+		}
+		_, err = ValidatePortalReceiptsBytes(content, header.ReceiptHash.Bytes())
+		return err
+	}
+	return errors.New("unknown content type in validation")
 }
