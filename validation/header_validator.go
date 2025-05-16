@@ -48,7 +48,7 @@ func (h HeaderValidator) ValidateHeaderWithProof(headerWithProof *history.BlockH
 
 func (h HeaderValidator) ValidateHeaderAndProof(header *types.Header, proof []byte) error {
 	blockNumber := header.Number.Uint64()
-	if blockNumber <= history.MergeBlockNumber {
+	if blockNumber < history.MergeBlockNumber {
 		return h.validatePreMergeHeader(header, proof)
 	} else if blockNumber < history.ShanghaiBlockNumber {
 		blockProofHistoricalRoots := &history.BlockProofHistoricalRoots{}
