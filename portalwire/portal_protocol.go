@@ -498,7 +498,9 @@ func (p *PortalProtocol) pingInnerWithPayload(node *enode.Node, payloadType uint
 		return nil, nil, err
 	}
 
-	talkRequestBytes := append([]byte{PING}, pingRequestBytes...)
+	talkRequestBytes := make([]byte, 1+len(pingRequestBytes))
+	talkRequestBytes[0] = PING
+	copy(talkRequestBytes[1:], pingRequestBytes)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 
 	if err != nil {
@@ -569,7 +571,9 @@ func (p *PortalProtocol) findNodes(node *enode.Node, distances []uint) ([]*enode
 		return nil, err
 	}
 
-	talkRequestBytes := append([]byte{FINDNODES}, findNodesBytes...)
+	talkRequestBytes := make([]byte, 1+len(findNodesBytes))
+	talkRequestBytes[0] = FINDNODES
+	copy(talkRequestBytes[1:], findNodesBytes)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
 		return nil, err
@@ -592,7 +596,9 @@ func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte,
 		return 0xff, nil, err
 	}
 
-	talkRequestBytes := append([]byte{FINDCONTENT}, findContentBytes...)
+	talkRequestBytes := make([]byte, 1+len(findContentBytes))
+	talkRequestBytes[0] = FINDCONTENT
+	copy(talkRequestBytes[1:], findContentBytes)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
 		return 0xff, nil, err
@@ -617,7 +623,9 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, per
 		return nil, err
 	}
 
-	talkRequestBytes := append([]byte{OFFER}, offerBytes...)
+	talkRequestBytes := make([]byte, 1+len(offerBytes))
+	talkRequestBytes[0] = OFFER
+	copy(talkRequestBytes[1:], offerBytes)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
 		return nil, err

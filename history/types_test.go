@@ -15,6 +15,7 @@ import (
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/view"
 	"github.com/stretchr/testify/require"
+	"github.com/zen-eth/shisui/types/history"
 	"gopkg.in/yaml.v3"
 )
 
@@ -153,6 +154,14 @@ func TestEphemeralType(t *testing.T) {
 	val := &EphemeralHeaderPayload{}
 	err = val.UnmarshalSSZ(hexutil.MustDecode(entry.ContentValue))
 	require.NoError(t, err)
+
+	header, err := history.DecodeBlockHeader(val.Payload[0][:])
+	require.NoError(t, err)
+	require.Equal(t, header.Number.Uint64(), uint64(20000000))
+
+	header1, err := history.DecodeBlockHeader(val.Payload[1][:])
+	require.NoError(t, err)
+	require.Equal(t, header1.Number.Uint64(), uint64(19999999))
 
 	valBytes, err := val.MarshalSSZ()
 	require.NoError(t, err)
