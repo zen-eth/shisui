@@ -96,11 +96,16 @@ func NewBeaconStorage(config storage.PortalStorageConfig, db *pebble.DB) (storag
 func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	switch storage.ContentType(contentKey[0]) {
 	case LightClientBootstrap:
-		data, _, err := bs.db.Get(contentId)
+		data, closer, err := bs.db.Get(contentId)
 		if err != nil {
 			return nil, handleNotFound(err)
 		}
-		return data, err
+		out := make([]byte, len(data))
+		copy(out, data)
+		if err := closer.Close(); err != nil {
+			return nil, err
+		}
+		return out, nil
 	case LightClientUpdate:
 		lightClientUpdateKey := new(LightClientUpdateKey)
 		err := lightClientUpdateKey.UnmarshalSSZ(contentKey[1:])
@@ -111,7 +116,7 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 		start := lightClientUpdateKey.StartPeriod
 		for start < lightClientUpdateKey.StartPeriod+lightClientUpdateKey.Count {
 			key := bs.getUint64Bytes(start)
-			data, _, err := bs.db.Get(key)
+			data, closer, err := bs.db.Get(key)
 			if err != nil {
 				return nil, handleNotFound(err)
 			}
@@ -122,6 +127,9 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 			}
 			res = append(res, *update)
 			start++
+			if err := closer.Close(); err != nil {
+				return nil, err
+			}
 		}
 		var buf bytes.Buffer
 		err = LightClientUpdateRange(res).Serialize(bs.spec, codec.NewEncodingWriter(&buf))
@@ -154,12 +162,20 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 		return buf.Bytes(), err
 	case HistoricalSummaries:
 		// return the historical summaries when epoch is bigger than contentKey[1:]
-		data, _, err := bs.db.Get(historicalSummariesKey)
+		data, closer, err := bs.db.Get(historicalSummariesKey)
 		if err != nil {
 			return nil, handleNotFound(err)
 		}
+		var out []byte
 		if reverseCompare(data[:8], contentKey[1:]) != -1 {
-			return data[8:], nil
+			out = make([]byte, len(data[8:]))
+			copy(out, data[8:])
+		}
+		if closeErr := closer.Close(); closeErr != nil {
+			return nil, closeErr
+		}
+		if out != nil {
+			return out, nil
 		}
 		return nil, storage.ErrContentNotFound
 	}
@@ -224,7 +240,7 @@ func (bs *Storage) Put(contentKey []byte, contentId []byte, content []byte) erro
 	case HistoricalSummaries:
 		// contentKey is uint64 in bytes
 		// key is a constant, value is contentKey[1:] + content
-		data, _, err := bs.db.Get(historicalSummariesKey)
+		data, closer, err := bs.db.Get(historicalSummariesKey)
 		if errors.Is(err, pebble.ErrNotFound) {
 			value := make([]byte, 0)
 			value = append(value, contentKey[1:]...)
@@ -238,8 +254,15 @@ func (bs *Storage) Put(contentKey []byte, contentId []byte, content []byte) erro
 		if err != nil {
 			return err
 		}
+
 		epochBytes := data[:8]
-		if reverseCompare(contentKey[1:], epochBytes) == 1 {
+		shouldUpdate := reverseCompare(contentKey[1:], epochBytes) == 1
+
+		if closeErr := closer.Close(); closeErr != nil {
+			return closeErr
+		}
+
+		if shouldUpdate {
 			value := make([]byte, 0)
 			value = append(value, contentKey[1:]...)
 			value = append(value, content...)
@@ -263,10 +286,9 @@ func (bs *Storage) Close() error {
 }
 
 func (bs *Storage) getUint64Bytes(value uint64) []byte {
-	buf := bs.bytePool.Get().(*[]byte)
-	defer bs.bytePool.Put(buf)
-	binary.BigEndian.PutUint64(*buf, value)
-	return *buf
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, value)
+	return buf
 }
 
 func handleNotFound(err error) error {
