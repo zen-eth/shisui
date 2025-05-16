@@ -274,7 +274,7 @@ func (h *Network) GetReceipts(blockHash []byte) ([]*types.Receipt, error) {
 
 func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error) {
 	blockNumber := header.Number.Uint64()
-	if blockNumber <= mergeBlockNumber {
+	if blockNumber < mergeBlockNumber {
 		return h.masterAccumulator.VerifyHeader(*header, proof)
 	} else if blockNumber < shanghaiBlockNumber {
 		headerHash := header.Hash()
