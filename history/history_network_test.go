@@ -281,7 +281,7 @@ func parseBlockHeaderKeyContent() ([]contentEntry, error) {
 
 func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 	glogger := log.NewGlogHandler(log.NewTerminalHandler(os.Stderr, true))
-	slogVerbosity := log.FromLegacyLevel(5)
+	slogVerbosity := log.FromLegacyLevel(3)
 	glogger.Verbosity(slogVerbosity)
 	log.SetDefault(log.NewLogger(glogger))
 	conf := portalwire.DefaultPortalProtocolConfig()

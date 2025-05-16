@@ -272,7 +272,7 @@ func NewHistoricalRootsAccumulator(spec *common.Spec) HistoricalRootsAccumulator
 }
 
 func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber uint64, headerHash common.Root, proof *BlockProofHistoricalRoots) error {
-	if blockNumber <= mergeBlockNumber {
+	if blockNumber < mergeBlockNumber {
 		return errors.New("invalid historicalRootsBlockProof found for pre-merge header")
 	}
 	if blockNumber >= shanghaiBlockNumber {
