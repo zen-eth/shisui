@@ -139,12 +139,15 @@ func NewStorage(config storage.PortalStorageConfig, db *pebble.DB) (storage.Cont
 	}
 	cs.radius.Store(storage.MaxDistance)
 
-	val, _, err := cs.db.Get(storage.SizeKey)
+	val, closer, err := cs.db.Get(storage.SizeKey)
 	if err != nil && !errors.Is(err, pebble.ErrNotFound) {
 		return nil, err
 	}
 	if err == nil {
 		size := binary.BigEndian.Uint64(val)
+		if err := closer.Close(); err != nil {
+			return nil, err
+		}
 		// init stage, no need to use lock
 		cs.size.Store(size)
 		if size > cs.storageCapacityInBytes {
@@ -201,12 +204,11 @@ func (c *ContentStorage) Put(contentKey []byte, contentId []byte, content []byte
 	length := uint64(len(contentId)) + uint64(len(content))
 	newSize := c.size.Add(length)
 
-	buf := c.bytePool.Get().(*[]byte)
-	defer c.bytePool.Put(buf)
-	binary.BigEndian.PutUint64(*buf, newSize)
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, newSize)
 	batch := c.db.NewBatch()
 
-	err = batch.Set(storage.SizeKey, *buf, c.writeOptions)
+	err = batch.Set(storage.SizeKey, buf, c.writeOptions)
 	if err != nil {
 		return err
 	}
@@ -280,10 +282,9 @@ func (c *ContentStorage) prune() error {
 	}
 	newSize := size - currentSize
 	c.size.Store(newSize)
-	buf := c.bytePool.Get().(*[]byte)
-	defer c.bytePool.Put(buf)
-	binary.BigEndian.PutUint64(*buf, newSize)
-	err = batch.Set(storage.SizeKey, *buf, c.writeOptions)
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, newSize)
+	err = batch.Set(storage.SizeKey, buf, c.writeOptions)
 	if err != nil {
 		return err
 	}
