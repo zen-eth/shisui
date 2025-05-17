@@ -16,7 +16,6 @@ import (
 	"net/netip"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 var (
@@ -201,7 +200,6 @@ func NewZenEthUtp(ctx context.Context, config *PortalProtocolConfig, discV5 *dis
 		ListenAddr:    config.ListenAddr,
 		utpController: newUtpController(config.MaxUtpConnSize),
 	}
-	uts.socketConfig.InitialTimeout = 4 * time.Second
 	return uts
 }
 
