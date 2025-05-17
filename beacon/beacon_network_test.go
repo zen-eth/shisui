@@ -21,7 +21,7 @@ func TestLightClientBootstrapValidation(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestLightClienUpdateValidation(t *testing.T) {
+func TestLightClientUpdateValidation(t *testing.T) {
 	update, err := GetClientUpdate(0)
 	require.NoError(t, err)
 	key := &LightClientUpdateKey{
