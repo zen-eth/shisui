@@ -2,7 +2,6 @@ package portalwire
 
 import (
 	"errors"
-	"github.com/ethereum/go-ethereum/common/lru"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/discover"
@@ -231,13 +230,11 @@ func (d *DiscV5API) RecursiveFindNodes(nodeId string) ([]string, error) {
 
 type PortalProtocolAPI struct {
 	portalProtocol *PortalProtocol
-	cache          *lru.Cache[string, *enode.Node]
 }
 
 func NewPortalAPI(portalProtocol *PortalProtocol) *PortalProtocolAPI {
 	return &PortalProtocolAPI{
 		portalProtocol: portalProtocol,
-		cache:          lru.NewCache[string, *enode.Node](512),
 	}
 }
 
@@ -495,14 +492,9 @@ func (p *PortalProtocolAPI) Offer(enr string, contentItems [][2]string) (string,
 }
 
 func (p *PortalProtocolAPI) TraceOffer(enr string, key string, value string) (interface{}, error) {
-	cacheNode, cached := p.cache.Get(enr)
-	if !cached {
-		n, err := enode.Parse(enode.ValidSchemes, enr)
-		if err != nil {
-			return nil, err
-		}
-		cacheNode = n
-		p.cache.Add(enr, n)
+	n, err := enode.Parse(enode.ValidSchemes, enr)
+	if err != nil {
+		return nil, err
 	}
 
 	contentKey, err := hexutil.Decode(key)
@@ -527,7 +519,7 @@ func (p *PortalProtocolAPI) TraceOffer(enr string, key string, value string) (in
 		Request: transientOfferRequestWithResult,
 	}
 
-	_, err = p.portalProtocol.offer(cacheNode, offerReq, &NoPermit{})
+	_, err = p.portalProtocol.offer(n, offerReq, &NoPermit{})
 	if err != nil {
 		return nil, err
 	}
