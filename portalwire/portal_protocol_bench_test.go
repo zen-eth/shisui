@@ -28,7 +28,7 @@ package portalwire
 //	num_transfers        = 500
 //)
 //
-//func BenchmarkUtpWithDiscv5(t *testing.B) {
+//func TestBenchmarkUtpWithDiscv5(t *testing.T) {
 //	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
 //	go func() {
 //		addr := "localhost:6060"
