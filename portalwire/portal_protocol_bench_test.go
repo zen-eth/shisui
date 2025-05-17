@@ -34,16 +34,12 @@ func BenchmarkUtpWithDiscv5(t *testing.B) {
 		log.Info(http.ListenAndServe(addr, nil).Error())
 	}()
 
-	// 设置最大线程数为CPU核心数
-
 	go func() {
 		traceFile, _ := os.Create("concurrency_trace_trin_bench.prof")
 		time.Sleep(15 * time.Second)
 		_ = trace.Start(traceFile)
 	}()
 	defer trace.Stop()
-	//
-	//// // CPU 分析
 	go func() {
 		cpuFile, _ := os.Create("concurrency_cpu.prof")
 		time.Sleep(15 * time.Second)
