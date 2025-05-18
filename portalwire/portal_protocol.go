@@ -769,7 +769,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 					p.Log.Error("failed to write to utp connection", "err", err)
 					return
 				}
-				p.Log.Trace(">> CONTENT/"+p.protocolName, "id", target.ID(), "contents", contents, "size", written)
+				p.Log.Trace(">> CONTENT/"+p.protocolName, "id", target.ID(), "size", written)
 				if metrics.Enabled() {
 					p.portalMetrics.messagesSentContent.Mark(1)
 					p.portalMetrics.utpOutSuccess.Inc(1)
@@ -1685,10 +1685,15 @@ func (p *PortalProtocol) handleOfferedContents(id enode.ID, keys [][]byte, paylo
 		Contents:    contents,
 	}
 
-	p.contentQueue <- contentElement
-
-	if metrics.Enabled() {
-		p.portalMetrics.contentDecodedTrue.Inc(1)
+	select {
+	case p.contentQueue <- contentElement:
+		if metrics.Enabled() {
+			p.portalMetrics.contentDecodedTrue.Inc(1)
+		}
+	default:
+		if metrics.Enabled() {
+			p.portalMetrics.contentDiscard.Inc(1)
+		}
 	}
 	return nil
 }
@@ -2110,13 +2115,13 @@ func (p *PortalProtocol) InRange(contentId []byte) bool {
 
 func (p *PortalProtocol) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	content, err := p.storage.Get(contentKey, contentId)
-	p.Log.Trace("get local storage", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
+	p.Log.Trace("get local storage", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId), "err", err)
 	return content, err
 }
 
 func (p *PortalProtocol) Put(contentKey []byte, contentId []byte, content []byte) error {
 	err := p.storage.Put(contentKey, contentId, content)
-	p.Log.Trace("put local storage", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
+	p.Log.Trace("put local storage", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId), "err", err)
 	return err
 }
 
