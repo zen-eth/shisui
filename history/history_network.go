@@ -661,7 +661,7 @@ func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) erro
 		}
 		err = h.validateContent(contentKey, content)
 		if err != nil {
-			return fmt.Errorf("content validate failed with content key %x and content %x, err is %w", contentKey, content, err)
+			return fmt.Errorf("content validate failed with content key %x, err is %w", contentKey, err)
 		}
 		_ = h.portalProtocol.Put(contentKey, contentId, content)
 	}
