@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/zen-eth/shisui/history"
+	"github.com/zen-eth/shisui/storage"
 )
 
 var errParameterNotImplemented = errors.New("parameter not implemented")
@@ -84,6 +85,10 @@ func (p *API) getBlock(blockNrOrHash rpc.BlockNumberOrHash, fullTransactions boo
 	number, ok := blockNrOrHash.Number()
 	if ok {
 		blockHeader, err = p.History.GetBlockHeaderByNumber(uint64(number.Int64()))
+		if errors.Is(err, storage.ErrContentNotFound) {
+			log.Error("content not found error getting block header with number", "number", uint64(number.Int64()), "err", err)
+			return nil, nil
+		}
 		if err != nil {
 			log.Error("error getting block header with number", "number", uint64(number.Int64()), "err", err)
 			return nil, err
@@ -91,6 +96,10 @@ func (p *API) getBlock(blockNrOrHash rpc.BlockNumberOrHash, fullTransactions boo
 	} else {
 		hash, _ := blockNrOrHash.Hash()
 		blockHeader, err = p.History.GetBlockHeader(hash.Bytes())
+		if errors.Is(err, storage.ErrContentNotFound) {
+			log.Error("content not found error getting block header with hash", "hash", hash, "err", err)
+			return nil, nil
+		}
 		if err != nil {
 			log.Error("error getting block header with hash", "hash", hash, "err", err)
 			return nil, err
