@@ -50,7 +50,7 @@ var (
 
 var emptyReceiptHash = hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 
-var antsPool, _ = ants.NewPool(10, ants.WithNonblocking(true))
+var antsPool, _ = ants.NewPool(100, ants.WithNonblocking(true))
 
 type ContentKey struct {
 	selector ContentType
