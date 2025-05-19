@@ -878,7 +878,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 			return 0xff, nil, err
 		}
 
-		p.Log.Trace("<< CONTENT_ENRS/"+p.protocolName, "id", target.ID(), "enrs", enrs)
+		p.Log.Trace("<< CONTENT_ENRS/"+p.protocolName, "id", target.ID(), "enrs.size", len(enrs.Enrs))
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 		}
@@ -946,7 +946,7 @@ func (p *PortalProtocol) filterNodes(target *enode.Node, enrs [][]byte, distance
 		nodes = append(nodes, n)
 	}
 
-	p.Log.Trace("<< NODES/"+p.protocolName, "id", target.ID(), "total", len(enrs), "verified", verified, "nodes", nodes)
+	p.Log.Trace("<< NODES/"+p.protocolName, "id", target.ID(), "total", len(enrs), "verified", verified, "nodes.size", len(nodes))
 	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedNodes.Mark(1)
 	}
@@ -1387,7 +1387,7 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 		Enrs:  enrs,
 	}
 
-	p.Log.Trace(">> NODES/"+p.protocolName, "protocol", p.protocolName, "source", fromAddr, "nodes", nodesMsg)
+	p.Log.Trace(">> NODES/"+p.protocolName, "protocol", p.protocolName, "source", fromAddr, "nodes.size", len(nodesMsg.Enrs))
 	if metrics.Enabled() {
 		p.portalMetrics.messagesSentNodes.Mark(1)
 	}
@@ -1439,7 +1439,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 			Enrs: enrs,
 		}
 
-		p.Log.Trace(">> CONTENT_ENRS/"+p.protocolName, "protocol", p.protocolName, "source", addr, "enrs", enrsMsg)
+		p.Log.Trace(">> CONTENT_ENRS/"+p.protocolName, "protocol", p.protocolName, "source", addr, "enrs.size", len(enrsMsg.Enrs))
 		if metrics.Enabled() {
 			p.portalMetrics.messagesSentContent.Mark(1)
 		}
