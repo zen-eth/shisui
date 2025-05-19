@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/mattn/go-isatty"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/urfave/cli/v2"
@@ -17,10 +16,6 @@ import (
 	"github.com/zen-eth/shisui/internal/flags"
 	"github.com/zen-eth/shisui/portal"
 	"go.uber.org/automaxprocs/maxprocs"
-)
-
-var (
-	storageCapacity *metrics.Gauge
 )
 
 const (
