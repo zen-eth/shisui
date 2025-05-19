@@ -5,7 +5,6 @@ import (
 	"errors"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"os"
 	"strings"
 )
 
@@ -78,13 +77,6 @@ func newPortalMetrics(protocolName string) *portalMetrics {
 		contentDiscard:              metrics.NewRegisteredCounter("portal/"+protocolName+"/content/gossip/discard", nil),
 		gossipDropCount:             metrics.NewRegisteredCounter("portal/"+protocolName+"/gossip/drop", nil),
 	}
-}
-
-type networkFileMetric struct {
-	filename string
-	metric   *metrics.Gauge
-	file     *os.File
-	network  string
 }
 
 type PortalStorageMetrics struct {
