@@ -85,10 +85,11 @@ func (p *API) getBlock(blockNrOrHash rpc.BlockNumberOrHash, fullTransactions boo
 	number, ok := blockNrOrHash.Number()
 	if ok {
 		blockHeader, err = p.History.GetBlockHeaderByNumber(uint64(number.Int64()))
-		// handle content not foud, must return NULL
 		if errors.Is(err, storage.ErrContentNotFound) {
+			// workaround to handle content not found, must return NULL and no errors
+			var nilMap map[string]interface{}
 			log.Error("content not found error getting block header with number", "number", uint64(number.Int64()), "err", err)
-			return nil, nil
+			return nilMap, nil
 		}
 		if err != nil {
 			log.Error("error getting block header with number", "number", uint64(number.Int64()), "err", err)
@@ -97,10 +98,11 @@ func (p *API) getBlock(blockNrOrHash rpc.BlockNumberOrHash, fullTransactions boo
 	} else {
 		hash, _ := blockNrOrHash.Hash()
 		blockHeader, err = p.History.GetBlockHeader(hash.Bytes())
-		// handle content not foud, must return NULL
 		if errors.Is(err, storage.ErrContentNotFound) {
+			// workaround to handle content not found, must return NULL and no errors
+			var nilMap map[string]interface{}
 			log.Error("content not found error getting block header with hash", "hash", hash, "err", err)
-			return nil, nil
+			return nilMap, nil
 		}
 		if err != nil {
 			log.Error("error getting block header with hash", "hash", hash, "err", err)
