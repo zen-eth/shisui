@@ -3,15 +3,12 @@ package portalwire
 import (
 	"database/sql"
 	"errors"
-	"os"
-	"path"
-	"slices"
-	"strings"
-	"time"
-
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"strings"
 )
+
+var ErrMetricsDisabled = errors.New("metrics are disabled")
 
 type portalMetrics struct {
 	messagesReceivedAccept      *metrics.Meter
@@ -44,6 +41,7 @@ type portalMetrics struct {
 
 	contentDecodedTrue  *metrics.Counter
 	contentDecodedFalse *metrics.Counter
+	contentDiscard      *metrics.Counter
 
 	gossipDropCount *metrics.Counter
 }
@@ -76,15 +74,9 @@ func newPortalMetrics(protocolName string) *portalMetrics {
 		utpOutSuccess:               metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/outbound/success", nil),
 		contentDecodedTrue:          metrics.NewRegisteredCounter("portal/"+protocolName+"/content/decoded/true", nil),
 		contentDecodedFalse:         metrics.NewRegisteredCounter("portal/"+protocolName+"/content/decoded/false", nil),
+		contentDiscard:              metrics.NewRegisteredCounter("portal/"+protocolName+"/content/gossip/discard", nil),
 		gossipDropCount:             metrics.NewRegisteredCounter("portal/"+protocolName+"/gossip/drop", nil),
 	}
-}
-
-type networkFileMetric struct {
-	filename string
-	metric   *metrics.Gauge
-	file     *os.File
-	network  string
 }
 
 type PortalStorageMetrics struct {
@@ -98,73 +90,9 @@ const (
 	contentStorageUsageSql = "SELECT SUM( length(value) ) FROM kvstore;"
 )
 
-// CollectPortalMetrics periodically collects various metrics about system entities.
-func CollectPortalMetrics(refresh time.Duration, networks []string, dataDir string) {
-	// Short circuit if the metrics system is disabled
-	if !metrics.Enabled() {
-		return
-	}
-
-	// Define the various metrics to collect
-	var (
-		historyTotalStorage = metrics.GetOrRegisterGauge("portal/history/total_storage", nil)
-		beaconTotalStorage  = metrics.GetOrRegisterGauge("portal/beacon/total_storage", nil)
-		stateTotalStorage   = metrics.GetOrRegisterGauge("portal/state/total_storage", nil)
-	)
-
-	var metricsArr []*networkFileMetric
-	if slices.Contains(networks, History.Name()) {
-		dbPath := path.Join(dataDir, History.Name())
-		metricsArr = append(metricsArr, &networkFileMetric{
-			filename: path.Join(dbPath, History.Name()+".sqlite"),
-			metric:   historyTotalStorage,
-			network:  History.Name(),
-		})
-	}
-	if slices.Contains(networks, Beacon.Name()) {
-		dbPath := path.Join(dataDir, Beacon.Name())
-		metricsArr = append(metricsArr, &networkFileMetric{
-			filename: path.Join(dbPath, Beacon.Name()+".sqlite"),
-			metric:   beaconTotalStorage,
-			network:  Beacon.Name(),
-		})
-	}
-	if slices.Contains(networks, State.Name()) {
-		dbPath := path.Join(dataDir, State.Name())
-		metricsArr = append(metricsArr, &networkFileMetric{
-			filename: path.Join(dbPath, State.Name()+".sqlite"),
-			metric:   stateTotalStorage,
-			network:  State.Name(),
-		})
-	}
-
-	for {
-		for _, m := range metricsArr {
-			var err error = nil
-			if m.file == nil {
-				m.file, err = os.OpenFile(m.filename, os.O_RDONLY, 0600)
-				if err != nil {
-					log.Debug("Could not open file", "network", m.network, "file", m.filename, "metric", "total_storage", "err", err)
-				}
-			}
-			if m.file != nil && err == nil {
-				stat, err := m.file.Stat()
-				if err != nil {
-					log.Warn("Could not get file stat", "network", m.network, "file", m.filename, "metric", "total_storage", "err", err)
-				}
-				if err == nil {
-					m.metric.Update(stat.Size())
-				}
-			}
-		}
-
-		time.Sleep(refresh)
-	}
-}
-
 func NewPortalStorageMetrics(network string, db *sql.DB) (*PortalStorageMetrics, error) {
 	if !metrics.Enabled() {
-		return nil, nil
+		return nil, ErrMetricsDisabled
 	}
 
 	if network != History.Name() && network != Beacon.Name() && network != State.Name() {

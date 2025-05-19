@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	cache "github.com/go-pkgz/expirable-cache/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/zen-eth/shisui/portalwire"
 	"github.com/zen-eth/shisui/storage"
@@ -35,11 +36,11 @@ func ContentId(contentKey []byte) []byte {
 }
 
 func TestValidateHeader(t *testing.T) {
-	entrys, err := parseBlockHeaderKeyContent()
+	entries, err := parseBlockHeaderKeyContent()
 	require.NoError(t, err)
 	historyNetwork, err := genHistoryNetwork(":7891", nil)
 	require.NoError(t, err)
-	for _, entry := range entrys {
+	for _, entry := range entries {
 		err = historyNetwork.validateContent(entry.key, entry.value)
 		require.NoError(t, err)
 
@@ -280,10 +281,11 @@ func parseBlockHeaderKeyContent() ([]contentEntry, error) {
 
 func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 	glogger := log.NewGlogHandler(log.NewTerminalHandler(os.Stderr, true))
-	slogVerbosity := log.FromLegacyLevel(5)
+	slogVerbosity := log.FromLegacyLevel(3)
 	glogger.Verbosity(slogVerbosity)
 	log.SetDefault(log.NewLogger(glogger))
 	conf := portalwire.DefaultPortalProtocolConfig()
+	conf.VersionsCacheTTL = 1 * time.Second
 	if addr != "" {
 		conf.ListenAddr = addr
 	}
@@ -328,10 +330,25 @@ func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 
 	contentQueue := make(chan *portalwire.ContentElement, 50)
 	utpSocket := portalwire.NewZenEthUtp(context.Background(), conf, discV5, conn)
-	portalProtocol, err := portalwire.NewPortalProtocol(conf, portalwire.History, privKey, conn, localNode, discV5, utpSocket, &storage.MockStorage{Db: make(map[string][]byte)}, contentQueue)
+	versionsCache := cache.NewCache[*enode.Node, uint8]().WithMaxKeys(conf.VersionsCacheSize).WithTTL(conf.VersionsCacheTTL)
+
+	portalProtocol, err := portalwire.NewPortalProtocol(conf, portalwire.History, privKey, conn, localNode, discV5, utpSocket, &storage.MockStorage{Db: make(map[string][]byte)}, contentQueue, versionsCache)
 	if err != nil {
 		return nil, err
 	}
+
+	versionsCacheTicker := time.NewTicker(conf.VersionsCacheTTL / 2)
+	go func() {
+		defer versionsCacheTicker.Stop()
+		for {
+			select {
+			case <-versionsCacheTicker.C:
+				versionsCache.DeleteExpired()
+			case <-portalProtocol.WaitForClose():
+				return
+			}
+		}
+	}()
 
 	accu, err := NewMasterAccumulator()
 	if err != nil {

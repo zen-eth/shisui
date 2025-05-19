@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/panjf2000/ants/v2"
 	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
@@ -51,6 +52,8 @@ var (
 )
 
 var emptyReceiptHash = hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
+
+var antsPool, _ = ants.NewPool(100, ants.WithNonblocking(true))
 
 type ContentKey struct {
 	selector ContentType
@@ -298,10 +301,10 @@ func (h *Network) GetReceipts(blockHash []byte) ([]*types.Receipt, error) {
 }
 
 func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error) {
-	if header.Number.Uint64() <= mergeBlockNumber {
+	blockNumber := header.Number.Uint64()
+	if blockNumber < mergeBlockNumber {
 		return h.masterAccumulator.VerifyHeader(*header, proof)
-	} else if header.Number.Uint64() < shanghaiBlockNumber {
-		blockNumber := header.Number.Uint64()
+	} else if blockNumber < shanghaiBlockNumber {
 		headerHash := header.Hash()
 		blockProofHistoricalRoots := &BlockProofHistoricalRoots{}
 		err := blockProofHistoricalRoots.UnmarshalSSZ(proof)
@@ -315,24 +318,38 @@ func (h *Network) verifyHeader(header *types.Header, proof []byte) (bool, error)
 		return true, nil
 	} else {
 		blockNumber := header.Number.Uint64()
-		summaries, err := h.getHistoricalSummaries(blockNumber)
-		if err != nil {
-			return false, err
-		}
 		headerHash := header.Hash()
-		blockProof := new(BlockProofHistoricalSummaries)
-		err = blockProof.UnmarshalSSZ(proof)
-		if err != nil {
-			return false, err
+
+		if blockNumber < cancunNumber {
+			blockProof := new(BlockProofHistoricalSummariesCapella)
+			err := blockProof.UnmarshalSSZ(proof)
+			if err != nil {
+				return false, err
+			}
+			summaries, err := h.getHistoricalSummaries(blockProof.Slot)
+			if err != nil {
+				return false, err
+			}
+			return VerifyCapellaToDenebHeader(headerHash[:], blockProof, *summaries), nil
+		} else {
+			blockProof := new(BlockProofHistoricalSummariesDeneb)
+			err := blockProof.UnmarshalSSZ(proof)
+			if err != nil {
+				return false, err
+			}
+			summaries, err := h.getHistoricalSummaries(blockProof.Slot)
+			if err != nil {
+				return false, err
+			}
+			return VerifyPostDenebHeader(headerHash[:], blockProof, *summaries), nil
 		}
-		return VerifyPostCapellaHeader(headerHash[:], blockProof, *summaries), nil
 	}
 }
 
-func (h *Network) getHistoricalSummaries(blockNumber uint64) (*capella.HistoricalSummaries, error) {
+func (h *Network) getHistoricalSummaries(slot uint64) (*capella.HistoricalSummaries, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*4)
 	defer cancel()
-	epoch := GetEpochIndex(blockNumber)
+	epoch := slot / 32
 	key := beacon.HistoricalSummariesWithProofKey{
 		Epoch: epoch,
 	}
@@ -347,7 +364,7 @@ func (h *Network) getHistoricalSummaries(blockNumber uint64) (*capella.Historica
 
 	arg := hexutil.Encode(contentKey)
 	res := &portalwire.ContentInfo{}
-	err = h.client.CallContext(ctx, res, "beacon_historyGetContent", arg)
+	err = h.client.CallContext(ctx, res, "portal_beaconGetContent", arg)
 	if err != nil {
 		return nil, err
 	}
@@ -355,12 +372,12 @@ func (h *Network) getHistoricalSummaries(blockNumber uint64) (*capella.Historica
 	if err != nil {
 		return nil, err
 	}
-	proof := new(beacon.HistoricalSummariesWithProof)
+	proof := new(beacon.ForkedHistoricalSummariesWithProof)
 	err = proof.Deserialize(h.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 	if err != nil {
 		return nil, err
 	}
-	return &proof.HistoricalSummaries, nil
+	return &proof.HistoricalSummariesWithProof.HistoricalSummaries, nil
 }
 
 func ValidateBlockBodyBytes(bodyBytes []byte, header *types.Header) (*types.Body, error) {
@@ -568,26 +585,24 @@ func (h *Network) processContentLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case contentElement := <-contentChan:
-			err := h.validateContents(contentElement.ContentKeys, contentElement.Contents)
-			if err != nil {
-				h.log.Error("validate content failed", "err", err)
-				continue
-			}
-
-			go func(ctx context.Context) {
-				select {
-				case <-ctx.Done():
+			err := antsPool.Submit(func() {
+				err := h.validateContents(contentElement.ContentKeys, contentElement.Contents)
+				if err != nil {
+					h.log.Error("validate contents failed", "err", err)
 					return
-				default:
+				}
+				go func() {
 					var gossippedNum int
 					gossippedNum, err := h.portalProtocol.Gossip(&contentElement.Node, contentElement.ContentKeys, contentElement.Contents)
 					h.log.Trace("gossippedNum", "gossippedNum", gossippedNum)
 					if err != nil {
 						h.log.Error("gossip failed", "err", err)
-						return
 					}
-				}
-			}(ctx)
+				}()
+			})
+			if err != nil {
+				h.log.Warn("submit to ants pool failed", "err", err)
+			}
 		}
 	}
 }
@@ -666,11 +681,16 @@ func (h *Network) validateContent(contentKey []byte, content []byte) error {
 func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) error {
 	for i, content := range contents {
 		contentKey := contentKeys[i]
-		err := h.validateContent(contentKey, content)
-		if err != nil {
-			return fmt.Errorf("content validate failed with content key %x and content %x, err is %v", contentKey, content, err)
-		}
 		contentId := h.portalProtocol.ToContentId(contentKey)
+		_, err := h.portalProtocol.Get(contentKey, contentId)
+		// exist in db
+		if err == nil {
+			continue
+		}
+		err = h.validateContent(contentKey, content)
+		if err != nil {
+			return fmt.Errorf("content validate failed with content key %x, err is %w", contentKey, err)
+		}
 		_ = h.portalProtocol.Put(contentKey, contentId, content)
 	}
 	return nil

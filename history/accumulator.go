@@ -21,7 +21,10 @@ const (
 	epochSize                  = 8192
 	mergeBlockNumber    uint64 = 15537394 // first POS block
 	shanghaiBlockNumber uint64 = 17_034_870
-	preMergeEpochs             = (mergeBlockNumber + epochSize - 1) / epochSize
+	// cancunNumber represents the block number at which the Cancun hard fork activates.
+	// Reference: https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/cancun.md
+	cancunNumber   uint64 = 19_426_587
+	preMergeEpochs        = (mergeBlockNumber + epochSize - 1) / epochSize
 )
 
 var (
@@ -202,7 +205,7 @@ func (f MasterAccumulator) VerifyAccumulatorProof(header types.Header, proof Acc
 
 func (f MasterAccumulator) VerifyHeader(header types.Header, proof []byte) (bool, error) {
 	if len(proof)%32 != 0 {
-		return false, errors.New("proof length is not 32 bytes")
+		return false, errors.New("proof length should be 32*n bytes")
 	}
 	return f.VerifyAccumulatorProof(header, toAccumulatorProof(proof))
 }
@@ -269,13 +272,13 @@ func NewHistoricalRootsAccumulator(spec *common.Spec) HistoricalRootsAccumulator
 }
 
 func (h HistoricalRootsAccumulator) VerifyPostMergePreCapellaHeader(blockNumber uint64, headerHash common.Root, proof *BlockProofHistoricalRoots) error {
-	if blockNumber <= mergeBlockNumber {
+	if blockNumber < mergeBlockNumber {
 		return errors.New("invalid historicalRootsBlockProof found for pre-merge header")
 	}
 	if blockNumber >= shanghaiBlockNumber {
 		return errors.New("invalid historicalRootsBlockProof found for post-Shanghai header")
 	}
-	if !VerifyBeaconBlock(headerHash[:], proof.GetExecutionBlockProof(), tree.Root(proof.BeaconBlockRoot)) {
+	if !VerifyBellatrixToDenebExecutionBlockProof(headerHash[:], proof.GetExecutionBlockProof(), tree.Root(proof.BeaconBlockRoot)) {
 		return errors.New("merkle proof validation failed for BeaconBlockBodyProof")
 	}
 

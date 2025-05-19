@@ -91,7 +91,7 @@ func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) erro
 		contentKey := contentKeys[i]
 		err := h.validateContent(contentKey, content)
 		if err != nil {
-			h.log.Error("content validate failed", "contentKey", hexutil.Encode(contentKey), "content", hexutil.Encode(content), "err", err)
+			h.log.Error("content validate failed", "contentKey", hexutil.Encode(contentKey), "err", err)
 			return err
 		}
 		contentId := h.portalProtocol.ToContentId(contentKey)

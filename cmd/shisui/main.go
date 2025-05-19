@@ -2,15 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/signal"
 	"slices"
 	"syscall"
-	"time"
-
-	"os"
 
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/mattn/go-isatty"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/urfave/cli/v2"
@@ -18,12 +15,7 @@ import (
 	"github.com/zen-eth/shisui/internal/debug"
 	"github.com/zen-eth/shisui/internal/flags"
 	"github.com/zen-eth/shisui/portal"
-	"github.com/zen-eth/shisui/portalwire"
 	"go.uber.org/automaxprocs/maxprocs"
-)
-
-var (
-	storageCapacity *metrics.Gauge
 )
 
 const (
@@ -116,13 +108,6 @@ func shisui(ctx *cli.Context) error {
 
 	// Start metrics export if enabled
 	utils.SetupMetrics(config.Metrics)
-
-	go portalwire.CollectPortalMetrics(5*time.Second, ctx.StringSlice(utils.PortalNetworksFlag.Name), ctx.String(utils.PortalDataDirFlag.Name))
-
-	if metrics.Enabled() {
-		storageCapacity = metrics.NewRegisteredGauge("portal/storage_capacity", nil)
-		storageCapacity.Update(ctx.Int64(utils.PortalDataCapacityFlag.Name))
-	}
 
 	node, err := portal.NewNode(config)
 	if err != nil {

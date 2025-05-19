@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	bitfield "github.com/OffchainLabs/go-bitfield"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 )
@@ -22,6 +21,10 @@ const (
 	RateLimited               // rate limit reached. Node can't handle anymore connections
 	InboundTransferInProgress // inbound rate limit reached for accepting a specific content_id, used to protect against thundering herds
 	Unspecified
+)
+
+var (
+	EmptyBytes = make([]byte, 0)
 )
 
 type CommonAccept interface {
@@ -146,12 +149,6 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 		ContentKeys: make([]uint8, len(request.ContentKeys)),
 	}
 	acceptContentKeys := make([][]byte, 0)
-	if len(p.contentQueue) >= cap(p.contentQueue) {
-		for i := 0; i < len(request.ContentKeys); i++ {
-			acceptV1.ContentKeys[i] = uint8(RateLimited)
-		}
-		return acceptV1, acceptContentKeys, nil
-	}
 	for i, contentKey := range request.ContentKeys {
 		contentId := p.toContentId(contentKey)
 		if contentId == nil {
@@ -166,15 +163,26 @@ func (p *PortalProtocol) filterContentKeysV1(request *Offer) (CommonAccept, [][]
 			acceptV1.ContentKeys[i] = uint8(AlreadyStored)
 			continue
 		}
-		if _, exist := p.inTransferMap.Load(hexutil.Encode(contentKey)); exist {
+		if exist := p.transferringKeyCache.Has(contentKey); exist {
 			acceptV1.ContentKeys[i] = uint8(InboundTransferInProgress)
 			continue
 		}
-		p.inTransferMap.Store(hexutil.Encode(contentKey), struct{}{})
 		acceptV1.ContentKeys[i] = uint8(Accepted)
 		acceptContentKeys = append(acceptContentKeys, contentKey)
 	}
 	return acceptV1, acceptContentKeys, nil
+}
+
+func (p *PortalProtocol) cacheTransferringKeys(contentKeys [][]byte) {
+	for _, key := range contentKeys {
+		p.transferringKeyCache.Set(key, EmptyBytes)
+	}
+}
+
+func (p *PortalProtocol) deleteTransferringContentKeys(contentKeys [][]byte) {
+	for _, key := range contentKeys {
+		p.transferringKeyCache.Del(key)
+	}
 }
 
 func (p *PortalProtocol) parseOfferResp(node *enode.Node, data []byte) (CommonAccept, error) {

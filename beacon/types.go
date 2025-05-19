@@ -328,13 +328,15 @@ func (flcfu *ForkedLightClientFinalityUpdate) GetBeaconSlot() uint64 {
 	return 0
 }
 
+const HistoricalSummariesProofLen = 6
+
 type HistoricalSummariesProof struct {
-	Proof [5]common.Bytes32
+	Proof [HistoricalSummariesProofLen]common.Bytes32
 }
 
 func (hsp *HistoricalSummariesProof) Deserialize(dr *codec.DecodingReader) error {
 	roots := hsp.Proof[:]
-	return tree.ReadRoots(dr, &roots, 5)
+	return tree.ReadRoots(dr, &roots, HistoricalSummariesProofLen)
 }
 
 func (hsp *HistoricalSummariesProof) Serialize(w *codec.EncodingWriter) error {
@@ -342,16 +344,16 @@ func (hsp *HistoricalSummariesProof) Serialize(w *codec.EncodingWriter) error {
 }
 
 func (hsp *HistoricalSummariesProof) ByteLength() uint64 {
-	return 32 * 5
+	return 32 * HistoricalSummariesProofLen
 }
 
 func (hsp *HistoricalSummariesProof) FixedLength() uint64 {
-	return 32 * 5
+	return 32 * HistoricalSummariesProofLen
 }
 
 func (hsp *HistoricalSummariesProof) HashTreeRoot(hFn tree.HashFn) common.Root {
 	return hFn.ComplexVectorHTR(func(i uint64) tree.HTR {
-		if i < 5 {
+		if i < HistoricalSummariesProofLen {
 			return &hsp.Proof[i]
 		}
 		return nil

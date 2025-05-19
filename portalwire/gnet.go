@@ -38,6 +38,13 @@ func NewGnetConn(log log.Logger) *gnetConn {
 	}
 }
 
+func WithMulticore(number int) gnet.Option {
+	return func(opts *gnet.Options) {
+		opts.Multicore = true
+		opts.NumEventLoop = number
+	}
+}
+
 func (gc *gnetConn) ListenUDP(ctx context.Context, addr string) error {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {

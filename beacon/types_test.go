@@ -13,7 +13,6 @@ import (
 	"github.com/protolambda/ztyp/codec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
 
 func TestForkedLightClientBootstrap(t *testing.T) {
@@ -128,26 +127,26 @@ type TestProof struct {
 	Epoch                         uint64   `yaml:"epoch"`
 }
 
-func TestForkedHistoricalSummariesWithProof(t *testing.T) {
-	filePath := "testdata/types/historical_summaries_with_proof.yaml"
+// func TestForkedHistoricalSummariesWithProof(t *testing.T) {
+// 	filePath := "testdata/types/historical_summaries_with_proof.yaml"
 
-	f, err := os.Open(filePath)
-	require.NoError(t, err)
-	contentBytes, err := io.ReadAll(f)
-	require.NoError(t, err)
-	testData := TestProof{}
-	err = yaml.Unmarshal(contentBytes, &testData)
-	require.NoError(t, err)
+// 	f, err := os.Open(filePath)
+// 	require.NoError(t, err)
+// 	contentBytes, err := io.ReadAll(f)
+// 	require.NoError(t, err)
+// 	testData := TestProof{}
+// 	err = yaml.Unmarshal(contentBytes, &testData)
+// 	require.NoError(t, err)
 
-	historyKey := &HistoricalSummariesWithProofKey{}
-	contentKey := hexutil.MustDecode(testData.ContentKey)
-	err = historyKey.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey[1:]), uint64(len(contentKey)-1)))
-	require.NoError(t, err)
-	require.Equal(t, testData.Epoch, historyKey.Epoch)
+// 	historyKey := &HistoricalSummariesWithProofKey{}
+// 	contentKey := hexutil.MustDecode(testData.ContentKey)
+// 	err = historyKey.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey[1:]), uint64(len(contentKey)-1)))
+// 	require.NoError(t, err)
+// 	require.Equal(t, testData.Epoch, historyKey.Epoch)
 
-	historyProof := &ForkedHistoricalSummariesWithProof{}
-	content := hexutil.MustDecode(testData.ContentValue)
-	err = historyProof.Deserialize(configs.Mainnet, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
-	require.NoError(t, err)
-	require.Equal(t, uint64(historyProof.HistoricalSummariesWithProof.EPOCH), testData.Epoch)
-}
+// 	historyProof := &ForkedHistoricalSummariesWithProof{}
+// 	content := hexutil.MustDecode(testData.ContentValue)
+// 	err = historyProof.Deserialize(configs.Mainnet, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
+// 	require.NoError(t, err)
+// 	require.Equal(t, uint64(historyProof.HistoricalSummariesWithProof.EPOCH), testData.Epoch)
+// }

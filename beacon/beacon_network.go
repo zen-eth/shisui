@@ -266,6 +266,9 @@ func (bn *Network) validateContent(contentKey []byte, content []byte) error {
 		}
 		// TODO get root from light client
 		header := bn.lightClient.GetFinalityHeader()
+		if header == nil {
+			return fmt.Errorf("finality header is nil")
+		}
 		latestFinalizedRoot := header.StateRoot
 
 		valid := bn.stateSummariesValidation(*forkedHistoricalSummariesWithProof, latestFinalizedRoot)
@@ -283,13 +286,13 @@ func (bn *Network) validateContents(contentKeys [][]byte, contents [][]byte) err
 		contentKey := contentKeys[i]
 		err := bn.validateContent(contentKey, content)
 		if err != nil {
-			bn.log.Error("content validate failed", "contentKey", hexutil.Encode(contentKey), "content", hexutil.Encode(content), "err", err)
-			return fmt.Errorf("content validate failed with content key %x and content %x", contentKey, content)
+			bn.log.Error("content validate failed", "contentKey", hexutil.Encode(contentKey), "err", err)
+			return fmt.Errorf("content validate failed with content key %x", contentKey)
 		}
 		contentId := bn.portalProtocol.ToContentId(contentKey)
 		err = bn.portalProtocol.Put(contentKey, contentId, content)
 		if err != nil {
-			bn.log.Error("put content failed", "contentKey", hexutil.Encode(contentKey), "content", hexutil.Encode(content), "err", err)
+			bn.log.Error("put content failed", "contentKey", hexutil.Encode(contentKey), "err", err)
 			return err
 		}
 	}

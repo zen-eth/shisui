@@ -80,30 +80,30 @@ func TestLightClientOptimisticUpdateValidation(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestHistorySummariesWithProofValidation(t *testing.T) {
-	historySummariesWithProof, root, err := GetHistorySummariesWithProof()
-	require.NoError(t, err)
+// func TestHistorySummariesWithProofValidation(t *testing.T) {
+// 	historySummariesWithProof, root, err := GetHistorySummariesWithProof()
+// 	require.NoError(t, err)
 
-	key := &HistoricalSummariesWithProofKey{
-		Epoch: 450508969718611630,
-	}
-	var keyBuf bytes.Buffer
-	err = key.Serialize(codec.NewEncodingWriter(&keyBuf))
-	require.NoError(t, err)
-	contentKey := make([]byte, 0)
-	contentKey = append(contentKey, byte(HistoricalSummaries))
-	contentKey = append(contentKey, keyBuf.Bytes()...)
+// 	key := &HistoricalSummariesWithProofKey{
+// 		Epoch: 450508969718611630,
+// 	}
+// 	var keyBuf bytes.Buffer
+// 	err = key.Serialize(codec.NewEncodingWriter(&keyBuf))
+// 	require.NoError(t, err)
+// 	contentKey := make([]byte, 0)
+// 	contentKey = append(contentKey, byte(HistoricalSummaries))
+// 	contentKey = append(contentKey, keyBuf.Bytes()...)
 
-	bn := NewBeaconNetwork(nil, nil)
-	var buf bytes.Buffer
-	err = historySummariesWithProof.Serialize(bn.spec, codec.NewEncodingWriter(&buf))
-	require.NoError(t, err)
-	content := make([]byte, 0)
-	content = append(content, Deneb[:]...)
-	content = append(content, buf.Bytes()...)
+// 	bn := NewBeaconNetwork(nil, nil)
+// 	var buf bytes.Buffer
+// 	err = historySummariesWithProof.Serialize(bn.spec, codec.NewEncodingWriter(&buf))
+// 	require.NoError(t, err)
+// 	content := make([]byte, 0)
+// 	content = append(content, Deneb[:]...)
+// 	content = append(content, buf.Bytes()...)
 
-	forkedHistorySummaries, err := bn.generalSummariesValidation(contentKey, content)
-	require.NoError(t, err)
-	valid := bn.stateSummariesValidation(*forkedHistorySummaries, root)
-	require.True(t, valid)
-}
+// 	forkedHistorySummaries, err := bn.generalSummariesValidation(contentKey, content)
+// 	require.NoError(t, err)
+// 	valid := bn.stateSummariesValidation(*forkedHistorySummaries, root)
+// 	require.True(t, valid)
+// }

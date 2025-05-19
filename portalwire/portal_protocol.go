@@ -1,6 +1,7 @@
 package portalwire
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	crand "crypto/rand"
@@ -31,6 +32,8 @@ import (
 	ssz "github.com/ferranbt/fastssz"
 	cache "github.com/go-pkgz/expirable-cache/v3"
 	"github.com/holiman/uint256"
+	zrntcommon "github.com/protolambda/zrnt/eth2/beacon/common"
+	"github.com/protolambda/ztyp/view"
 	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
 	utp "github.com/zen-eth/utp-go"
@@ -199,32 +202,38 @@ type OfferTrace struct {
 type SetPortalProtocolOption func(p *PortalProtocol)
 
 type PortalProtocolConfig struct {
-	BootstrapNodes        []*enode.Node
-	ListenAddr            string
-	NetRestrict           *netutil.Netlist
-	NodeRadius            *uint256.Int
-	RadiusCacheSize       int
-	CapabilitiesCacheSize int
-	VersionsCacheSize     int
-	NodeDBPath            string
-	NAT                   nat.Interface
-	clock                 mclock.Clock
-	TrustedBlockRoot      []byte
-	MaxUtpConnSize        int
+	BootstrapNodes                []*enode.Node
+	ListenAddr                    string
+	NetRestrict                   *netutil.Netlist
+	NodeRadius                    *uint256.Int
+	RadiusCacheSize               int
+	CapabilitiesCacheSize         int
+	EphemeralHeaderCountCacheSize int
+	ContentKeyCacheSize           int
+	VersionsCacheSize             int
+	VersionsCacheTTL              time.Duration
+	NodeDBPath                    string
+	NAT                           nat.Interface
+	clock                         mclock.Clock
+	TrustedBlockRoot              []byte
+	MaxUtpConnSize                int
 }
 
 func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 	return &PortalProtocolConfig{
-		BootstrapNodes:        make([]*enode.Node, 0),
-		ListenAddr:            ":9009",
-		NetRestrict:           nil,
-		RadiusCacheSize:       32 * 1024 * 1024,
-		CapabilitiesCacheSize: 16 * 1024 * 1024,
-		VersionsCacheSize:     versionsCacheSize,
-		NodeDBPath:            "",
-		clock:                 mclock.System{},
-		TrustedBlockRoot:      make([]byte, 0),
-		MaxUtpConnSize:        DefaultUtpConnSize,
+		BootstrapNodes:                make([]*enode.Node, 0),
+		ListenAddr:                    ":9009",
+		NetRestrict:                   nil,
+		RadiusCacheSize:               32 * 1024 * 1024,
+		CapabilitiesCacheSize:         32 * 1024 * 1024,
+		EphemeralHeaderCountCacheSize: 32 * 1024 * 1024,
+		ContentKeyCacheSize:           32 * 1024 * 1024,
+		VersionsCacheSize:             versionsCacheSize,
+		VersionsCacheTTL:              expirationVersionMinutes,
+		NodeDBPath:                    "",
+		clock:                         mclock.System{},
+		TrustedBlockRoot:              make([]byte, 0),
+		MaxUtpConnSize:                DefaultUtpConnSize,
 	}
 }
 
@@ -244,15 +253,14 @@ type PortalProtocol struct {
 
 	Utp *UtpTransportService
 
-	validSchemes            enr.IdentityScheme
-	radiusCache             *fastcache.Cache
-	radiusCacheRWLock       sync.RWMutex
-	capabilitiesCache       *fastcache.Cache
-	capabilitiesCacheRWLock sync.RWMutex
-	closeCtx                context.Context
-	cancelCloseCtx          context.CancelFunc
-	storage                 storage.ContentStorage
-	toContentId             func(contentKey []byte) []byte
+	validSchemes              enr.IdentityScheme
+	radiusCache               *fastcache.Cache
+	capabilitiesCache         *fastcache.Cache
+	ephemeralHeaderCountCache *fastcache.Cache
+	closeCtx                  context.Context
+	cancelCloseCtx            context.CancelFunc
+	storage                   storage.ContentStorage
+	toContentId               func(contentKey []byte) []byte
 
 	contentQueue chan *ContentElement
 	offerQueue   chan *OfferRequestWithNode
@@ -266,7 +274,7 @@ type PortalProtocol struct {
 
 	disableTableInitCheck bool
 	currentVersions       protocolVersions
-	inTransferMap         sync.Map
+	transferringKeyCache  *fastcache.Cache
 
 	versionsCache cache.Cache[*enode.Node, uint8]
 }
@@ -282,7 +290,7 @@ func WithDisableTableInitCheckOption(disable bool) SetPortalProtocolOption {
 	}
 }
 
-func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, contentQueue chan *ContentElement, setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
+func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, privateKey *ecdsa.PrivateKey, conn discover.UDPConn, localNode *enode.LocalNode, discV5 *discover.UDPv5, utp *UtpTransportService, storage storage.ContentStorage, contentQueue chan *ContentElement, versionsCache cache.Cache[*enode.Node, uint8], setOpts ...SetPortalProtocolOption) (*PortalProtocol, error) {
 	// set versions in test
 	currentVersions := protocolVersions{}
 	err := localNode.Node().Load(&currentVersions)
@@ -293,38 +301,32 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
 
 	protocol := &PortalProtocol{
-		protocolId:        string(protocolId),
-		protocolName:      protocolId.Name(),
-		Log:               log.New("protocol", protocolId.Name()),
-		PrivateKey:        privateKey,
-		NetRestrict:       config.NetRestrict,
-		BootstrapNodes:    config.BootstrapNodes,
-		radiusCache:       fastcache.New(config.RadiusCacheSize),
-		capabilitiesCache: fastcache.New(config.CapabilitiesCacheSize),
-		versionsCache:     cache.NewCache[*enode.Node, uint8]().WithMaxKeys(config.VersionsCacheSize).WithTTL(expirationVersionMinutes),
-		closeCtx:          closeCtx,
-		cancelCloseCtx:    cancelCloseCtx,
-		localNode:         localNode,
-		validSchemes:      enode.ValidSchemes,
-		storage:           storage,
-		toContentId:       defaultContentIdFunc,
-		contentQueue:      contentQueue,
-		offerQueue:        make(chan *OfferRequestWithNode, offerQueueSize),
-		conn:              conn,
-		DiscV5:            discV5,
-		NAT:               config.NAT,
-		clock:             config.clock,
-		Utp:               utp,
-		currentVersions:   currentVersions,
+		protocolId:                string(protocolId),
+		protocolName:              protocolId.Name(),
+		Log:                       log.New("protocol", protocolId.Name()),
+		PrivateKey:                privateKey,
+		NetRestrict:               config.NetRestrict,
+		BootstrapNodes:            config.BootstrapNodes,
+		radiusCache:               fastcache.New(config.RadiusCacheSize),
+		capabilitiesCache:         fastcache.New(config.CapabilitiesCacheSize),
+		ephemeralHeaderCountCache: fastcache.New(config.EphemeralHeaderCountCacheSize),
+		versionsCache:             versionsCache,
+		closeCtx:                  closeCtx,
+		cancelCloseCtx:            cancelCloseCtx,
+		localNode:                 localNode,
+		validSchemes:              enode.ValidSchemes,
+		storage:                   storage,
+		toContentId:               defaultContentIdFunc,
+		contentQueue:              contentQueue,
+		offerQueue:                make(chan *OfferRequestWithNode, offerQueueSize),
+		conn:                      conn,
+		DiscV5:                    discV5,
+		NAT:                       config.NAT,
+		clock:                     config.clock,
+		Utp:                       utp,
+		currentVersions:           currentVersions,
+		transferringKeyCache:      fastcache.New(config.ContentKeyCacheSize),
 	}
-
-	ticker := time.NewTicker(expirationVersionMinutes / 2)
-	defer ticker.Stop()
-	go func() {
-		for range ticker.C {
-			protocol.versionsCache.DeleteExpired()
-		}
-	}()
 
 	for _, setOpt := range setOpts {
 		setOpt(protocol)
@@ -378,6 +380,11 @@ func (p *PortalProtocol) Stop() {
 	p.table.close()
 }
 
+// Only used for testing
+func (p *PortalProtocol) WaitForClose() <-chan struct{} {
+	return p.closeCtx.Done()
+}
+
 func (p *PortalProtocol) RoutingTableInfo() [][]string {
 	return p.table.nodeIds()
 }
@@ -389,8 +396,6 @@ func (p *PortalProtocol) AddEnr(n *enode.Node) {
 		return
 	}
 	id := n.ID().String()
-	p.radiusCacheRWLock.Lock()
-	defer p.radiusCacheRWLock.Unlock()
 	p.radiusCache.Set([]byte(id), MaxDistance)
 }
 
@@ -445,18 +450,35 @@ func (p *PortalProtocol) ping(node *enode.Node) (uint64, error) {
 }
 
 func (p *PortalProtocol) pingInner(node *enode.Node) (*Pong, []byte, error) {
-	radiusBytes, err := p.Radius().MarshalSSZ()
+	capabilitiesBytes := p.capabilitiesCache.Get(nil, []byte(node.ID().String()))
+
+	var payloadType = pingext.ClientInfo
+
+	if capabilitiesBytes != nil {
+		capabilities := &pingext.CapabilitiesPayload{}
+		if err := capabilities.UnmarshalSSZ(capabilitiesBytes); err == nil {
+			uint16Capabilities := make([]uint16, 0, len(*capabilities))
+			for _, value := range *capabilities {
+				uint16Capabilities = append(uint16Capabilities, uint16(value))
+			}
+
+			if ext := p.PingExtensions.LatestMutuallySupportedBaseExtension(uint16Capabilities); ext != nil {
+				switch *ext {
+				case pingext.BasicRadius:
+					payloadType = pingext.BasicRadius
+				case pingext.HistoryRadius:
+					payloadType = pingext.HistoryRadius
+				}
+			}
+		}
+	}
+
+	payload, err := p.genPayloadByType(payloadType)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	payload := pingext.NewClientInfoAndCapabilitiesPayload(radiusBytes, p.PingExtensions.Extensions())
-
-	data, err := payload.MarshalSSZ()
-	if err != nil {
-		return nil, nil, err
-	}
-	return p.pingInnerWithPayload(node, pingext.ClientInfo, data)
+	return p.pingInnerWithPayload(node, payloadType, payload)
 }
 
 func (p *PortalProtocol) pingInnerWithPayload(node *enode.Node, payloadType uint16, payload []byte) (*Pong, []byte, error) {
@@ -668,6 +690,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				Type: Declined,
 			}
 		}
+		p.Log.Debug("trace offer declined", "keys", accept.GetContentKeys())
 		return accept.GetContentKeys(), nil
 	}
 	notStartedUtp = false
@@ -746,7 +769,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 					p.Log.Error("failed to write to utp connection", "err", err)
 					return
 				}
-				p.Log.Trace(">> CONTENT/"+p.protocolName, "id", target.ID(), "contents", contents, "size", written)
+				p.Log.Trace(">> CONTENT/"+p.protocolName, "id", target.ID(), "size", written)
 				if metrics.Enabled() {
 					p.portalMetrics.messagesSentContent.Mark(1)
 					p.portalMetrics.utpOutSuccess.Inc(1)
@@ -855,7 +878,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 			return 0xff, nil, err
 		}
 
-		p.Log.Trace("<< CONTENT_ENRS/"+p.protocolName, "id", target.ID(), "enrs", enrs)
+		p.Log.Trace("<< CONTENT_ENRS/"+p.protocolName, "id", target.ID(), "enrs.size", len(enrs.Enrs))
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
 		}
@@ -923,7 +946,7 @@ func (p *PortalProtocol) filterNodes(target *enode.Node, enrs [][]byte, distance
 		nodes = append(nodes, n)
 	}
 
-	p.Log.Trace("<< NODES/"+p.protocolName, "id", target.ID(), "total", len(enrs), "verified", verified, "nodes", nodes)
+	p.Log.Trace("<< NODES/"+p.protocolName, "id", target.ID(), "total", len(enrs), "verified", verified, "nodes.size", len(nodes))
 	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedNodes.Mark(1)
 	}
@@ -947,10 +970,6 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []
 	if metrics.Enabled() {
 		p.portalMetrics.messagesReceivedPong.Mark(1)
 	}
-	dataRadius, err := pingext.GetDataRadiusByType(pong.PayloadType, pong.Payload)
-	if err != nil {
-		return nil, nil, err
-	}
 
 	isAdded := p.table.addFoundNode(target, true)
 	if isAdded {
@@ -958,10 +977,59 @@ func (p *PortalProtocol) processPong(target *enode.Node, resp []byte) (*Pong, []
 	} else {
 		log.Debug("Node added to replacements list", "protocol", p.protocolName, "node", target.IP(), "port", target.UDP())
 	}
-	p.radiusCacheRWLock.Lock()
-	defer p.radiusCacheRWLock.Unlock()
-	p.radiusCache.Set([]byte(target.ID().String()), dataRadius)
+
+	dataRadius, err := p.processPongPayload(target, pong)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return pong, dataRadius, nil
+}
+
+func (p *PortalProtocol) processPongPayload(target *enode.Node, pong *Pong) ([]byte, error) {
+	if n := p.table.getNodeOrReplacement(target.ID()); n != nil {
+		if n.Seq() < pong.EnrSeq {
+			// Update the node in the routing table
+			_, err := p.RequestENR(n)
+			if err != nil {
+				p.Log.Error("failed to request ENR", "err", err)
+			}
+		}
+
+		if !p.PingExtensions.IsSupported(pong.PayloadType) {
+			return nil, pingext.ErrPayloadTypeIsNotSupported{}
+		}
+
+		switch pong.PayloadType {
+		case pingext.ClientInfo:
+			payload := &pingext.ClientInfoAndCapabilitiesPayload{}
+			err := payload.UnmarshalSSZ(pong.Payload)
+			if err != nil {
+				return nil, err
+			}
+			p.processClientInfo(target.ID(), payload)
+		case pingext.BasicRadius:
+			payload := &pingext.BasicRadiusPayload{}
+			err := payload.UnmarshalSSZ(pong.Payload)
+			if err != nil {
+				return nil, err
+			}
+			p.processBasicRadius(target.ID(), payload)
+		case pingext.HistoryRadius:
+			payload := &pingext.HistoryRadiusPayload{}
+			err := payload.UnmarshalSSZ(pong.Payload)
+			if err != nil {
+				return nil, err
+			}
+			p.processHistoryRadius(target.ID(), payload)
+		default:
+			return nil, pingext.ErrPayloadTypeIsNotSupported{}
+		}
+
+		radiusBytes := p.radiusCache.Get(nil, []byte(target.ID().String()))
+		return radiusBytes, nil
+	}
+	return nil, nil
 }
 
 func (p *PortalProtocol) handleTalkRequest(node *enode.Node, addr *net.UDPAddr, msg []byte) []byte {
@@ -1062,16 +1130,43 @@ func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 	} else {
 		switch ping.PayloadType {
 		case pingext.ClientInfo:
-			pong, err = p.handleClientInfo(id, ping.Payload)
+			payload := &pingext.ClientInfoAndCapabilitiesPayload{}
+			err = payload.UnmarshalSSZ(ping.Payload)
+			if err != nil {
+				errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
+				pong = p.createPong(pingext.Error, errPayload)
+				break
+			}
+			// Process the ping asynchronously. Any errors occurring in processPing
+			// will not affect the synchronous pong response. This is an intentional
+			// design choice to decouple ping processing from the response.
+			go p.processPing(id, ping, payload)
+			pong, err = p.handleClientInfo()
 			if err != nil {
 				return nil, err
 			}
 		case pingext.BasicRadius:
+			payload := &pingext.BasicRadiusPayload{}
+			err = payload.UnmarshalSSZ(ping.Payload)
+			if err != nil {
+				errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
+				pong = p.createPong(pingext.Error, errPayload)
+				break
+			}
+			go p.processPing(id, ping, payload)
 			pong, err = p.handleBasicRadius()
 			if err != nil {
 				return nil, err
 			}
 		case pingext.HistoryRadius:
+			payload := &pingext.HistoryRadiusPayload{}
+			err = payload.UnmarshalSSZ(ping.Payload)
+			if err != nil {
+				errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
+				pong = p.createPong(pingext.Error, errPayload)
+				break
+			}
+			go p.processPing(id, ping, payload)
 			pong, err = p.handleHistoryRadius()
 			if err != nil {
 				return nil, err
@@ -1091,31 +1186,145 @@ func (p *PortalProtocol) handlePing(id enode.ID, ping *Ping) ([]byte, error) {
 		return nil, err
 	}
 
-	talkRespBytes := make([]byte, 0, len(pongBytes)+1)
-	talkRespBytes = append(talkRespBytes, PONG)
-	talkRespBytes = append(talkRespBytes, pongBytes...)
+	talkRespBytes := make([]byte, 1+len(pongBytes))
+	talkRespBytes[0] = PONG
+	copy(talkRespBytes[1:], pongBytes)
 
 	return talkRespBytes, nil
 }
 
-func (p *PortalProtocol) handleClientInfo(id enode.ID, data []byte) (Pong, error) {
-	payload := &pingext.ClientInfoAndCapabilitiesPayload{}
-	err := payload.UnmarshalSSZ(data)
-	if err != nil {
-		errPayload := pingext.GetErrorPayloadBytes(pingext.ErrorDecodePayload)
-		return p.createPong(pingext.Error, errPayload), nil
+func (p *PortalProtocol) processPing(id enode.ID, ping *Ping, payload interface{}) {
+	if n := p.table.getNodeOrReplacement(id); n != nil {
+		if n.Seq() < ping.EnrSeq {
+			// Update the node in the routing table
+			_, err := p.RequestENR(n)
+			if err != nil {
+				p.Log.Error("failed to request ENR", "err", err)
+			}
+		}
+
+		if !p.PingExtensions.IsSupported(ping.PayloadType) {
+			p.Log.Error("unsupported ping payload type", "type", ping.PayloadType)
+			return
+		}
+
+		switch pld := payload.(type) {
+		case *pingext.ClientInfoAndCapabilitiesPayload:
+			p.processClientInfo(id, pld)
+		case *pingext.BasicRadiusPayload:
+			p.processBasicRadius(id, pld)
+		case *pingext.HistoryRadiusPayload:
+			p.processHistoryRadius(id, pld)
+		default:
+			p.Log.Error("unknown payload type", "type", ping.PayloadType)
+		}
 	}
-	p.radiusCacheRWLock.Lock()
-	p.radiusCache.Set([]byte(id.String()), payload.DataRadius[:])
-	p.radiusCacheRWLock.Unlock()
-	capBytes, err := payload.Capabilities.MarshalSSZ()
+}
+
+// updateRadiusCacheIfNeeded compares the incoming radius with the cached value and updates the cache if necessary.
+// It returns true if the cache was updated, false otherwise.
+func (p *PortalProtocol) updateRadiusCacheIfNeeded(id enode.ID, nodeIdBytes []byte, incomingRadius zrntcommon.Root) bool {
+	cachedDataRadiusBytes := p.radiusCache.Get(nil, nodeIdBytes)
+
+	radiusMatch := false
+	if cachedDataRadiusBytes != nil && len(cachedDataRadiusBytes) == common.HashLength {
+		if bytes.Equal(incomingRadius[:], cachedDataRadiusBytes) {
+			radiusMatch = true
+		}
+	}
+
+	if !radiusMatch {
+		p.Log.Debug("DataRadius mismatch or cache miss, updating radius cache", "node", id, "payloadRadius", incomingRadius, "cachedRadiusBytes", hexutil.Encode(cachedDataRadiusBytes))
+		p.radiusCache.Set(nodeIdBytes, incomingRadius[:])
+		return true
+	}
+	return false
+}
+
+func (p *PortalProtocol) processClientInfo(id enode.ID, payload *pingext.ClientInfoAndCapabilitiesPayload) {
+	nodeIdStr := id.String()
+	nodeIdBytes := []byte(nodeIdStr)
+	// --- Compare and Update Radius ---
+	updated := p.updateRadiusCacheIfNeeded(id, nodeIdBytes, payload.DataRadius)
+
+	// --- Compare and Update Capabilities ---
+	incomingCapBytes, err := payload.Capabilities.MarshalSSZ()
 	if err != nil {
-		p.Log.Error("failed to marshal capabilities", "err", err)
+		p.Log.Error("Failed to marshal incoming capabilities", "node", id, "err", err)
 	} else {
-		p.capabilitiesCacheRWLock.Lock()
-		p.capabilitiesCache.Set([]byte(id.String()), capBytes)
-		p.capabilitiesCacheRWLock.Unlock()
+		cachedCapBytes := p.capabilitiesCache.Get(nil, nodeIdBytes)
+
+		capabilitiesMatch := false
+		if cachedCapBytes != nil {
+			if bytes.Equal(incomingCapBytes, cachedCapBytes) {
+				capabilitiesMatch = true
+			}
+		}
+
+		if !capabilitiesMatch {
+			p.Log.Debug("Capabilities mismatch or cache miss, updating capabilities cache", "node", id, "payloadCaps", hexutil.Encode(incomingCapBytes), "cachedCaps", hexutil.Encode(cachedCapBytes))
+			p.capabilitiesCache.Set(nodeIdBytes, incomingCapBytes)
+			updated = true
+		}
 	}
+
+	if !updated {
+		p.Log.Trace("Radius and Capabilities match cached values", "node", id)
+	}
+}
+
+func (p *PortalProtocol) processBasicRadius(id enode.ID, payload *pingext.BasicRadiusPayload) {
+	nodeIdStr := id.String()
+	nodeIdBytes := []byte(nodeIdStr)
+
+	// --- Compare and Update Radius ---
+	updated := p.updateRadiusCacheIfNeeded(id, nodeIdBytes, payload.DataRadius)
+
+	if !updated {
+		p.Log.Trace("Basic Radius match cached values", "node", id)
+	}
+}
+
+func (p *PortalProtocol) processHistoryRadius(id enode.ID, payload *pingext.HistoryRadiusPayload) {
+	nodeIdStr := id.String()
+	nodeIdBytes := []byte(nodeIdStr)
+
+	// --- Compare and Update Radius ---
+	updated := p.updateRadiusCacheIfNeeded(id, nodeIdBytes, payload.DataRadius)
+
+	// --- Compare and Update Ephemeral Header Count ---
+	cachedEphemeralHeaderCountBytes := p.ephemeralHeaderCountCache.Get(nil, nodeIdBytes)
+	ephemeralHeaderCountMatch := false
+
+	if cachedEphemeralHeaderCountBytes != nil {
+		cachedView := new(view.Uint16View)
+		err := cachedView.Decode(cachedEphemeralHeaderCountBytes)
+		if err == nil {
+			if uint16(*cachedView) == uint16(payload.EphemeralHeaderCount) {
+				ephemeralHeaderCountMatch = true
+			}
+		} else {
+			p.Log.Warn("Failed to decode cached ephemeral header count", "node", id, "err", err)
+		}
+	}
+
+	if !ephemeralHeaderCountMatch {
+		p.Log.Debug("Ephemeral header count mismatch or cache miss, updating cache", "node", id, "payloadCount", payload.EphemeralHeaderCount)
+		newCountBytes, err := payload.EphemeralHeaderCount.Encode()
+		if err != nil {
+			p.Log.Error("Failed to marshal new ephemeral header count", "node", id, "err", err)
+		} else {
+			p.ephemeralHeaderCountCache.Set(nodeIdBytes, newCountBytes)
+			updated = true
+		}
+	}
+
+	if !updated {
+		p.Log.Trace("History Radius match cached values", "node", id)
+	}
+}
+
+func (p *PortalProtocol) handleClientInfo() (Pong, error) {
 	radiusBytes, err := p.storage.Radius().MarshalSSZ()
 	if err != nil {
 		return Pong{}, err
@@ -1178,7 +1387,7 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 		Enrs:  enrs,
 	}
 
-	p.Log.Trace(">> NODES/"+p.protocolName, "protocol", p.protocolName, "source", fromAddr, "nodes", nodesMsg)
+	p.Log.Trace(">> NODES/"+p.protocolName, "protocol", p.protocolName, "source", fromAddr, "nodes.size", len(nodesMsg.Enrs))
 	if metrics.Enabled() {
 		p.portalMetrics.messagesSentNodes.Mark(1)
 	}
@@ -1230,7 +1439,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 			Enrs: enrs,
 		}
 
-		p.Log.Trace(">> CONTENT_ENRS/"+p.protocolName, "protocol", p.protocolName, "source", addr, "enrs", enrsMsg)
+		p.Log.Trace(">> CONTENT_ENRS/"+p.protocolName, "protocol", p.protocolName, "source", addr, "enrs.size", len(enrsMsg.Enrs))
 		if metrics.Enabled() {
 			p.portalMetrics.messagesSentContent.Mark(1)
 		}
@@ -1371,6 +1580,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 	if len(contentKeys) > 0 {
 		permit, getPermit := p.Utp.GetInboundPermit()
 		if !getPermit {
+			p.Log.Debug("utp rate limited")
 			if acceptV1, isV1 := accept.(*AcceptV1); isV1 {
 				keysLen := len(acceptV1.ContentKeys)
 				var limitRate = make([]uint8, keysLen)
@@ -1381,20 +1591,16 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 			}
 		} else {
 			connectionId := p.Utp.CidWithAddr(node, addr, false)
-
 			go func(bctx context.Context, connId *utp.ConnectionId, releasePermit Permit) {
 				defer releasePermit.Release()
+				defer p.deleteTransferringContentKeys(contentKeys)
 				var conn *utp.UtpStream
 				for {
 					select {
 					case <-bctx.Done():
 						return
 					default:
-						defer func() {
-							for _, key := range contentKeys {
-								p.inTransferMap.Delete(hexutil.Encode(key))
-							}
-						}()
+						p.cacheTransferringKeys(contentKeys)
 						p.Log.Debug("will accept offer conn from: ", "source", addr, "connId", connId)
 						connectCtx, cancel := context.WithTimeout(bctx, defaultUTPConnectTimeout)
 						defer cancel()
@@ -1479,10 +1685,15 @@ func (p *PortalProtocol) handleOfferedContents(id enode.ID, keys [][]byte, paylo
 		Contents:    contents,
 	}
 
-	p.contentQueue <- contentElement
-
-	if metrics.Enabled() {
-		p.portalMetrics.contentDecodedTrue.Inc(1)
+	select {
+	case p.contentQueue <- contentElement:
+		if metrics.Enabled() {
+			p.portalMetrics.contentDecodedTrue.Inc(1)
+		}
+	default:
+		if metrics.Enabled() {
+			p.portalMetrics.contentDiscard.Inc(1)
+		}
 	}
 	return nil
 }
@@ -1904,13 +2115,13 @@ func (p *PortalProtocol) InRange(contentId []byte) bool {
 
 func (p *PortalProtocol) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 	content, err := p.storage.Get(contentKey, contentId)
-	p.Log.Trace("get local storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
+	p.Log.Trace("get local storage", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId), "err", err)
 	return content, err
 }
 
 func (p *PortalProtocol) Put(contentKey []byte, contentId []byte, content []byte) error {
 	err := p.storage.Put(contentKey, contentId, content)
-	p.Log.Trace("put local storage", "contentId", hexutil.Encode(contentId), "content", hexutil.Encode(content), "err", err)
+	p.Log.Trace("put local storage", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId), "err", err)
 	return err
 }
 
@@ -1918,9 +2129,10 @@ func (p *PortalProtocol) GetContent() chan *ContentElement {
 	return p.contentQueue
 }
 
-func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) (int, error) {
+// GossipAndReturnPeers sends the content to the closest nodes and returns the nodes that received the content.
+func (p *PortalProtocol) GossipAndReturnPeers(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) ([]*enode.Node, error) {
 	if len(content) == 0 {
-		return 0, errors.New("empty content")
+		return nil, errors.New("empty content")
 	}
 
 	contentList := make([]*ContentEntry, 0, ContentKeysLimit)
@@ -1934,7 +2146,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 
 	contentId := p.toContentId(contentKeys[0])
 	if contentId == nil {
-		return 0, ErrNilContentKey
+		return nil, ErrNilContentKey
 	}
 
 	maxClosestNodes := 4
@@ -1944,15 +2156,13 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 
 	gossipNodes := make([]*enode.Node, 0)
 	for _, n := range closestLocalNodes {
-		p.radiusCacheRWLock.RLock()
 		radius, found := p.radiusCache.HasGet(nil, []byte(n.ID().String()))
-		p.radiusCacheRWLock.RUnlock()
 		if found {
 			p.Log.Debug("found closest local nodes", "nodeId", n.ID(), "addr", n.IPAddr().String())
 			nodeRadius := new(uint256.Int)
 			err := nodeRadius.UnmarshalSSZ(radius)
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
 			if inRange(n.ID(), nodeRadius, contentId) {
 				if srcNodeId == nil {
@@ -1965,7 +2175,7 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 	}
 
 	if len(gossipNodes) == 0 {
-		return 0, nil
+		return gossipNodes, nil
 	}
 
 	var finalGossipNodes []*enode.Node
@@ -2002,14 +2212,24 @@ func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, conte
 		select {
 		case p.offerQueue <- offerRequestWithNode:
 		default:
-			p.Log.Info("offer queue is full, drop offer request", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
+			p.Log.Warn("offer queue is full, drop offer request", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
 			if metrics.Enabled() {
 				p.portalMetrics.gossipDropCount.Inc(1)
 			}
 		}
 	}
 
-	return len(finalGossipNodes), nil
+	return finalGossipNodes, nil
+}
+
+// Gossip sends the content to the closest nodes and returns the number of nodes that received the content.
+func (p *PortalProtocol) Gossip(srcNodeId *enode.ID, contentKeys [][]byte, content [][]byte) (int, error) {
+	nodes, err := p.GossipAndReturnPeers(srcNodeId, contentKeys, content)
+	if err != nil {
+		return 0, err
+	}
+
+	return len(nodes), nil
 }
 
 // ShouldStore if the content is not in range, return false; else store the content and return true

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/OffchainLabs/go-bitfield"
 	"github.com/ethereum/go-ethereum/p2p/discover"
+	cache "github.com/go-pkgz/expirable-cache/v3"
+	pingext "github.com/zen-eth/shisui/portalwire/ping_ext"
 	"github.com/zen-eth/shisui/storage"
 	"github.com/zen-eth/shisui/testlog"
 	zenutp "github.com/zen-eth/utp-go"
@@ -25,8 +28,9 @@ import (
 	assert "github.com/stretchr/testify/require"
 )
 
-func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, rateLimit int, versions ...uint8) (*PortalProtocol, error) {
+func setupLocalPortalNode(addr string, bootNodes []*enode.Node, rateLimit int, versions ...uint8) (*PortalProtocol, error) {
 	conf := DefaultPortalProtocolConfig()
+	conf.VersionsCacheTTL = 1 * time.Second
 	conf.MaxUtpConnSize = rateLimit
 	conf.NAT = nil
 	if addr != "" {
@@ -104,9 +108,11 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, ra
 	}
 
 	utpSocket := NewZenEthUtp(context.Background(), conf, discV5, conn)
-	utpSocket.log = testlog.Logger(t, log.LvlTrace)
 
 	contentQueue := make(chan *ContentElement, 50)
+
+	versionsCache := cache.NewCache[*enode.Node, uint8]().WithMaxKeys(conf.VersionsCacheSize).WithTTL(conf.VersionsCacheTTL)
+
 	portalProtocol, err := NewPortalProtocol(
 		conf,
 		History,
@@ -116,30 +122,45 @@ func setupLocalPortalNode(t *testing.T, addr string, bootNodes []*enode.Node, ra
 		discV5,
 		utpSocket,
 		&storage.MockStorage{Db: make(map[string][]byte)},
-		contentQueue, WithDisableTableInitCheckOption(true))
+		contentQueue,
+		versionsCache,
+		WithDisableTableInitCheckOption(true))
 	if err != nil {
 		return nil, err
 	}
+
+	versionsCacheTicker := time.NewTicker(conf.VersionsCacheTTL / 2)
+	go func() {
+		defer versionsCacheTicker.Stop()
+		for {
+			select {
+			case <-versionsCacheTicker.C:
+				versionsCache.DeleteExpired()
+			case <-portalProtocol.WaitForClose():
+				return
+			}
+		}
+	}()
 
 	return portalProtocol, nil
 }
 
 func TestPortalWireProtocolUdp(t *testing.T) {
-	node1, err := setupLocalPortalNode(t, ":8777", nil, DefaultUtpConnSize)
+	node1, err := setupLocalPortalNode(":8777", nil, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	//node1.Log = testlog.Logger(t, log.LvlTrace)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
-	node2, err := setupLocalPortalNode(t, ":8778", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
+	node2, err := setupLocalPortalNode(":8778", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	//node2.Log = testlog.Logger(t, log.LvlTrace)
 	err = node2.Start()
 	assert.NoError(t, err)
 	defer stopNode(node2)
 
-	node3, err := setupLocalPortalNode(t, ":8779", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
+	node3, err := setupLocalPortalNode(":8779", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	//node3.Log = testlog.Logger(t, log.LvlTrace)
 	err = node3.Start()
@@ -184,7 +205,7 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 		acceptGroup.Done()
 		var buf []byte
 		n, err := acceptConn.ReadToEOF(context.Background(), &buf)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			panic(err)
 		}
 		assert.Equal(t, cliSendMsgWithCid1, string(buf[:n]))
@@ -237,14 +258,14 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 }
 
 func TestPortalWireProtocol(t *testing.T) {
-	node1, err := setupLocalPortalNode(t, ":7777", nil, DefaultUtpConnSize)
+	node1, err := setupLocalPortalNode(":7777", nil, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LvlInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
-	node2, err := setupLocalPortalNode(t, ":7778", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
+	node2, err := setupLocalPortalNode(":7778", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LvlInfo)
 	err = node2.Start()
@@ -252,7 +273,7 @@ func TestPortalWireProtocol(t *testing.T) {
 	defer stopNode(node2)
 	// time.Sleep(12 * time.Second)
 
-	node3, err := setupLocalPortalNode(t, ":7779", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
+	node3, err := setupLocalPortalNode(":7779", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LvlInfo)
 	err = node3.Start()
@@ -405,6 +426,29 @@ func TestPortalWireProtocol(t *testing.T) {
 
 	offerTrace1 := <-testTransientOfferRequestWithResult1.Result
 	assert.Equal(t, Declined, offerTrace1.Type)
+
+	capabilitiesBytes := node1.capabilitiesCache.Get(nil, []byte(node2.localNode.ID().String()))
+
+	capabilities := &pingext.CapabilitiesPayload{}
+	err = capabilities.UnmarshalSSZ(capabilitiesBytes)
+	assert.NoError(t, err)
+	uint16Capabilities := make([]uint16, 0, len(*capabilities))
+	for _, value := range *capabilities {
+		uint16Capabilities = append(uint16Capabilities, uint16(value))
+	}
+	assert.Equal(t, pingext.HistoryRadius, *node1.PingExtensions.LatestMutuallySupportedBaseExtension(uint16Capabilities))
+
+	capabilitiesBytes1 := node1.capabilitiesCache.Get(nil, []byte(node3.localNode.ID().String()))
+
+	capabilities1 := &pingext.CapabilitiesPayload{}
+	err = capabilities1.UnmarshalSSZ(capabilitiesBytes1)
+	assert.NoError(t, err)
+	uint16Capabilities1 := make([]uint16, 0, len(*capabilities1))
+	for _, value := range *capabilities1 {
+		uint16Capabilities1 = append(uint16Capabilities1, uint16(value))
+	}
+
+	assert.Equal(t, pingext.HistoryRadius, *node1.PingExtensions.LatestMutuallySupportedBaseExtension(uint16Capabilities1))
 }
 
 func TestCancel(t *testing.T) {
@@ -425,20 +469,20 @@ func TestCancel(t *testing.T) {
 }
 
 func TestContentLookup(t *testing.T) {
-	node1, err := setupLocalPortalNode(t, ":17777", nil, DefaultUtpConnSize)
+	node1, err := setupLocalPortalNode(":17777", nil, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LvlInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 
-	node2, err := setupLocalPortalNode(t, ":17778", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
+	node2, err := setupLocalPortalNode(":17778", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LvlInfo)
 	err = node2.Start()
 	assert.NoError(t, err)
 	fmt.Println(node2.localNode.Node().String())
 
-	node3, err := setupLocalPortalNode(t, ":17779", []*enode.Node{node1.localNode.Node(), node2.localNode.Node()}, DefaultUtpConnSize)
+	node3, err := setupLocalPortalNode(":17779", []*enode.Node{node1.localNode.Node(), node2.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LvlInfo)
 	err = node3.Start()
@@ -475,19 +519,19 @@ func TestContentLookup(t *testing.T) {
 }
 
 func TestTraceContentLookup(t *testing.T) {
-	node1, err := setupLocalPortalNode(t, ":17787", nil, DefaultUtpConnSize)
+	node1, err := setupLocalPortalNode(":17787", nil, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LvlInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 
-	node2, err := setupLocalPortalNode(t, ":17788", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
+	node2, err := setupLocalPortalNode(":17788", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LvlInfo)
 	err = node2.Start()
 	assert.NoError(t, err)
 
-	node3, err := setupLocalPortalNode(t, ":17789", []*enode.Node{node2.localNode.Node()}, DefaultUtpConnSize)
+	node3, err := setupLocalPortalNode(":17789", []*enode.Node{node2.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LvlInfo)
 	err = node3.Start()
@@ -648,14 +692,14 @@ func TestFindTheBiggestSameNumber(t *testing.T) {
 }
 
 func TestOfferV1(t *testing.T) {
-	node1, err := setupLocalPortalNode(t, ":3321", nil, DefaultUtpConnSize, 1)
+	node1, err := setupLocalPortalNode(":3321", nil, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LevelInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
-	node2, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize, 1)
+	node2, err := setupLocalPortalNode(":3322", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LevelInfo)
 	err = node2.Start()
@@ -695,7 +739,7 @@ func TestOfferV1(t *testing.T) {
 
 	// one reject
 	node1.storage.Put(testEntry1.ContentKey, node2.toContentId(testEntry1.ContentKey), testEntry1.Content)
-	node1.inTransferMap.Store(hexutil.Encode(testEntry2.ContentKey), struct{}{})
+	node1.transferringKeyCache.Set(testEntry2.ContentKey, EmptyBytes)
 	acceptCodes, err := node2.offer(node1.localNode.Node(), offerRequest, &NoPermit{})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(acceptCodes))
@@ -704,35 +748,35 @@ func TestOfferV1(t *testing.T) {
 }
 
 func TestGetOrStoreHighestVersion(t *testing.T) {
-	node, err := setupLocalPortalNode(t, ":3321", nil, DefaultUtpConnSize)
+	node, err := setupLocalPortalNode(":3321", nil, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	node.Log = testlog.Logger(t, log.LevelInfo)
 	err = node.Start()
 	assert.NoError(t, err)
 	defer stopNode(node)
 
-	nodeV0, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize, 0)
+	nodeV0, err := setupLocalPortalNode(":3322", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize, 0)
 	assert.NoError(t, err)
 	nodeV0.Log = testlog.Logger(t, log.LevelInfo)
 	err = nodeV0.Start()
 	assert.NoError(t, err)
 	defer stopNode(nodeV0)
 
-	nodeV1, err := setupLocalPortalNode(t, ":3323", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize, 0, 1)
+	nodeV1, err := setupLocalPortalNode(":3323", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize, 0, 1)
 	assert.NoError(t, err)
 	nodeV1.Log = testlog.Logger(t, log.LevelInfo)
 	err = nodeV1.Start()
 	assert.NoError(t, err)
 	defer stopNode(nodeV1)
 
-	nodeV2, err := setupLocalPortalNode(t, ":3324", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize, 0, 1, 2)
+	nodeV2, err := setupLocalPortalNode(":3324", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize, 0, 1, 2)
 	assert.NoError(t, err)
 	nodeV2.Log = testlog.Logger(t, log.LevelInfo)
 	err = nodeV2.Start()
 	assert.NoError(t, err)
 	defer stopNode(nodeV2)
 
-	nodeV3, err := setupLocalPortalNode(t, ":3325", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize, 3)
+	nodeV3, err := setupLocalPortalNode(":3325", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize, 3)
 	assert.NoError(t, err)
 	nodeV3.Log = testlog.Logger(t, log.LevelInfo)
 	err = nodeV3.Start()
@@ -742,7 +786,7 @@ func TestGetOrStoreHighestVersion(t *testing.T) {
 	original := Versions
 	Versions = nil // override for test
 	defer func() { Versions = original }()
-	nodeNil, err := setupLocalPortalNode(t, ":3326", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize)
+	nodeNil, err := setupLocalPortalNode(":3326", []*enode.Node{node.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
 	nodeNil.Log = testlog.Logger(t, log.LevelInfo)
 	err = nodeNil.Start()
@@ -869,17 +913,14 @@ func TestGetOrStoreHighestVersion(t *testing.T) {
 }
 
 func TestGetOrStoreHighestVersionExpiry(t *testing.T) {
-	original := expirationVersionMinutes
-	expirationVersionMinutes = 1 * time.Second // override for test
-	defer func() { expirationVersionMinutes = original }()
-	node1, err := setupLocalPortalNode(t, ":3321", nil, DefaultUtpConnSize, 1)
+	node1, err := setupLocalPortalNode(":3321", nil, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LevelInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
-	node2, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize, 1)
+	node2, err := setupLocalPortalNode(":3322", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LevelInfo)
 	err = node2.Start()
@@ -894,7 +935,6 @@ func TestGetOrStoreHighestVersionExpiry(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	node1.versionsCache.DeleteExpired()
 	_, ok := node1.versionsCache.Get(node2.localNode.Node())
 	assert.Equal(t, false, ok)
 	assert.Equal(t, 0, node1.versionsCache.Len())
@@ -904,21 +944,21 @@ func TestGetOrStoreHighestVersionOverflow(t *testing.T) {
 	original := versionsCacheSize
 	versionsCacheSize = 1 // override for test
 	defer func() { versionsCacheSize = original }()
-	node1, err := setupLocalPortalNode(t, ":3321", nil, DefaultUtpConnSize, 1)
+	node1, err := setupLocalPortalNode(":3321", nil, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LevelInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
-	node2, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize, 1)
+	node2, err := setupLocalPortalNode(":3322", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LevelInfo)
 	err = node2.Start()
 	assert.NoError(t, err)
 	defer stopNode(node2)
 
-	node3, err := setupLocalPortalNode(t, ":3323", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize, 1)
+	node3, err := setupLocalPortalNode(":3323", []*enode.Node{node1.localNode.Node()}, DefaultUtpConnSize, 1)
 	assert.NoError(t, err)
 	node3.Log = testlog.Logger(t, log.LevelInfo)
 	err = node3.Start()
@@ -941,14 +981,14 @@ func TestGetOrStoreHighestVersionOverflow(t *testing.T) {
 }
 
 func TestAcceptCode_Ratelmit(t *testing.T) {
-	node1, err := setupLocalPortalNode(t, ":3321", nil, 0, 0, 1)
+	node1, err := setupLocalPortalNode(":3321", nil, 0, 0, 1)
 	assert.NoError(t, err)
 	node1.Log = testlog.Logger(t, log.LevelInfo)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
-	node2, err := setupLocalPortalNode(t, ":3322", []*enode.Node{node1.localNode.Node()}, 0, 0, 1)
+	node2, err := setupLocalPortalNode(":3322", []*enode.Node{node1.localNode.Node()}, 0, 0, 1)
 	assert.NoError(t, err)
 	node2.Log = testlog.Logger(t, log.LevelInfo)
 	err = node2.Start()

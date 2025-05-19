@@ -22,6 +22,7 @@
 package trie
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -154,7 +155,7 @@ func decodeNodeUnsafe(hash, buf []byte) (node, error) {
 	}
 	elems, _, err := rlp.SplitList(buf)
 	if err != nil {
-		return nil, fmt.Errorf("decode error: %v", err)
+		return nil, fmt.Errorf("decode error: %w", err)
 	}
 	switch c, _ := rlp.CountValues(elems); c {
 	case 2:
@@ -179,7 +180,7 @@ func decodeShort(hash, elems []byte) (node, error) {
 		// value node
 		val, _, err := rlp.SplitString(rest)
 		if err != nil {
-			return nil, fmt.Errorf("invalid value node: %v", err)
+			return nil, fmt.Errorf("invalid value node: %w", err)
 		}
 		return &shortNode{key, valueNode(val), flag}, nil
 	}
@@ -247,7 +248,8 @@ func wrapError(err error, ctx string) error {
 	if err == nil {
 		return nil
 	}
-	if decErr, ok := err.(*decodeError); ok {
+	var decErr *decodeError
+	if errors.As(err, &decErr) {
 		decErr.stack = append(decErr.stack, ctx)
 		return decErr
 	}
