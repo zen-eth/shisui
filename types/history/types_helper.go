@@ -5,6 +5,28 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+type HeaderWithProof struct {
+	Header *types.Header
+	Proof  []byte
+}
+
+// DecodeHeaderWithProof return with decoded header
+func DecodeHeaderWithProof(content []byte) (*HeaderWithProof, error) {
+	headerWithProofBytes, err := DecodeBlockHeaderWithProof(content)
+	if err != nil {
+		return nil, err
+	}
+	header, err := DecodeBlockHeader(headerWithProofBytes.Header)
+	if err != nil {
+		return nil, err
+	}
+	return &HeaderWithProof{
+		Header: header,
+		Proof:  headerWithProofBytes.Proof,
+	}, nil
+}
+
+// DecodeBlockHeaderWithProof return with header rlp bytes
 func DecodeBlockHeaderWithProof(content []byte) (*BlockHeaderWithProof, error) {
 	headerWithProof := new(BlockHeaderWithProof)
 	err := headerWithProof.UnmarshalSSZ(content)

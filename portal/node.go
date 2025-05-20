@@ -28,6 +28,7 @@ import (
 	"github.com/zen-eth/shisui/state"
 	"github.com/zen-eth/shisui/storage"
 	"github.com/zen-eth/shisui/storage/pebble"
+	"github.com/zen-eth/shisui/validation"
 	"github.com/zen-eth/shisui/web3"
 )
 
@@ -394,13 +395,10 @@ func (n *Node) initHistoryNetwork() error {
 		return err
 	}
 
-	accumulator, err := history.NewMasterAccumulator()
-	if err != nil {
-		return err
-	}
-
 	client := rpc.DialInProc(n.rpcServer)
-	n.historyNetwork = history.NewHistoryNetwork(protocol, &accumulator, client)
+	oracle := validation.NewOracle(client)
+	historyValidator := history.NewHistoryValidator(oracle)
+	n.historyNetwork = history.NewHistoryNetwork(protocol, historyValidator)
 	return nil
 }
 

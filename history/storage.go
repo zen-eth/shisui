@@ -3,6 +3,7 @@ package history
 import (
 	"github.com/holiman/uint256"
 	"github.com/zen-eth/shisui/storage"
+	"github.com/zen-eth/shisui/types/history"
 )
 
 type Storage struct {
@@ -47,5 +48,5 @@ func (hs *Storage) Close() error {
 }
 
 func isEphemeralOfferType(contentKey []byte) bool {
-	return ContentType(contentKey[0]) == OfferEphemeralType
+	return history.ContentType(contentKey[0]) == history.OfferEphemeralType
 }
