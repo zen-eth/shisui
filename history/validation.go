@@ -19,7 +19,7 @@ const (
 	SlotsPerEpoch    uint64 = 32
 )
 
-func VerifyCapellaToDenebHeader(headerHash []byte, proof *BlockProofHistoricalSummariesCapella, historicalSummaries capella.HistoricalSummaries) bool {
+func VerifyCapellaToDenebHeader(headerHash []byte, proof *history.BlockProofHistoricalSummariesCapella, historicalSummaries capella.HistoricalSummaries) bool {
 	if !VerifyBellatrixToDenebExecutionBlockProof(headerHash, proof.GetExecutionBlockProof(), tree.Root(proof.BeaconBlockRoot)) {
 		return false
 	}
@@ -30,7 +30,7 @@ func VerifyCapellaToDenebHeader(headerHash []byte, proof *BlockProofHistoricalSu
 	return merkle.VerifyMerkleBranch(tree.Root(proof.BeaconBlockRoot), proof.GetBeaconBlockProof(), 13, genIndex, historicalSummary)
 }
 
-func VerifyPostDenebHeader(headerHash []byte, proof *BlockProofHistoricalSummariesDeneb, historicalSummaries capella.HistoricalSummaries) bool {
+func VerifyPostDenebHeader(headerHash []byte, proof *history.BlockProofHistoricalSummariesDeneb, historicalSummaries capella.HistoricalSummaries) bool {
 	if !VerifyPostDenebExecutionBlockProof(headerHash, proof.GetExecutionBlockProof(), tree.Root(proof.BeaconBlockRoot)) {
 		return false
 	}
@@ -92,8 +92,8 @@ func NewHistoryValidator(oracle validation.Oracle) *HistoryValidator {
 
 // ValidationContent implements validation.Validator.
 func (h *HistoryValidator) ValidateContent(contentKey []byte, content []byte) error {
-	switch ContentType(contentKey[0]) {
-	case BlockHeaderType:
+	switch history.ContentType(contentKey[0]) {
+	case history.BlockHeaderType:
 		headerWithProof, err := history.DecodeBlockHeaderWithProof(content)
 		if err != nil {
 			return err
@@ -106,15 +106,12 @@ func (h *HistoryValidator) ValidateContent(contentKey []byte, content []byte) er
 			return ErrInvalidBlockHash
 		}
 		return h.headerValidator.ValidateHeaderAndProof(header, headerWithProof.Proof)
-	case BlockHeaderNumberType:
-		headerWithProof, err := DecodeBlockHeaderWithProof(content)
+	case history.BlockHeaderNumberType:
+		headerWithProof, err := history.DecodeHeaderWithProof(content)
 		if err != nil {
 			return err
 		}
-		header, err := DecodeBlockHeader(headerWithProof.Header)
-		if err != nil {
-			return err
-		}
+		header := headerWithProof.Header
 		blockNumber := view.Uint64View(0)
 		err = blockNumber.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey[1:]), uint64(len(contentKey[1:]))))
 		if err != nil {
@@ -124,14 +121,14 @@ func (h *HistoryValidator) ValidateContent(contentKey []byte, content []byte) er
 			return ErrInvalidBlockNumber
 		}
 		return h.headerValidator.ValidateHeaderAndProof(header, headerWithProof.Proof)
-	case BlockBodyType:
+	case history.BlockBodyType:
 		header, err := h.validationOracle.GetBlockHeaderByHash(contentKey[1:])
 		if err != nil {
 			return err
 		}
 		_, err = ValidateBlockBodyBytes(content, header)
 		return err
-	case ReceiptsType:
+	case history.ReceiptsType:
 		header, err := h.validationOracle.GetBlockHeaderByHash(contentKey[1:])
 		if err != nil {
 			return err

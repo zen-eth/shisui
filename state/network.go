@@ -15,9 +15,9 @@ import (
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
-	"github.com/zen-eth/shisui/history"
 	"github.com/zen-eth/shisui/portalwire"
 	"github.com/zen-eth/shisui/state/trie"
+	"github.com/zen-eth/shisui/types/history"
 )
 
 type Network struct {
