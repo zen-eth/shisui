@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zen-eth/shisui/storage"
 	"github.com/zen-eth/shisui/storage/pebble"
+	"github.com/zen-eth/shisui/types/beacon"
 )
 
 var zeroNodeId = uint256.NewInt(0).Bytes32()
@@ -57,7 +58,7 @@ func TestHistoricalSummaries(t *testing.T) {
 	require.NoError(t, err)
 	defer beaconStorage.Close()
 
-	key1 := &HistoricalSummariesWithProofKey{
+	key1 := &beacon.HistoricalSummariesWithProofKey{
 		Epoch: 364328,
 	}
 	keyBytes, err := getHistoricalSummariesWithProofKeyBytes(key1)
@@ -66,7 +67,7 @@ func TestHistoricalSummaries(t *testing.T) {
 	err = beaconStorage.Put(keyBytes, nil, value1)
 	require.NoError(t, err)
 
-	key2 := &HistoricalSummariesWithProofKey{
+	key2 := &beacon.HistoricalSummariesWithProofKey{
 		Epoch: 300,
 	}
 	keyBytes, err = getHistoricalSummariesWithProofKeyBytes(key2)
@@ -79,7 +80,7 @@ func TestHistoricalSummaries(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, data, value1)
 
-	key3 := &HistoricalSummariesWithProofKey{
+	key3 := &beacon.HistoricalSummariesWithProofKey{
 		Epoch: 385328,
 	}
 	keyBytes, err = getHistoricalSummariesWithProofKeyBytes(key3)
@@ -97,7 +98,7 @@ func TestHistoricalSummaries(t *testing.T) {
 	require.Equal(t, data, value3)
 }
 
-func getHistoricalSummariesWithProofKeyBytes(key *HistoricalSummariesWithProofKey) ([]byte, error) {
+func getHistoricalSummariesWithProofKeyBytes(key *beacon.HistoricalSummariesWithProofKey) ([]byte, error) {
 	prefix := []byte{0x14}
 	var keyBuf bytes.Buffer
 	err := key.Serialize(codec.NewEncodingWriter(&keyBuf))

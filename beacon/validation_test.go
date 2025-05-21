@@ -6,6 +6,7 @@ import (
 
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
+	"github.com/zen-eth/shisui/types/beacon"
 	"github.com/zen-eth/shisui/validation"
 )
 
@@ -39,11 +40,11 @@ func lightClientUpdateValidation(validator *BeaconValidator) error {
 	if err != nil {
 		return err
 	}
-	key := &LightClientUpdateKey{
+	key := &beacon.LightClientUpdateKey{
 		StartPeriod: 0,
 		Count:       1,
 	}
-	updateRange := LightClientUpdateRange([]ForkedLightClientUpdate{update})
+	updateRange := beacon.LightClientUpdateRange([]beacon.ForkedLightClientUpdate{update})
 	keyData, err := key.MarshalSSZ()
 	if err != nil {
 		return err
@@ -64,7 +65,7 @@ func lightClientFinalityUpdateValidation(validator *BeaconValidator) error {
 	if err != nil {
 		return err
 	}
-	key := &LightClientFinalityUpdateKey{
+	key := &beacon.LightClientFinalityUpdateKey{
 		FinalizedSlot: 10934316269310501102,
 	}
 	keyData, err := key.MarshalSSZ()
@@ -87,7 +88,7 @@ func lightClientOptimisticUpdateValidation(validator *BeaconValidator) error {
 	if err != nil {
 		return err
 	}
-	key := &LightClientOptimisticUpdateKey{
+	key := &beacon.LightClientOptimisticUpdateKey{
 		OptimisticSlot: 15067541596220156845,
 	}
 	keyData, err := key.MarshalSSZ()

@@ -12,6 +12,7 @@ import (
 	"github.com/protolambda/zrnt/eth2/beacon/deneb"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/zrnt/eth2/util/merkle"
+	"github.com/zen-eth/shisui/types/beacon"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	blsu "github.com/protolambda/bls12-381-util"
@@ -152,7 +153,7 @@ func (c *ConsensusLightClient) Sync() error {
 			updates = append(updates, update...)
 		}
 	} else {
-		updates, err = c.API.GetUpdates(bootstrapPeriod, MaxRequestLightClientUpdates)
+		updates, err = c.API.GetUpdates(bootstrapPeriod, beacon.MaxRequestLightClientUpdates)
 		if err != nil {
 			return err
 		}
