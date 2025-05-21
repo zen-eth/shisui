@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zen-eth/shisui/testlog"
+	"github.com/zen-eth/shisui/types/beacon"
 )
 
 var _ ConsensusAPI = (*MockConsensusAPI)(nil)
@@ -108,7 +109,7 @@ func TestVerifyUpdate(t *testing.T) {
 	client.Config.MaxCheckpointAge = 123123123
 
 	period := CalcSyncPeriod(uint64(client.Store.FinalizedHeader.Slot))
-	updates, err := client.API.GetUpdates(period, MaxRequestLightClientUpdates)
+	updates, err := client.API.GetUpdates(period, beacon.MaxRequestLightClientUpdates)
 	require.NoError(t, err)
 	// normal
 	err = client.VerifyUpdate(updates[0])
@@ -120,7 +121,7 @@ func TestVerifyUpdate(t *testing.T) {
 	err = client.VerifyGenericUpdate(genericUpdate)
 	require.Equal(t, ErrInvalidNextSyncCommitteeProof, err)
 	// ErrInvalidFinalityProof
-	updates, err = client.API.GetUpdates(period, MaxRequestLightClientUpdates)
+	updates, err = client.API.GetUpdates(period, beacon.MaxRequestLightClientUpdates)
 	require.NoError(t, err)
 	genericUpdate, err = FromLightClientUpdate(updates[0])
 	require.NoError(t, err)
@@ -129,7 +130,7 @@ func TestVerifyUpdate(t *testing.T) {
 	require.Equal(t, ErrInvalidFinalityProof, err)
 
 	// ErrInvalidSignature
-	updates, err = client.API.GetUpdates(period, MaxRequestLightClientUpdates)
+	updates, err = client.API.GetUpdates(period, beacon.MaxRequestLightClientUpdates)
 	require.NoError(t, err)
 	genericUpdate, err = FromLightClientUpdate(updates[0])
 	require.NoError(t, err)

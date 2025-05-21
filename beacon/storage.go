@@ -13,6 +13,7 @@ import (
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/zen-eth/shisui/storage"
+	"github.com/zen-eth/shisui/types/beacon"
 )
 
 const BytesInMB uint64 = 1000 * 1000
@@ -21,11 +22,11 @@ var historicalSummariesKey = []byte("historical_summaries")
 
 type beaconStorageCache struct {
 	rwLock           sync.RWMutex
-	optimisticUpdate *ForkedLightClientOptimisticUpdate
-	finalityUpdate   *ForkedLightClientFinalityUpdate
+	optimisticUpdate *beacon.ForkedLightClientOptimisticUpdate
+	finalityUpdate   *beacon.ForkedLightClientFinalityUpdate
 }
 
-func (c *beaconStorageCache) GetOptimisticUpdate(slot uint64) *ForkedLightClientOptimisticUpdate {
+func (c *beaconStorageCache) GetOptimisticUpdate(slot uint64) *beacon.ForkedLightClientOptimisticUpdate {
 	c.rwLock.RLock()
 	optimisticUpdate := c.optimisticUpdate
 	c.rwLock.RUnlock()
@@ -38,13 +39,13 @@ func (c *beaconStorageCache) GetOptimisticUpdate(slot uint64) *ForkedLightClient
 	return nil
 }
 
-func (c *beaconStorageCache) SetOptimisticUpdate(data *ForkedLightClientOptimisticUpdate) {
+func (c *beaconStorageCache) SetOptimisticUpdate(data *beacon.ForkedLightClientOptimisticUpdate) {
 	c.rwLock.Lock()
 	c.optimisticUpdate = data
 	c.rwLock.Unlock()
 }
 
-func (c *beaconStorageCache) GetFinalityUpdate(slot uint64) *ForkedLightClientFinalityUpdate {
+func (c *beaconStorageCache) GetFinalityUpdate(slot uint64) *beacon.ForkedLightClientFinalityUpdate {
 	c.rwLock.RLock()
 	finalityUpdate := c.finalityUpdate
 	c.rwLock.RUnlock()
@@ -57,7 +58,7 @@ func (c *beaconStorageCache) GetFinalityUpdate(slot uint64) *ForkedLightClientFi
 	return nil
 }
 
-func (c *beaconStorageCache) SetFinalityUpdate(data *ForkedLightClientFinalityUpdate) {
+func (c *beaconStorageCache) SetFinalityUpdate(data *beacon.ForkedLightClientFinalityUpdate) {
 	c.rwLock.Lock()
 	c.finalityUpdate = data
 	c.rwLock.Unlock()
@@ -107,12 +108,12 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 		}
 		return out, nil
 	case LightClientUpdate:
-		lightClientUpdateKey := new(LightClientUpdateKey)
+		lightClientUpdateKey := new(beacon.LightClientUpdateKey)
 		err := lightClientUpdateKey.UnmarshalSSZ(contentKey[1:])
 		if err != nil {
 			return nil, err
 		}
-		res := make([]ForkedLightClientUpdate, 0)
+		res := make([]beacon.ForkedLightClientUpdate, 0)
 		start := lightClientUpdateKey.StartPeriod
 		for start < lightClientUpdateKey.StartPeriod+lightClientUpdateKey.Count {
 			key := bs.getUint64Bytes(start)
@@ -120,7 +121,7 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 			if err != nil {
 				return nil, handleNotFound(err)
 			}
-			update := new(ForkedLightClientUpdate)
+			update := new(beacon.ForkedLightClientUpdate)
 			err = update.Deserialize(bs.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 			if err != nil {
 				return nil, err
@@ -132,10 +133,10 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 			}
 		}
 		var buf bytes.Buffer
-		err = LightClientUpdateRange(res).Serialize(bs.spec, codec.NewEncodingWriter(&buf))
+		err = beacon.LightClientUpdateRange(res).Serialize(bs.spec, codec.NewEncodingWriter(&buf))
 		return buf.Bytes(), err
 	case LightClientFinalityUpdate:
-		key := new(LightClientFinalityUpdateKey)
+		key := new(beacon.LightClientFinalityUpdateKey)
 		err := key.UnmarshalSSZ(contentKey[1:])
 		if err != nil {
 			return nil, err
@@ -148,7 +149,7 @@ func (bs *Storage) Get(contentKey []byte, contentId []byte) ([]byte, error) {
 		err = data.Serialize(bs.spec, codec.NewEncodingWriter(&buf))
 		return buf.Bytes(), err
 	case LightClientOptimisticUpdate:
-		key := new(LightClientOptimisticUpdateKey)
+		key := new(beacon.LightClientOptimisticUpdateKey)
 		err := key.UnmarshalSSZ(contentKey[1:])
 		if err != nil {
 			return nil, err
@@ -195,12 +196,12 @@ func (bs *Storage) Put(contentKey []byte, contentId []byte, content []byte) erro
 		}
 		return batch.Commit(bs.writeOptions)
 	case LightClientUpdate:
-		lightClientUpdateKey := new(LightClientUpdateKey)
+		lightClientUpdateKey := new(beacon.LightClientUpdateKey)
 		err := lightClientUpdateKey.UnmarshalSSZ(contentKey[1:])
 		if err != nil {
 			return err
 		}
-		lightClientUpdateRange := new(LightClientUpdateRange)
+		lightClientUpdateRange := new(beacon.LightClientUpdateRange)
 		reader := codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content)))
 		err = lightClientUpdateRange.Deserialize(bs.spec, reader)
 		if err != nil {
@@ -222,7 +223,7 @@ func (bs *Storage) Put(contentKey []byte, contentId []byte, content []byte) erro
 		}
 		return batch.Commit(bs.writeOptions)
 	case LightClientFinalityUpdate:
-		data := new(ForkedLightClientFinalityUpdate)
+		data := new(beacon.ForkedLightClientFinalityUpdate)
 		err = data.Deserialize(bs.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
 		if err != nil {
 			return err
@@ -230,7 +231,7 @@ func (bs *Storage) Put(contentKey []byte, contentId []byte, content []byte) erro
 		bs.cache.SetFinalityUpdate(data)
 		return nil
 	case LightClientOptimisticUpdate:
-		data := new(ForkedLightClientOptimisticUpdate)
+		data := new(beacon.ForkedLightClientOptimisticUpdate)
 		err = data.Deserialize(bs.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
 		if err != nil {
 			return err

@@ -32,12 +32,12 @@ func NewBeaconValidator(oracle validation.Oracle, spec *common.Spec) *BeaconVali
 func (b *BeaconValidator) ValidateContent(contentKey []byte, content []byte) error {
 	switch beacon.ContentType(contentKey[0]) {
 	case beacon.LightClientUpdate:
-		var lightClientUpdateRange LightClientUpdateRange = make([]ForkedLightClientUpdate, 0)
+		var lightClientUpdateRange beacon.LightClientUpdateRange = make([]beacon.ForkedLightClientUpdate, 0)
 		err := lightClientUpdateRange.Deserialize(b.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
 		if err != nil {
 			return err
 		}
-		lightClientUpdateKey := &LightClientUpdateKey{}
+		lightClientUpdateKey := &beacon.LightClientUpdateKey{}
 		err = lightClientUpdateKey.UnmarshalSSZ(contentKey[1:])
 		if err != nil {
 			return err
@@ -48,7 +48,7 @@ func (b *BeaconValidator) ValidateContent(contentKey []byte, content []byte) err
 		// TODO miss some validation
 		return nil
 	case beacon.LightClientBootstrap:
-		var forkedLightClientBootstrap ForkedLightClientBootstrap
+		var forkedLightClientBootstrap beacon.ForkedLightClientBootstrap
 		err := forkedLightClientBootstrap.Deserialize(b.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
 		if err != nil {
 			return err
@@ -69,18 +69,18 @@ func (b *BeaconValidator) ValidateContent(contentKey []byte, content []byte) err
 		// TODO validate with finalized header
 		return nil
 	case beacon.LightClientFinalityUpdate:
-		lightClientFinalityUpdateKey := &LightClientFinalityUpdateKey{}
+		lightClientFinalityUpdateKey := &beacon.LightClientFinalityUpdateKey{}
 		err := lightClientFinalityUpdateKey.UnmarshalSSZ(contentKey[1:])
 		if err != nil {
 			return err
 		}
-		var forkedLightClientFinalityUpdate ForkedLightClientFinalityUpdate
+		var forkedLightClientFinalityUpdate beacon.ForkedLightClientFinalityUpdate
 		err = forkedLightClientFinalityUpdate.Deserialize(b.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
 		if err != nil {
 			return err
 		}
 		// TODO it should be Electra now
-		if forkedLightClientFinalityUpdate.ForkDigest != Deneb {
+		if forkedLightClientFinalityUpdate.ForkDigest != beacon.Deneb {
 			return fmt.Errorf("light client finality update is not from the recent fork. Expected deneb, got %v", forkedLightClientFinalityUpdate.ForkDigest)
 		}
 		finalizedSlot := lightClientFinalityUpdateKey.FinalizedSlot
@@ -94,18 +94,18 @@ func (b *BeaconValidator) ValidateContent(contentKey []byte, content []byte) err
 		// TODO miss some validation
 		return nil
 	case beacon.LightClientOptimisticUpdate:
-		lightClientOptimisticUpdateKey := &LightClientOptimisticUpdateKey{}
+		lightClientOptimisticUpdateKey := &beacon.LightClientOptimisticUpdateKey{}
 		err := lightClientOptimisticUpdateKey.UnmarshalSSZ(contentKey[1:])
 		if err != nil {
 			return err
 		}
-		var forkedLightClientOptimisticUpdate ForkedLightClientOptimisticUpdate
+		var forkedLightClientOptimisticUpdate beacon.ForkedLightClientOptimisticUpdate
 		err = forkedLightClientOptimisticUpdate.Deserialize(b.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
 		if err != nil {
 			return err
 		}
 		// TODO it should be Electra now
-		if forkedLightClientOptimisticUpdate.ForkDigest != Deneb {
+		if forkedLightClientOptimisticUpdate.ForkDigest != beacon.Deneb {
 			return fmt.Errorf("light client optimistic update is not from the recent fork. Expected deneb, got %v", forkedLightClientOptimisticUpdate.ForkDigest)
 		}
 		genericUpdate, err := FromLightClientOptimisticUpdate(forkedLightClientOptimisticUpdate.LightClientOptimisticUpdate)
@@ -137,13 +137,13 @@ func (b *BeaconValidator) ValidateContent(contentKey []byte, content []byte) err
 	}
 }
 
-func (b *BeaconValidator) generalSummariesValidation(contentKey, content []byte) (*ForkedHistoricalSummariesWithProof, error) {
-	key := &HistoricalSummariesWithProofKey{}
+func (b *BeaconValidator) generalSummariesValidation(contentKey, content []byte) (*beacon.ForkedHistoricalSummariesWithProof, error) {
+	key := &beacon.HistoricalSummariesWithProofKey{}
 	err := key.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey[1:]), uint64(len(contentKey[1:]))))
 	if err != nil {
 		return nil, err
 	}
-	forkedHistoricalSummariesWithProof := &ForkedHistoricalSummariesWithProof{}
+	forkedHistoricalSummariesWithProof := &beacon.ForkedHistoricalSummariesWithProof{}
 	err = forkedHistoricalSummariesWithProof.Deserialize(b.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (b *BeaconValidator) generalSummariesValidation(contentKey, content []byte)
 	return forkedHistoricalSummariesWithProof, nil
 }
 
-func (b *BeaconValidator) stateSummariesValidation(f ForkedHistoricalSummariesWithProof, latestFinalizedRoot common.Root) bool {
+func (b *BeaconValidator) stateSummariesValidation(f beacon.ForkedHistoricalSummariesWithProof, latestFinalizedRoot common.Root) bool {
 	proof := f.HistoricalSummariesWithProof.Proof
 	summariesRoot := f.HistoricalSummariesWithProof.HistoricalSummaries.HashTreeRoot(b.spec, tree.GetHashFn())
 
