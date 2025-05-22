@@ -42,6 +42,18 @@ func DecodeBlockHeader(headerBytes []byte) (*types.Header, error) {
 	return header, nil
 }
 
+func DecodeEphemeralHeaderPayload(payload []byte) (*EphemeralHeaderPayload, error) {
+	ephemeralHeaderPayload := new(EphemeralHeaderPayload)
+	err := ephemeralHeaderPayload.UnmarshalSSZ(payload)
+	return ephemeralHeaderPayload, err
+}
+
+func DecodeOfferEphemeralHeader(payload []byte) (*OfferEphemeralHeader, error) {
+	offerEphemeralHeader := new(OfferEphemeralHeader)
+	err := offerEphemeralHeader.UnmarshalSSZ(payload)
+	return offerEphemeralHeader, err
+}
+
 func GetEpochIndex(blockNumber uint64) uint64 {
 	return blockNumber / EpochSize
 }

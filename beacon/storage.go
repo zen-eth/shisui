@@ -83,6 +83,7 @@ func NewBeaconStorage(config storage.PortalStorageConfig, db *pebble.DB) (storag
 		log:                    log.New("beacon_storage"),
 		spec:                   config.Spec,
 		cache:                  &beaconStorageCache{},
+		writeOptions:           &pebble.WriteOptions{Sync: false},
 		bytePool: sync.Pool{
 			New: func() interface{} {
 				out := make([]byte, 8)
