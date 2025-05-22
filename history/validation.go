@@ -141,6 +141,12 @@ func (h *HistoryValidator) ValidateContent(contentKey []byte, content []byte) er
 		}
 		_, err = ValidatePortalReceiptsBytes(content, header.ReceiptHash.Bytes())
 		return err
+	case history.FindContentEphemeralType:
+		// postpone the validation of ephemeral content to storage
+		return nil
+	case history.OfferEphemeralType:
+		// postpone the validation of ephemeral content to storage
+		return nil
 	}
 	return errors.New("unknown content type in validation")
 }

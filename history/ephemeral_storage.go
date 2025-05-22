@@ -41,131 +41,229 @@ func NewEphemeralStorage(config storage.PortalStorageConfig, db *pebble.DB) *Eph
 // The resulting value is a serialized `EphemeralHeaderPayload`.
 // The contentId is not used in this implementation.
 func (s *EphemeralStorage) Get(contentKey []byte, _ []byte) ([]byte, error) {
-	parsedKey := &history.FindContentEphemeralHeadersKey{}
-	err := parsedKey.UnmarshalSSZ(contentKey[1:])
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal contentKey: %w", err)
-	}
-
-	if parsedKey.AncestorCount > maxAncestorCount {
-		return nil, errInvalidAncestorCount
-	}
-
-	startBlockNumKeyBytes, numCloser, err := s.db.Get(parsedKey.BlockHash[:])
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, fmt.Errorf("block number key not found for hash %x: %w", parsedKey.BlockHash, err)
-		}
-		return nil, fmt.Errorf("failed to get block number key for hash %x: %w", parsedKey.BlockHash, err)
-	}
-
-	startBlockNumKey := make([]byte, len(startBlockNumKeyBytes))
-	copy(startBlockNumKey, startBlockNumKeyBytes)
-	if numCloser != nil {
-		if numCloseErr := numCloser.Close(); numCloseErr != nil {
-			return nil, fmt.Errorf("failed to close numCloser: %w", numCloseErr)
-		}
-	}
-
-	initialActualBlockNum, err := decodeBlockNumber(startBlockNumKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode initial block number from key %x: %w", startBlockNumKey, err)
-	}
-
-	initialHeaderBytes, headerCloser, err := s.db.Get(startBlockNumKey)
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, fmt.Errorf("header not found for start block number key %x (decoded: %d): %w", startBlockNumKey, initialActualBlockNum, err)
-		}
-		return nil, fmt.Errorf("failed to get header for start block number key %x: %w", startBlockNumKey, err)
-	}
-
-	initialHeader := make([]byte, len(initialHeaderBytes))
-	copy(initialHeader, initialHeaderBytes)
-	if headerCloser != nil {
-		if headCloseErr := headerCloser.Close(); headCloseErr != nil {
-			return nil, fmt.Errorf("failed to close headerCloser: %w", headCloseErr)
-		}
-	}
-
-	collectedHeaders := make([][]byte, 0, 1+int(parsedKey.AncestorCount))
-	collectedHeaders = append(collectedHeaders, initialHeader)
-	lastSuccessfullyAddedBlockNum := initialActualBlockNum
-
-	if parsedKey.AncestorCount > 0 {
-		iterOpts := &pebble.IterOptions{}
-		iter, err := s.db.NewIter(iterOpts)
+	switch history.ContentType(contentKey[0]) {
+	case history.FindContentEphemeralType:
+		parsedKey := &history.FindContentEphemeralHeadersKey{}
+		err := parsedKey.UnmarshalSSZ(contentKey[1:])
 		if err != nil {
-			return nil, fmt.Errorf("failed to create iterator: %w", err)
-		}
-		defer iter.Close()
-
-		if !iter.SeekGE(startBlockNumKey) {
-			if iterErr := iter.Error(); iterErr != nil {
-				return nil, fmt.Errorf("iterator error on SeekGE for known key %x: %w", startBlockNumKey, iterErr)
-			}
-			return nil, fmt.Errorf("SeekGE failed to find known key %x (iterator valid: %t)", startBlockNumKey, iter.Valid())
+			return nil, fmt.Errorf("failed to unmarshal contentKey: %w", err)
 		}
 
-		if !bytes.Equal(iter.Key(), startBlockNumKey) {
-			if iterErr := iter.Error(); iterErr != nil {
-				return nil, fmt.Errorf("iterator error after SeekGE found %x instead of known key %x: %w", iter.Key(), startBlockNumKey, iterErr)
-			}
-			return nil, fmt.Errorf("SeekGE for known key %x landed on a different key %x", startBlockNumKey, iter.Key())
+		if parsedKey.AncestorCount > maxAncestorCount {
+			return nil, errInvalidAncestorCount
 		}
 
-		for i := range int(parsedKey.AncestorCount) {
-			if !iter.Prev() {
-				if iterErr := iter.Error(); iterErr != nil {
-					return nil, fmt.Errorf("iterator error on Prev(): %w", iterErr)
-				}
-				s.log.Debug("Iterator exhausted during Prev() for ancestors", "retrieved_count", i)
-				break
+		startBlockNumKeyBytes, numCloser, err := s.db.Get(parsedKey.BlockHash[:])
+		if err != nil {
+			if errors.Is(err, pebble.ErrNotFound) {
+				return nil, fmt.Errorf("block number key not found for hash %x: %w", parsedKey.BlockHash, err)
 			}
+			return nil, fmt.Errorf("failed to get block number key for hash %x: %w", parsedKey.BlockHash, err)
+		}
 
-			currentIterKey := iter.Key()
-			currentIterActualBlockNum, err := decodeBlockNumber(currentIterKey)
+		startBlockNumKey := make([]byte, len(startBlockNumKeyBytes))
+		copy(startBlockNumKey, startBlockNumKeyBytes)
+		if numCloser != nil {
+			if numCloseErr := numCloser.Close(); numCloseErr != nil {
+				return nil, fmt.Errorf("failed to close numCloser: %w", numCloseErr)
+			}
+		}
+
+		initialActualBlockNum, err := decodeBlockNumber(startBlockNumKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode initial block number from key %x: %w", startBlockNumKey, err)
+		}
+
+		initialHeaderBytes, headerCloser, err := s.db.Get(startBlockNumKey)
+		if err != nil {
+			if errors.Is(err, pebble.ErrNotFound) {
+				return nil, fmt.Errorf("header not found for start block number key %x (decoded: %d): %w", startBlockNumKey, initialActualBlockNum, err)
+			}
+			return nil, fmt.Errorf("failed to get header for start block number key %x: %w", startBlockNumKey, err)
+		}
+
+		initialHeader := make([]byte, len(initialHeaderBytes))
+		copy(initialHeader, initialHeaderBytes)
+		if headerCloser != nil {
+			if headCloseErr := headerCloser.Close(); headCloseErr != nil {
+				return nil, fmt.Errorf("failed to close headerCloser: %w", headCloseErr)
+			}
+		}
+
+		collectedHeaders := make([][]byte, 0, 1+int(parsedKey.AncestorCount))
+		collectedHeaders = append(collectedHeaders, initialHeader)
+		lastSuccessfullyAddedBlockNum := initialActualBlockNum
+
+		if parsedKey.AncestorCount > 0 {
+			iterOpts := &pebble.IterOptions{}
+			iter, err := s.db.NewIter(iterOpts)
 			if err != nil {
-				s.log.Error("Failed to decode block number from iterator key", "key", currentIterKey, "err", err)
-				break
+				return nil, fmt.Errorf("failed to create iterator: %w", err)
+			}
+			defer iter.Close()
+
+			if !iter.SeekGE(startBlockNumKey) {
+				if iterErr := iter.Error(); iterErr != nil {
+					return nil, fmt.Errorf("iterator error on SeekGE for known key %x: %w", startBlockNumKey, iterErr)
+				}
+				return nil, fmt.Errorf("SeekGE failed to find known key %x (iterator valid: %t)", startBlockNumKey, iter.Valid())
 			}
 
-			if currentIterActualBlockNum != lastSuccessfullyAddedBlockNum-1 {
-				s.log.Warn("Discontinuity found in ancestor chain.",
-					"last_good_block", lastSuccessfullyAddedBlockNum,
-					"found_block", currentIterActualBlockNum,
-					"expected_block", lastSuccessfullyAddedBlockNum-1)
-				break
+			if !bytes.Equal(iter.Key(), startBlockNumKey) {
+				if iterErr := iter.Error(); iterErr != nil {
+					return nil, fmt.Errorf("iterator error after SeekGE found %x instead of known key %x: %w", iter.Key(), startBlockNumKey, iterErr)
+				}
+				return nil, fmt.Errorf("SeekGE for known key %x landed on a different key %x", startBlockNumKey, iter.Key())
 			}
 
-			ancestorHeader := make([]byte, len(iter.Value()))
-			copy(ancestorHeader, iter.Value())
-			collectedHeaders = append(collectedHeaders, ancestorHeader)
-			lastSuccessfullyAddedBlockNum = currentIterActualBlockNum
+			for i := range int(parsedKey.AncestorCount) {
+				if !iter.Prev() {
+					if iterErr := iter.Error(); iterErr != nil {
+						return nil, fmt.Errorf("iterator error on Prev(): %w", iterErr)
+					}
+					s.log.Debug("Iterator exhausted during Prev() for ancestors", "retrieved_count", i)
+					break
+				}
+
+				currentIterKey := iter.Key()
+				currentIterActualBlockNum, err := decodeBlockNumber(currentIterKey)
+				if err != nil {
+					s.log.Error("Failed to decode block number from iterator key", "key", currentIterKey, "err", err)
+					break
+				}
+
+				if currentIterActualBlockNum != lastSuccessfullyAddedBlockNum-1 {
+					s.log.Warn("Discontinuity found in ancestor chain.",
+						"last_good_block", lastSuccessfullyAddedBlockNum,
+						"found_block", currentIterActualBlockNum,
+						"expected_block", lastSuccessfullyAddedBlockNum-1)
+					break
+				}
+
+				ancestorHeader := make([]byte, len(iter.Value()))
+				copy(ancestorHeader, iter.Value())
+				collectedHeaders = append(collectedHeaders, ancestorHeader)
+				lastSuccessfullyAddedBlockNum = currentIterActualBlockNum
+			}
 		}
-	}
 
-	payload := &history.EphemeralHeaderPayload{
-		Payload: collectedHeaders,
-	}
+		payload := &history.EphemeralHeaderPayload{
+			Payload: collectedHeaders,
+		}
 
-	payloadBytes, err := payload.MarshalSSZ()
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		payloadBytes, err := payload.MarshalSSZ()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		}
+		return payloadBytes, nil
+	case history.OfferEphemeralType:
+		return nil, fmt.Errorf("OfferEphemeralType is not supported")
+	default:
+		return nil, fmt.Errorf("unsupported content type: %d", contentKey[0])
 	}
-	return payloadBytes, nil
 }
 
 // Put implements storage.ContentStorage.
 // It stores the value associated with the given contentKey in the database.
 // The contentId is not used in this implementation.
 func (s *EphemeralStorage) Put(contentKey []byte, _ []byte, value []byte) error {
-	batch := s.db.NewBatch()
-	defer batch.Close()
-	if err := batch.Set(contentKey, value, s.writeOptions); err != nil {
-		return err
+	switch history.ContentType(contentKey[0]) {
+	case history.FindContentEphemeralType:
+		ephemeralHeaderPayload, err := history.DecodeEphemeralHeaderPayload(value)
+		if err != nil {
+			return err
+		}
+		if len(ephemeralHeaderPayload.Payload) == 0 {
+			return nil
+		}
+		firstHeader, err := history.DecodeBlockHeader(ephemeralHeaderPayload.Payload[0])
+		if err != nil {
+			return err
+		}
+		decodedKey := &history.FindContentEphemeralHeadersKey{}
+		err = decodedKey.UnmarshalSSZ(contentKey[1:])
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal contentKey: %w", err)
+		}
+
+		if !bytes.Equal(firstHeader.Hash().Bytes(), decodedKey.BlockHash[:]) {
+			return fmt.Errorf("block hash mismatch: %x != %x", firstHeader.Hash().Bytes(), decodedKey.BlockHash[:])
+		}
+
+		batch := s.db.NewBatch()
+		defer batch.Close()
+		firstBlockNumBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(firstBlockNumBytes, firstHeader.Number.Uint64())
+		if err := batch.Set(decodedKey.BlockHash[:], firstBlockNumBytes, s.writeOptions); err != nil {
+			return err
+		}
+		if err := batch.Set(firstBlockNumBytes, ephemeralHeaderPayload.Payload[0], s.writeOptions); err != nil {
+			return err
+		}
+		prevHeader := firstHeader
+		for _, header := range ephemeralHeaderPayload.Payload[1:] {
+			decodedHeader, err := history.DecodeBlockHeader(header)
+			if err != nil {
+				return err
+			}
+			if !bytes.Equal(prevHeader.ParentHash.Bytes(), decodedHeader.Hash().Bytes()) {
+				return fmt.Errorf("parent hash mismatch: %x != %x", prevHeader.ParentHash.Bytes(), decodedHeader.Hash().Bytes())
+			}
+			if prevHeader.Number.Uint64() != decodedHeader.Number.Uint64()+1 {
+				return fmt.Errorf("block number mismatch in ancestor chain: expected %d (parent of %d), but got %d", decodedHeader.Number.Uint64()+1, decodedHeader.Number.Uint64(), prevHeader.Number.Uint64())
+			}
+			blockNumBytes := make([]byte, 8)
+			binary.BigEndian.PutUint64(blockNumBytes, decodedHeader.Number.Uint64())
+			if err := batch.Set(decodedHeader.Hash().Bytes(), blockNumBytes, s.writeOptions); err != nil {
+				return err
+			}
+			if err := batch.Set(blockNumBytes, header, s.writeOptions); err != nil {
+				return err
+			}
+			prevHeader = decodedHeader
+		}
+		if err := batch.Commit(s.writeOptions); err != nil {
+			return fmt.Errorf("failed to commit batch: %w", err)
+		}
+		return nil
+	case history.OfferEphemeralType:
+		offerEphemeralHeader, err := history.DecodeOfferEphemeralHeader(value)
+		if err != nil {
+			return err
+		}
+
+		header, err := history.DecodeBlockHeader(offerEphemeralHeader.Header)
+		if err != nil {
+			return err
+		}
+		_, closer, err := s.db.Get(header.Hash().Bytes())
+		if closer != nil {
+			if closeErr := closer.Close(); closeErr != nil {
+				return fmt.Errorf("failed to close closer: %w", closeErr)
+			}
+		}
+		if err != nil {
+			if errors.Is(err, pebble.ErrNotFound) {
+				batch := s.db.NewBatch()
+				defer batch.Close()
+				blockNumBytes := make([]byte, 8)
+				binary.BigEndian.PutUint64(blockNumBytes, header.Number.Uint64())
+				if err := batch.Set(header.Hash().Bytes(), blockNumBytes, s.writeOptions); err != nil {
+					return err
+				}
+				if err := batch.Set(blockNumBytes, offerEphemeralHeader.Header, s.writeOptions); err != nil {
+					return err
+				}
+				if err := batch.Commit(s.writeOptions); err != nil {
+					return fmt.Errorf("failed to commit batch: %w", err)
+				}
+			}
+			return fmt.Errorf("failed to get block number key for hash %x: %w", header.Hash(), err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported content type: %d", contentKey[0])
 	}
-	return batch.Commit(s.writeOptions)
 }
 
 // Radius returns the storage radius.
