@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -978,6 +979,58 @@ func TestGetOrStoreHighestVersionOverflow(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, node1.versionsCache.Len())
+}
+
+func TestHandleFindContent_Ratelimit(t *testing.T) {
+	original := maxPayloadSize
+	maxPayloadSize = 10
+	defer func() {
+		maxPayloadSize = original
+	}()
+
+	node1, err := setupLocalPortalNode(":3321", nil, 0, 0, 1)
+	assert.NoError(t, err)
+	node1.Log = testlog.Logger(t, log.LevelInfo)
+	err = node1.Start()
+	assert.NoError(t, err)
+	defer stopNode(node1)
+
+	node2, err := setupLocalPortalNode(":3322", []*enode.Node{node1.localNode.Node()}, 1, 0, 1)
+	assert.NoError(t, err)
+	node2.Log = testlog.Logger(t, log.LevelInfo)
+	err = node2.Start()
+	assert.NoError(t, err)
+	defer stopNode(node2)
+
+	for i := 0; i < 10; i++ {
+		key := []byte(fmt.Sprintf("test_entry_key_%d", i))
+		value := []byte(fmt.Sprintf("test_entry_value_%d", i))
+		node2.storage.Put(key, node2.toContentId(key), value)
+	}
+
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", node1.localNode.Node().IPAddr().String(), node1.localNode.Node().UDP()))
+	assert.NoError(t, err)
+	testKey := &FindContent{
+		ContentKey: []byte("test_entry_key_1"),
+	}
+	var permitCount atomic.Int32
+	permitCountPtr := &permitCount
+	var wg sync.WaitGroup
+	wg.Add(10)
+	for i := 0; i < 10; i++ {
+		go func(j int) {
+			defer wg.Done()
+			content, err2 := node2.handleFindContent(node1.localNode.Node(), addr, testKey)
+			assert.NoError(t, err2)
+			fmt.Println(hexutil.Encode(content))
+			if len(content) != 2 {
+				permitCountPtr.Add(1)
+				fmt.Println(permitCountPtr.Load())
+			}
+		}(i)
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), permitCountPtr.Load())
 }
 
 func TestAcceptCode_Ratelmit(t *testing.T) {

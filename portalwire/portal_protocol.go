@@ -58,7 +58,7 @@ const (
 
 	defaultUTPReadTimeout = 60 * time.Second
 
-	DefaultUtpConnSize = 50
+	DefaultUtpConnSize = 64
 
 	// These are the concurrent offers per Portal wire protocol that is running.
 	// Using the `offerQueue` allows for limiting the amount of offers send and
@@ -101,11 +101,12 @@ const (
 const Tag ClientTag = "shisui"
 
 const (
-	contentOverhead          = 1 + 1 // msg id + SSZ Union selector
-	maxPayloadSize           = maxPacketSize - talkRespOverhead - contentOverhead
+	contentOverhead          = 1 + 1           // msg id + SSZ Union selector
 	enrOverhead              = 4               // per added ENR, 4 bytes offset overheadvar expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
 	expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
 )
+
+var maxPayloadSize = maxPacketSize - talkRespOverhead - contentOverhead
 
 var versionsCacheSize = nBuckets * (bucketSize + maxReplacements) // VersionsCacheSize ideally should have the buckets plus the replacement Buckets size
 
@@ -1498,63 +1499,61 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 	} else {
 		connectionId := p.Utp.CidWithAddr(n, addr, false)
 
-		permit, hasPermit := p.Utp.GetOutboundPermit()
-		if hasPermit {
-			go func(bctx context.Context, connId *utp.ConnectionId) {
-				defer permit.Release()
-				var conn *utp.UtpStream
-				var connectCtx context.Context
-				var cancel context.CancelFunc
-				for {
-					select {
-					case <-bctx.Done():
-						return
-					default:
-						p.Log.Debug("will accept find content conn from: ", "nodeId", n.ID().String(), "source", addr, "connId", connId)
-						connectCtx, cancel = context.WithTimeout(bctx, defaultUTPConnectTimeout)
-						defer cancel()
-						conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
-						if err != nil {
-							if metrics.Enabled() {
-								p.portalMetrics.utpOutFailConn.Inc(1)
-							}
-							p.Log.Error("failed to accept utp connection for handle find content", "connId", connectionId.Send, "err", err)
-							return
-						}
-
-						writeCtx, writeCancel := context.WithTimeout(bctx, defaultUTPWriteTimeout)
-						defer writeCancel()
-						content, err = p.encodeUtpContent(n, content)
-						if err != nil {
-							if metrics.Enabled() {
-								p.portalMetrics.utpOutFailConn.Inc(1)
-							}
-							p.Log.Error("encode utp content failed", "err", err)
-							return
-						}
-						var n int
-						n, err = conn.Write(writeCtx, content)
-						conn.Close()
-						permit.Release()
-						if err != nil {
-							if metrics.Enabled() {
-								p.portalMetrics.utpOutFailWrite.Inc(1)
-							}
-							p.Log.Error("failed to write content to utp connection", "err", err)
-							return
-						}
-
-						if metrics.Enabled() {
-							p.portalMetrics.utpOutSuccess.Inc(1)
-						}
-						p.Log.Trace("wrote content size to utp connection", "n", n)
-						return
-					}
-				}
-			}(p.closeCtx, connectionId)
-		} else {
+		permit, getPermit := p.Utp.getOutboundLimit()
+		if !getPermit {
 			return p.closestNodeToContent(n, addr, contentId, portalFindnodesResultLimit)
 		}
+		go func(bctx context.Context, connId *utp.ConnectionId) {
+			var conn *utp.UtpStream
+			var connectCtx context.Context
+			var cancel context.CancelFunc
+			for {
+				select {
+				case <-bctx.Done():
+					return
+				default:
+					p.Log.Debug("will accept find content conn from: ", "nodeId", n.ID().String(), "source", addr, "connId", connId)
+					connectCtx, cancel = context.WithTimeout(bctx, defaultUTPConnectTimeout)
+					defer cancel()
+					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
+					if err != nil {
+						if metrics.Enabled() {
+							p.portalMetrics.utpOutFailConn.Inc(1)
+						}
+						p.Log.Error("failed to accept utp connection for handle find content", "connId", connectionId.Send, "err", err)
+						return
+					}
+
+					writeCtx, writeCancel := context.WithTimeout(bctx, defaultUTPWriteTimeout)
+					defer writeCancel()
+					content, err = p.encodeUtpContent(n, content)
+					if err != nil {
+						if metrics.Enabled() {
+							p.portalMetrics.utpOutFailConn.Inc(1)
+						}
+						p.Log.Error("encode utp content failed", "err", err)
+						return
+					}
+					var n int
+					n, err = conn.Write(writeCtx, content)
+					conn.Close()
+					permit.Release()
+					if err != nil {
+						if metrics.Enabled() {
+							p.portalMetrics.utpOutFailWrite.Inc(1)
+						}
+						p.Log.Error("failed to write content to utp connection", "err", err)
+						return
+					}
+
+					if metrics.Enabled() {
+						p.portalMetrics.utpOutSuccess.Inc(1)
+					}
+					p.Log.Trace("wrote content size to utp connection", "n", n)
+					return
+				}
+			}
+		}(p.closeCtx, connectionId)
 		idBuffer := make([]byte, 2)
 		binary.BigEndian.PutUint16(idBuffer, connectionId.Send)
 		connIdMsg := &ConnectionId{
@@ -1596,7 +1595,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 	idBuffer := make([]byte, 2)
 	idValue := uint16(0)
 	if len(contentKeys) > 0 {
-		permit, getPermit := p.Utp.GetInboundPermit()
+		permit, getPermit := p.Utp.getInboundLimit()
 		if !getPermit {
 			p.Log.Debug("utp rate limited")
 			if acceptV1, isV1 := accept.(*AcceptV1); isV1 {
@@ -2230,7 +2229,7 @@ func (p *PortalProtocol) GossipAndReturnPeers(srcNodeId *enode.ID, contentKeys [
 	}
 
 	for _, n := range finalGossipNodes {
-		permit, ok := p.Utp.GetOutboundPermit()
+		permit, ok := p.Utp.getOutboundLimit()
 		if !ok {
 			p.Log.Debug("reached utp conn limit, will drop this content", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
 			continue

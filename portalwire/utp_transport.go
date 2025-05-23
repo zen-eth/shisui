@@ -24,14 +24,16 @@ var (
 )
 
 type UtpTransportService struct {
-	startOnce     sync.Once
-	ctx           context.Context
-	log           log.Logger
-	discV5        *discover.UDPv5
-	socket        *utp.UtpSocket
-	socketConfig  *utp.ConnectionConfig
-	ListenAddr    string
-	utpController *utpController
+	startOnce        sync.Once
+	ctx              context.Context
+	log              log.Logger
+	discV5           *discover.UDPv5
+	socket           *utp.UtpSocket
+	socketConfig     *utp.ConnectionConfig
+	ListenAddr       string
+	utpControllerRef *utpController
+	getInboundLimit  func() (Permit, bool)
+	getOutboundLimit func() (Permit, bool)
 }
 
 type UtpPeer struct {
@@ -137,11 +139,10 @@ func (u *utpController) GetOutboundPermit() (Permit, bool) {
 }
 
 type discv5Conn struct {
-	logger        log.Logger
-	receive       chan *packetItem
-	conn          *discover.UDPv5
-	closed        *atomic.Bool
-	UtpController *utpController
+	logger  log.Logger
+	receive chan *packetItem
+	conn    *discover.UDPv5
+	closed  *atomic.Bool
 }
 
 func newDiscv5Conn(conn *discover.UDPv5, logger log.Logger) *discv5Conn {
@@ -192,13 +193,16 @@ func (c *discv5Conn) Close() error {
 }
 
 func NewZenEthUtp(ctx context.Context, config *PortalProtocolConfig, discV5 *discover.UDPv5, conn discover.UDPConn) *UtpTransportService {
+	utpControllerRef := newUtpController(config.MaxUtpConnSize)
 	uts := &UtpTransportService{
-		ctx:           ctx,
-		log:           log.New("protocol", "utp", "local", conn.LocalAddr().String()),
-		discV5:        discV5,
-		socketConfig:  utp.NewConnectionConfig(),
-		ListenAddr:    config.ListenAddr,
-		utpController: newUtpController(config.MaxUtpConnSize),
+		ctx:              ctx,
+		log:              log.New("protocol", "utp", "local", conn.LocalAddr().String()),
+		discV5:           discV5,
+		socketConfig:     utp.NewConnectionConfig(),
+		ListenAddr:       config.ListenAddr,
+		utpControllerRef: utpControllerRef,
+		getInboundLimit:  utpControllerRef.GetInboundPermit,
+		getOutboundLimit: utpControllerRef.GetOutboundPermit,
 	}
 	return uts
 }
@@ -210,14 +214,6 @@ func (z *UtpTransportService) Start() error {
 		z.discV5.RegisterTalkHandler(UTP_STRING, conn.handleUtpTalkRequest)
 	})
 	return nil
-}
-
-func (z *UtpTransportService) GetOutboundPermit() (Permit, bool) {
-	return z.utpController.GetOutboundPermit()
-}
-
-func (z *UtpTransportService) GetInboundPermit() (Permit, bool) {
-	return z.utpController.GetInboundPermit()
 }
 
 func (z *UtpTransportService) DialWithCid(ctx context.Context, dest *enode.Node, connId uint16) (*utp.UtpStream, error) {
