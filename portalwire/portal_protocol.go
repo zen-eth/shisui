@@ -98,21 +98,15 @@ const (
 	Failed
 )
 
-var expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
-
-var versionsCacheSize = nBuckets * (bucketSize + maxReplacements) // VersionsCacheSize ideally should have the buckets plus the replacement Buckets size
-
-type protocolVersions []uint8
-
-func (pv protocolVersions) ENRKey() string { return "pv" }
-
-var Versions protocolVersions = protocolVersions{0, 1} //protocol network versions defined here
-
-type ClientTag string
-
-func (c ClientTag) ENRKey() string { return "c" }
-
 const Tag ClientTag = "shisui"
+
+const (
+	contentOverhead          = 1 + 1 // msg id + SSZ Union selector
+	maxPayloadSize           = maxPacketSize - talkRespOverhead - contentOverhead
+	enrOverhead              = 4                                         // per added ENR, 4 bytes offset overheadvar expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
+	expirationVersionMinutes = 5 * time.Minute                           // cache versionsCache expiration time in minutes
+	versionsCacheSize        = nBuckets * (bucketSize + maxReplacements) // VersionsCacheSize ideally should have the buckets plus the replacement Buckets size
+)
 
 var MaxDistance = hexutil.MustDecode("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 
@@ -142,6 +136,16 @@ var (
 	errTimeout = errors.New("RPC timeout")
 	errLowPort = errors.New("low port")
 )
+
+type protocolVersions []uint8
+
+func (pv protocolVersions) ENRKey() string { return "pv" }
+
+var Versions protocolVersions = protocolVersions{0, 1} //protocol network versions defined here
+
+type ClientTag string
+
+func (c ClientTag) ENRKey() string { return "c" }
 
 type ContentElement struct {
 	Node        enode.ID
@@ -1409,10 +1413,47 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 	return talkRespBytes, nil
 }
 
+func (p *PortalProtocol) closestNodeToContent(n *enode.Node, addr *net.UDPAddr, contentId []byte, limit int) ([]byte, error) {
+	closestNodes := p.findNodesCloseToContent(contentId, portalFindnodesResultLimit)
+	for i, closeNode := range closestNodes {
+		if closeNode.ID() == n.ID() {
+			closestNodes = append(closestNodes[:i], closestNodes[i+1:]...)
+			break
+		}
+	}
+
+	enrs := p.truncateNodes(closestNodes, maxPayloadSize, enrOverhead)
+	// TODO fix when no content and no enrs found
+	if len(enrs) == 0 {
+		enrs = nil
+	}
+
+	enrsMsg := &Enrs{
+		Enrs: enrs,
+	}
+
+	p.Log.Trace(">> CONTENT_ENRS/"+p.protocolName, "protocol", p.protocolName, "source", addr, "enrs.size", len(enrsMsg.Enrs))
+	if metrics.Enabled() {
+		p.portalMetrics.messagesSentContent.Mark(1)
+	}
+	var enrsMsgBytes []byte
+	enrsMsgBytes, err := enrsMsg.MarshalSSZ()
+	if err != nil {
+		return nil, err
+	}
+
+	contentMsgBytes := make([]byte, 0, len(enrsMsgBytes)+1)
+	contentMsgBytes = append(contentMsgBytes, ContentEnrsSelector)
+	contentMsgBytes = append(contentMsgBytes, enrsMsgBytes...)
+
+	talkRespBytes := make([]byte, 0, len(contentMsgBytes)+1)
+	talkRespBytes = append(talkRespBytes, CONTENT)
+	talkRespBytes = append(talkRespBytes, contentMsgBytes...)
+
+	return talkRespBytes, nil
+}
+
 func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, request *FindContent) ([]byte, error) {
-	contentOverhead := 1 + 1 // msg id + SSZ Union selector
-	maxPayloadSize := maxPacketSize - talkRespOverhead - contentOverhead
-	enrOverhead := 4 // per added ENR, 4 bytes offset overhead
 	var err error
 	contentKey := request.ContentKey
 	contentId := p.toContentId(contentKey)
@@ -1427,43 +1468,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 	}
 
 	if errors.Is(err, ErrContentNotFound) {
-		closestNodes := p.findNodesCloseToContent(contentId, portalFindnodesResultLimit)
-		for i, closeNode := range closestNodes {
-			if closeNode.ID() == n.ID() {
-				closestNodes = append(closestNodes[:i], closestNodes[i+1:]...)
-				break
-			}
-		}
-
-		enrs := p.truncateNodes(closestNodes, maxPayloadSize, enrOverhead)
-		// TODO fix when no content and no enrs found
-		if len(enrs) == 0 {
-			enrs = nil
-		}
-
-		enrsMsg := &Enrs{
-			Enrs: enrs,
-		}
-
-		p.Log.Trace(">> CONTENT_ENRS/"+p.protocolName, "protocol", p.protocolName, "source", addr, "enrs.size", len(enrsMsg.Enrs))
-		if metrics.Enabled() {
-			p.portalMetrics.messagesSentContent.Mark(1)
-		}
-		var enrsMsgBytes []byte
-		enrsMsgBytes, err = enrsMsg.MarshalSSZ()
-		if err != nil {
-			return nil, err
-		}
-
-		contentMsgBytes := make([]byte, 0, len(enrsMsgBytes)+1)
-		contentMsgBytes = append(contentMsgBytes, ContentEnrsSelector)
-		contentMsgBytes = append(contentMsgBytes, enrsMsgBytes...)
-
-		talkRespBytes := make([]byte, 0, len(contentMsgBytes)+1)
-		talkRespBytes = append(talkRespBytes, CONTENT)
-		talkRespBytes = append(talkRespBytes, contentMsgBytes...)
-
-		return talkRespBytes, nil
+		return p.closestNodeToContent(n, addr, contentId, portalFindnodesResultLimit)
 	} else if len(content) <= maxPayloadSize {
 		rawContentMsg := &Content{
 			Content: content,
@@ -1492,57 +1497,63 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 	} else {
 		connectionId := p.Utp.CidWithAddr(n, addr, false)
 
-		go func(bctx context.Context, connId *utp.ConnectionId) {
-			var conn *utp.UtpStream
-			var connectCtx context.Context
-			var cancel context.CancelFunc
-			for {
-				select {
-				case <-bctx.Done():
-					return
-				default:
-					p.Log.Debug("will accept find content conn from: ", "nodeId", n.ID().String(), "source", addr, "connId", connId)
-					connectCtx, cancel = context.WithTimeout(bctx, defaultUTPConnectTimeout)
-					defer cancel()
-					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
-					if err != nil {
-						if metrics.Enabled() {
-							p.portalMetrics.utpOutFailConn.Inc(1)
-						}
-						p.Log.Error("failed to accept utp connection for handle find content", "connId", connectionId.Send, "err", err)
+		permit, hasPermit := p.Utp.GetOutboundPermit()
+		if hasPermit {
+			go func(bctx context.Context, connId *utp.ConnectionId) {
+				defer permit.Release()
+				var conn *utp.UtpStream
+				var connectCtx context.Context
+				var cancel context.CancelFunc
+				for {
+					select {
+					case <-bctx.Done():
 						return
-					}
+					default:
+						p.Log.Debug("will accept find content conn from: ", "nodeId", n.ID().String(), "source", addr, "connId", connId)
+						connectCtx, cancel = context.WithTimeout(bctx, defaultUTPConnectTimeout)
+						defer cancel()
+						conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
+						if err != nil {
+							if metrics.Enabled() {
+								p.portalMetrics.utpOutFailConn.Inc(1)
+							}
+							p.Log.Error("failed to accept utp connection for handle find content", "connId", connectionId.Send, "err", err)
+							return
+						}
 
-					writeCtx, writeCancel := context.WithTimeout(bctx, defaultUTPWriteTimeout)
-					defer writeCancel()
-					content, err = p.encodeUtpContent(n, content)
-					if err != nil {
-						if metrics.Enabled() {
-							p.portalMetrics.utpOutFailConn.Inc(1)
+						writeCtx, writeCancel := context.WithTimeout(bctx, defaultUTPWriteTimeout)
+						defer writeCancel()
+						content, err = p.encodeUtpContent(n, content)
+						if err != nil {
+							if metrics.Enabled() {
+								p.portalMetrics.utpOutFailConn.Inc(1)
+							}
+							p.Log.Error("encode utp content failed", "err", err)
+							return
 						}
-						p.Log.Error("encode utp content failed", "err", err)
-						return
-					}
-					var n int
-					n, err = conn.Write(writeCtx, content)
-					conn.Close()
-					if err != nil {
-						if metrics.Enabled() {
-							p.portalMetrics.utpOutFailWrite.Inc(1)
+						var n int
+						n, err = conn.Write(writeCtx, content)
+						conn.Close()
+						permit.Release()
+						if err != nil {
+							if metrics.Enabled() {
+								p.portalMetrics.utpOutFailWrite.Inc(1)
+							}
+							p.Log.Error("failed to write content to utp connection", "err", err)
+							return
 						}
-						p.Log.Error("failed to write content to utp connection", "err", err)
-						return
-					}
 
-					if metrics.Enabled() {
-						p.portalMetrics.utpOutSuccess.Inc(1)
+						if metrics.Enabled() {
+							p.portalMetrics.utpOutSuccess.Inc(1)
+						}
+						p.Log.Trace("wrote content size to utp connection", "n", n)
+						return
 					}
-					p.Log.Trace("wrote content size to utp connection", "n", n)
-					return
 				}
-			}
-		}(p.closeCtx, connectionId)
-
+			}(p.closeCtx, connectionId)
+		} else {
+			return p.closestNodeToContent(n, addr, contentId, portalFindnodesResultLimit)
+		}
 		idBuffer := make([]byte, 2)
 		binary.BigEndian.PutUint16(idBuffer, connectionId.Send)
 		connIdMsg := &ConnectionId{
