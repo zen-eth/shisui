@@ -103,10 +103,11 @@ const Tag ClientTag = "shisui"
 const (
 	contentOverhead          = 1 + 1 // msg id + SSZ Union selector
 	maxPayloadSize           = maxPacketSize - talkRespOverhead - contentOverhead
-	enrOverhead              = 4                                         // per added ENR, 4 bytes offset overheadvar expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
-	expirationVersionMinutes = 5 * time.Minute                           // cache versionsCache expiration time in minutes
-	versionsCacheSize        = nBuckets * (bucketSize + maxReplacements) // VersionsCacheSize ideally should have the buckets plus the replacement Buckets size
+	enrOverhead              = 4               // per added ENR, 4 bytes offset overheadvar expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
+	expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
 )
+
+var versionsCacheSize = nBuckets * (bucketSize + maxReplacements) // VersionsCacheSize ideally should have the buckets plus the replacement Buckets size
 
 var MaxDistance = hexutil.MustDecode("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 
@@ -1414,7 +1415,7 @@ func (p *PortalProtocol) handleFindNodes(fromAddr *net.UDPAddr, request *FindNod
 }
 
 func (p *PortalProtocol) closestNodeToContent(n *enode.Node, addr *net.UDPAddr, contentId []byte, limit int) ([]byte, error) {
-	closestNodes := p.findNodesCloseToContent(contentId, portalFindnodesResultLimit)
+	closestNodes := p.findNodesCloseToContent(contentId, limit)
 	for i, closeNode := range closestNodes {
 		if closeNode.ID() == n.ID() {
 			closestNodes = append(closestNodes[:i], closestNodes[i+1:]...)
