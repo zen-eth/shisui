@@ -1021,7 +1021,7 @@ func TestHandleFindContent_Ratelimit(t *testing.T) {
 	wg.Add(1000)
 	waitGoroutines.Add(1000)
 	for i := 0; i < 1000; i++ {
-		go func(j int) {
+		go func() {
 			defer wg.Done()
 			waitGoroutines.Wait()
 			content, err2 := node2.handleFindContent(node1.localNode.Node(), addr, testKey)
@@ -1030,7 +1030,7 @@ func TestHandleFindContent_Ratelimit(t *testing.T) {
 			if len(content) != 2 {
 				permitCountPtr.Add(1)
 			}
-		}(i)
+		}()
 		waitGoroutines.Done()
 	}
 	wg.Wait()
