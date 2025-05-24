@@ -624,6 +624,7 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, per
 	}
 	offerBytes, err := offer.MarshalSSZ()
 	if err != nil {
+		p.Utp.releasePermit(permit)
 		return nil, err
 	}
 
@@ -632,6 +633,7 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, per
 	copy(talkRequestBytes[1:], offerBytes)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
+		p.Utp.releasePermit(permit)
 		return nil, err
 	}
 
@@ -1504,6 +1506,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 			return p.closestNodeToContent(n, addr, contentId, portalFindnodesResultLimit)
 		}
 		go func(bctx context.Context, connId *utp.ConnectionId) {
+			defer p.Utp.releasePermit(permit)
 			var conn *utp.UtpStream
 			var connectCtx context.Context
 			var cancel context.CancelFunc
@@ -1537,7 +1540,6 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 					var n int
 					n, err = conn.Write(writeCtx, content)
 					conn.Close()
-					p.Utp.releasePermit(permit)
 					if err != nil {
 						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailWrite.Inc(1)
@@ -1627,6 +1629,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 								p.portalMetrics.utpInFailConn.Inc(1)
 							}
 							p.Log.Error("failed to accept utp connection for handle offer", "connId", connectionId.Send, "err", err)
+							p.Utp.releasePermit(permitValue)
 							return
 						}
 
