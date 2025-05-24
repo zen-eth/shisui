@@ -356,7 +356,7 @@ func TestPortalWireProtocol(t *testing.T) {
 		Request: testTransientOfferRequest,
 	}
 
-	contentKeys, err := node1.offer(node3.localNode.Node(), offerRequest, &NoPermit{})
+	contentKeys, err := node1.offer(node3.localNode.Node(), offerRequest, PermitNotLimit)
 	assert.Equal(t, uint64(2), bitfield.Bitlist(contentKeys).Count())
 	assert.NoError(t, err)
 
@@ -403,7 +403,7 @@ func TestPortalWireProtocol(t *testing.T) {
 		Request: testTransientOfferRequestWithResult,
 	}
 
-	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest, &NoPermit{})
+	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest, PermitNotLimit)
 	assert.NoError(t, err)
 
 	offerTrace := <-testTransientOfferRequestWithResult.Result
@@ -422,7 +422,7 @@ func TestPortalWireProtocol(t *testing.T) {
 
 	err = node3.storage.Put(nil, node3.toContentId(testTraceEntry.ContentKey), testTraceEntry.Content)
 	assert.NoError(t, err)
-	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest1, &NoPermit{})
+	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest1, PermitNotLimit)
 	assert.NoError(t, err)
 
 	offerTrace1 := <-testTransientOfferRequestWithResult1.Result
@@ -731,7 +731,7 @@ func TestOfferV1(t *testing.T) {
 		Request: testTransientOfferRequest,
 	}
 	// all accept
-	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest, &NoPermit{})
+	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest, PermitNotLimit)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(contentKeys))
 	for _, val := range contentKeys {
@@ -741,7 +741,7 @@ func TestOfferV1(t *testing.T) {
 	// one reject
 	node1.storage.Put(testEntry1.ContentKey, node2.toContentId(testEntry1.ContentKey), testEntry1.Content)
 	node1.transferringKeyCache.Set(testEntry2.ContentKey, EmptyBytes)
-	acceptCodes, err := node2.offer(node1.localNode.Node(), offerRequest, &NoPermit{})
+	acceptCodes, err := node2.offer(node1.localNode.Node(), offerRequest, PermitNotLimit)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(acceptCodes))
 	assert.Equal(t, uint8(AlreadyStored), acceptCodes[0])
@@ -990,14 +990,14 @@ func TestHandleFindContent_Ratelimit(t *testing.T) {
 
 	node1, err := setupLocalPortalNode(":3321", nil, 0, 0, 1)
 	assert.NoError(t, err)
-	node1.Log = testlog.Logger(t, log.LevelInfo)
+	node1.Log = testlog.Logger(t, log.LevelCrit)
 	err = node1.Start()
 	assert.NoError(t, err)
 	defer stopNode(node1)
 
-	node2, err := setupLocalPortalNode(":3322", []*enode.Node{node1.localNode.Node()}, 1, 0, 1)
+	node2, err := setupLocalPortalNode(":3322", []*enode.Node{node1.localNode.Node()}, 64, 0, 1)
 	assert.NoError(t, err)
-	node2.Log = testlog.Logger(t, log.LevelInfo)
+	node2.Log = testlog.Logger(t, log.LevelCrit)
 	err = node2.Start()
 	assert.NoError(t, err)
 	defer stopNode(node2)
@@ -1015,22 +1015,26 @@ func TestHandleFindContent_Ratelimit(t *testing.T) {
 	}
 	var permitCount atomic.Int32
 	permitCountPtr := &permitCount
+
 	var wg sync.WaitGroup
-	wg.Add(10)
-	for i := 0; i < 10; i++ {
+	var waitGoroutines sync.WaitGroup
+	wg.Add(1000)
+	waitGoroutines.Add(1000)
+	for i := 0; i < 1000; i++ {
 		go func(j int) {
 			defer wg.Done()
+			waitGoroutines.Wait()
 			content, err2 := node2.handleFindContent(node1.localNode.Node(), addr, testKey)
-			assert.NoError(t, err2)
 			fmt.Println(hexutil.Encode(content))
+			assert.NoError(t, err2)
 			if len(content) != 2 {
 				permitCountPtr.Add(1)
-				fmt.Println(permitCountPtr.Load())
 			}
 		}(i)
+		waitGoroutines.Done()
 	}
 	wg.Wait()
-	assert.Equal(t, int32(1), permitCountPtr.Load())
+	assert.Equal(t, int32(64), permitCountPtr.Load())
 }
 
 func TestAcceptCode_Ratelmit(t *testing.T) {
@@ -1070,7 +1074,7 @@ func TestAcceptCode_Ratelmit(t *testing.T) {
 		Request: testTransientOfferRequest,
 	}
 	// all accept
-	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest, &NoPermit{})
+	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest, PermitReject)
 	assert.NoError(t, err)
 	assert.Len(t, contentKeys, 2, "excepted: 2, but got: %d", len(contentKeys))
 	for _, val := range contentKeys {

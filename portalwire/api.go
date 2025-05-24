@@ -474,7 +474,7 @@ func (p *PortalProtocolAPI) Offer(enr string, contentItems [][2]string) (string,
 		Kind:    TransientOfferRequestKind,
 		Request: transientOfferRequest,
 	}
-	accept, err := p.portalProtocol.offer(n, offerReq, &NoPermit{})
+	accept, err := p.portalProtocol.offer(n, offerReq, PermitNotLimit)
 	if err != nil {
 		return "", err
 	}
@@ -519,7 +519,7 @@ func (p *PortalProtocolAPI) TraceOffer(enr string, key string, value string) (in
 		Request: transientOfferRequestWithResult,
 	}
 
-	_, err = p.portalProtocol.offer(n, offerReq, &NoPermit{})
+	_, err = p.portalProtocol.offer(n, offerReq, PermitNotLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -683,7 +683,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 					continue
 				}
 
-				_, offerErr := p.portalProtocol.offer(nodeToOffer, offerReq, &NoPermit{})
+				_, offerErr := p.portalProtocol.offer(nodeToOffer, offerReq, PermitNotLimit)
 				if offerErr != nil {
 					p.portalProtocol.Log.Warn("Failed to offer content to lookup node", "node", nodeToOffer.ID(), "err", offerErr)
 					continue
