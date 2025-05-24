@@ -121,9 +121,10 @@ func (u *utpController) GetOutboundPermit() Permit {
 }
 
 func (u *utpController) Release(permit Permit) {
-	if permit == PermitInbound {
+	switch permit {
+	case PermitInbound:
 		u.inboundLimit.Release(1)
-	} else if permit == PermitOutbound {
+	case PermitOutbound:
 		u.outboundLimit.Release(1)
 	}
 }
