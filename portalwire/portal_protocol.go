@@ -181,8 +181,6 @@ type OfferRequest struct {
 type OfferRequestWithNode struct {
 	Request *OfferRequest
 	Node    *enode.Node
-
-	permit Permit
 }
 
 type ContentInfoResp struct {
@@ -642,7 +640,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 	notStartedUtp := true
 	defer func() {
 		if notStartedUtp {
-			permit.Release()
+			p.Utp.releasePermit(permit)
 		}
 	}()
 	var err error
@@ -707,8 +705,8 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 	}
 	notStartedUtp = false
 	connId := binary.BigEndian.Uint16(accept.GetConnectionId())
-	go func(ctx context.Context) {
-		defer permit.Release()
+	go func(ctx context.Context, pr Permit) {
+		defer p.Utp.releasePermit(pr)
 		var conn *utp.UtpStream
 		for {
 			select {
@@ -795,7 +793,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				return
 			}
 		}
-	}(p.closeCtx)
+	}(p.closeCtx, permit)
 
 	return accept.GetContentKeys(), nil
 }
@@ -1499,8 +1497,8 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 	} else {
 		connectionId := p.Utp.CidWithAddr(n, addr, false)
 
-		permit, getPermit := p.Utp.getOutboundLimit()
-		if !getPermit {
+		permit := p.Utp.getOutboundLimit()
+		if permit != PermitOutbound {
 			return p.closestNodeToContent(n, addr, contentId, portalFindnodesResultLimit)
 		}
 		go func(bctx context.Context, connId *utp.ConnectionId) {
@@ -1537,7 +1535,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 					var n int
 					n, err = conn.Write(writeCtx, content)
 					conn.Close()
-					permit.Release()
+					p.Utp.releasePermit(permit)
 					if err != nil {
 						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailWrite.Inc(1)
@@ -1595,8 +1593,8 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 	idBuffer := make([]byte, 2)
 	idValue := uint16(0)
 	if len(contentKeys) > 0 {
-		permit, getPermit := p.Utp.getInboundLimit()
-		if !getPermit {
+		permit := p.Utp.getInboundLimit()
+		if permit != PermitInbound {
 			p.Log.Debug("utp rate limited")
 			if acceptV1, isV1 := accept.(*AcceptV1); isV1 {
 				keysLen := len(acceptV1.ContentKeys)
@@ -1608,13 +1606,13 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 			}
 		} else {
 			connectionId := p.Utp.CidWithAddr(node, addr, false)
-			go func(bctx context.Context, connId *utp.ConnectionId, releasePermit Permit) {
-				defer releasePermit.Release()
+			go func(bctx context.Context, connId *utp.ConnectionId, permitValue Permit) {
 				defer p.deleteTransferringContentKeys(contentKeys)
 				var conn *utp.UtpStream
 				for {
 					select {
 					case <-bctx.Done():
+						p.Utp.releasePermit(permitValue)
 						return
 					default:
 						p.cacheTransferringKeys(contentKeys)
@@ -1638,7 +1636,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						n, err = conn.ReadToEOF(readCtx, &data)
 						conn.Close()
 						// release permit fast
-						releasePermit.Release()
+						p.Utp.releasePermit(permitValue)
 						p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n, "data", data)
 						if metrics.Enabled() {
 							p.portalMetrics.messagesReceivedContent.Mark(1)
@@ -1653,6 +1651,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						if metrics.Enabled() {
 							p.portalMetrics.utpInSuccess.Inc(1)
 						}
+						return
 					}
 				}
 			}(p.closeCtx, connectionId, permit)
@@ -1815,7 +1814,11 @@ func (p *PortalProtocol) offerWorker() {
 			return
 		case offerRequestWithNode := <-p.offerQueue:
 			p.Log.Trace("offerWorker", "offerRequestWithNode", offerRequestWithNode)
-			_, err := p.offer(offerRequestWithNode.Node, offerRequestWithNode.Request, offerRequestWithNode.permit)
+			permit := p.Utp.getOutboundLimit()
+			if permit == PermitReject {
+				p.Log.Debug("utp rate limited, rejecting offer", "offerRequestWithNode", offerRequestWithNode)
+			}
+			_, err := p.offer(offerRequestWithNode.Node, offerRequestWithNode.Request, permit)
 			if err != nil {
 				p.Log.Error("failed to offer", "err", err)
 			}
@@ -2229,11 +2232,6 @@ func (p *PortalProtocol) GossipAndReturnPeers(srcNodeId *enode.ID, contentKeys [
 	}
 
 	for _, n := range finalGossipNodes {
-		permit, ok := p.Utp.getOutboundLimit()
-		if !ok {
-			p.Log.Debug("reached utp conn limit, will drop this content", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
-			continue
-		}
 		transientOfferRequest := &TransientOfferRequest{
 			Contents: contentList,
 		}
@@ -2246,7 +2244,6 @@ func (p *PortalProtocol) GossipAndReturnPeers(srcNodeId *enode.ID, contentKeys [
 		offerRequestWithNode := &OfferRequestWithNode{
 			Node:    n,
 			Request: offerRequest,
-			permit:  permit,
 		}
 		select {
 		case p.offerQueue <- offerRequestWithNode:

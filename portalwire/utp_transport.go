@@ -32,8 +32,9 @@ type UtpTransportService struct {
 	socketConfig     *utp.ConnectionConfig
 	ListenAddr       string
 	utpControllerRef *utpController
-	getInboundLimit  func() (Permit, bool)
-	getOutboundLimit func() (Permit, bool)
+	getInboundLimit  func() Permit
+	getOutboundLimit func() Permit
+	releasePermit    func(permit Permit)
 }
 
 type UtpPeer struct {
@@ -78,27 +79,14 @@ type packetItem struct {
 	data []byte
 }
 
-// ReleasePermit is a interface type that releases a UTP connection permit.
-type Permit interface {
-	Release()
-}
+type Permit int
 
-type NoPermit struct{}
-
-func (n *NoPermit) Release() {}
-
-// ReleasePermit is a function type that releases a UTP connection permit.
-// It is returned when a permit is successfully acquired and must be called to release the permit.
-type ReleasePermit struct {
-	released atomic.Bool
-	action   func()
-}
-
-func (p *ReleasePermit) Release() {
-	if p.released.CompareAndSwap(false, true) {
-		p.action()
-	}
-}
+const (
+	PermitNotLimit Permit = iota
+	PermitReject
+	PermitInbound
+	PermitOutbound
+)
 
 type utpController struct {
 	inboundLimit  *semaphore.Weighted
@@ -114,28 +102,30 @@ func newUtpController(maxLimit int) *utpController {
 
 // GetInboundPermit tries to acquire a permit for inbound UTP connections.
 // It is returned when a permit is successfully acquired and must be called to release the permit.
-func (u *utpController) GetInboundPermit() (Permit, bool) {
-	if ok := u.inboundLimit.TryAcquire(1); !ok {
-		return &NoPermit{}, false
+func (u *utpController) GetInboundPermit() Permit {
+	ok := u.inboundLimit.TryAcquire(1)
+	if !ok {
+		return PermitReject
 	}
-	return &ReleasePermit{
-		action: func() {
-			u.inboundLimit.Release(1)
-		},
-	}, true
+	return PermitInbound
 }
 
 // GetInboundPermit tries to acquire a permit for outbound UTP connections.
 // It is returned when a permit is successfully acquired and must be called to release the permit.
-func (u *utpController) GetOutboundPermit() (Permit, bool) {
-	if ok := u.outboundLimit.TryAcquire(1); !ok {
-		return &NoPermit{}, false
+func (u *utpController) GetOutboundPermit() Permit {
+	ok := u.outboundLimit.TryAcquire(1)
+	if !ok {
+		return PermitReject
 	}
-	return &ReleasePermit{
-		action: func() {
-			u.outboundLimit.Release(1)
-		},
-	}, true
+	return PermitOutbound
+}
+
+func (u *utpController) Release(permit Permit) {
+	if permit == PermitInbound {
+		u.inboundLimit.Release(1)
+	} else if permit == PermitOutbound {
+		u.outboundLimit.Release(1)
+	}
 }
 
 type discv5Conn struct {
@@ -203,6 +193,7 @@ func NewZenEthUtp(ctx context.Context, config *PortalProtocolConfig, discV5 *dis
 		utpControllerRef: utpControllerRef,
 		getInboundLimit:  utpControllerRef.GetInboundPermit,
 		getOutboundLimit: utpControllerRef.GetOutboundPermit,
+		releasePermit:    utpControllerRef.Release,
 	}
 	return uts
 }
