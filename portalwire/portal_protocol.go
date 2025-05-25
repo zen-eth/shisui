@@ -610,6 +610,12 @@ func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte,
 }
 
 func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, permit Permit) ([]byte, error) {
+	permitReleaseInProcessOffer := false
+	defer func() {
+		if !permitReleaseInProcessOffer {
+			p.Utp.releasePermit(permit)
+		}
+	}()
 	contentKeys := getContentKeys(offerRequest)
 
 	offer := &Offer{
@@ -622,7 +628,6 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, per
 	}
 	offerBytes, err := offer.MarshalSSZ()
 	if err != nil {
-		p.Utp.releasePermit(permit)
 		return nil, err
 	}
 
@@ -631,17 +636,17 @@ func (p *PortalProtocol) offer(node *enode.Node, offerRequest *OfferRequest, per
 	copy(talkRequestBytes[1:], offerBytes)
 	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
-		p.Utp.releasePermit(permit)
 		return nil, err
 	}
 
+	permitReleaseInProcessOffer = true
 	return p.processOffer(node, talkResp, offerRequest, permit)
 }
 
 func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *OfferRequest, permit Permit) ([]byte, error) {
-	notStartedUtp := true
+	permitReleaseInGo := false
 	defer func() {
-		if notStartedUtp {
+		if !permitReleaseInGo {
 			p.Utp.releasePermit(permit)
 		}
 	}()
@@ -705,7 +710,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 		p.Log.Debug("trace offer declined", "keys", accept.GetContentKeys())
 		return accept.GetContentKeys(), nil
 	}
-	notStartedUtp = false
+	permitReleaseInGo = true
 	connId := binary.BigEndian.Uint16(accept.GetConnectionId())
 	go func(ctx context.Context, pr Permit) {
 		defer p.Utp.releasePermit(pr)
@@ -1609,12 +1614,14 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 		} else {
 			connectionId := p.Utp.CidWithAddr(node, addr, false)
 			go func(bctx context.Context, connId *utp.ConnectionId, permitValue Permit) {
-				defer p.deleteTransferringContentKeys(contentKeys)
+				defer func() {
+					p.Utp.releasePermit(permitValue)
+					p.deleteTransferringContentKeys(contentKeys)
+				}()
 				var conn *utp.UtpStream
 				for {
 					select {
 					case <-bctx.Done():
-						p.Utp.releasePermit(permitValue)
 						return
 					default:
 						p.cacheTransferringKeys(contentKeys)
@@ -1627,7 +1634,6 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 								p.portalMetrics.utpInFailConn.Inc(1)
 							}
 							p.Log.Error("failed to accept utp connection for handle offer", "connId", connectionId.Send, "err", err)
-							p.Utp.releasePermit(permitValue)
 							return
 						}
 
@@ -1638,8 +1644,6 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						defer readCancel()
 						n, err = conn.ReadToEOF(readCtx, &data)
 						conn.Close()
-						// release permit fast
-						p.Utp.releasePermit(permitValue)
 						p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n, "data", data)
 						if metrics.Enabled() {
 							p.portalMetrics.messagesReceivedContent.Mark(1)
