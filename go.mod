@@ -7,7 +7,7 @@ replace github.com/protolambda/zrnt v0.34.1 => github.com/optimism-java/zrnt v0.
 require (
 	github.com/OffchainLabs/go-bitfield v0.0.0-20250408211841-ad7364de91a5
 	github.com/VictoriaMetrics/fastcache v1.12.2
-	github.com/aws/smithy-go v1.15.0
+	github.com/aws/smithy-go v1.22.3
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/ethereum/go-ethereum v1.15.8
 	github.com/felixge/fgprof v0.9.5

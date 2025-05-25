@@ -22,6 +22,11 @@ type MockOracle struct {
 	Header *types.Header
 }
 
+// GetFinalizedStateRoot implements validation.Oracle.
+func (m *MockOracle) GetFinalizedStateRoot() ([]byte, error) {
+	panic("unimplemented")
+}
+
 // GetBlockHeaderByHash implements validation.Oracle.
 func (m *MockOracle) GetBlockHeaderByHash(hash []byte) (*types.Header, error) {
 	return m.Header, nil

@@ -10,6 +10,7 @@ import (
 	"github.com/protolambda/ztyp/tree"
 	"github.com/zen-eth/shisui/portalwire"
 	"github.com/zen-eth/shisui/storage"
+	"github.com/zen-eth/shisui/types/beacon"
 )
 
 const GenesisTime uint64 = 1606824023
@@ -44,7 +45,7 @@ func (p *PortalLightApi) ChainID() uint64 {
 
 // GetBootstrap implements ConsensusAPI.
 func (p *PortalLightApi) GetBootstrap(blockRoot tree.Root) (common.SpecObj, error) {
-	bootstrapKey := &LightClientBootstrapKey{
+	bootstrapKey := &beacon.LightClientBootstrapKey{
 		BlockHash: blockRoot[:],
 	}
 	contentKeyBytes, err := bootstrapKey.MarshalSSZ()
@@ -58,7 +59,7 @@ func (p *PortalLightApi) GetBootstrap(blockRoot tree.Root) (common.SpecObj, erro
 	if err != nil {
 		return nil, err
 	}
-	forkedLightClientBootstrap := &ForkedLightClientBootstrap{}
+	forkedLightClientBootstrap := &beacon.ForkedLightClientBootstrap{}
 	err = forkedLightClientBootstrap.Deserialize(p.spec, codec.NewDecodingReader(bytes.NewReader(res), uint64(len(res))))
 	if err != nil {
 		return nil, err
@@ -71,7 +72,7 @@ func (p *PortalLightApi) GetFinalityUpdate() (common.SpecObj, error) {
 	// Get the finality update for the most recent finalized epoch. We use 0 as the finalized
 	// slot because the finalized slot is not known at this point and the protocol is
 	// designed to return the most recent which is > 0
-	finUpdateKey := &LightClientFinalityUpdateKey{
+	finUpdateKey := &beacon.LightClientFinalityUpdateKey{
 		FinalizedSlot: 0,
 	}
 	contentKeyBytes, err := finUpdateKey.MarshalSSZ()
@@ -85,7 +86,7 @@ func (p *PortalLightApi) GetFinalityUpdate() (common.SpecObj, error) {
 	if err != nil {
 		return nil, err
 	}
-	finalityUpdate := &ForkedLightClientFinalityUpdate{}
+	finalityUpdate := &beacon.ForkedLightClientFinalityUpdate{}
 	err = finalityUpdate.Deserialize(p.spec, codec.NewDecodingReader(bytes.NewReader(res), uint64(len(res))))
 	if err != nil {
 		return nil, err
@@ -96,7 +97,7 @@ func (p *PortalLightApi) GetFinalityUpdate() (common.SpecObj, error) {
 // GetOptimisticUpdate implements ConsensusAPI.
 func (p *PortalLightApi) GetOptimisticUpdate() (common.SpecObj, error) {
 	currentSlot := p.spec.TimeToSlot(common.Timestamp(time.Now().Unix()), common.Timestamp(GenesisTime))
-	optimisticUpdateKey := &LightClientOptimisticUpdateKey{
+	optimisticUpdateKey := &beacon.LightClientOptimisticUpdateKey{
 		OptimisticSlot: uint64(currentSlot),
 	}
 	contentKeyBytes, err := optimisticUpdateKey.MarshalSSZ()
@@ -110,7 +111,7 @@ func (p *PortalLightApi) GetOptimisticUpdate() (common.SpecObj, error) {
 	if err != nil {
 		return nil, err
 	}
-	optimisticUpdate := &ForkedLightClientOptimisticUpdate{}
+	optimisticUpdate := &beacon.ForkedLightClientOptimisticUpdate{}
 	err = optimisticUpdate.Deserialize(p.spec, codec.NewDecodingReader(bytes.NewReader(res), uint64(len(res))))
 	if err != nil {
 		return nil, err
@@ -120,7 +121,7 @@ func (p *PortalLightApi) GetOptimisticUpdate() (common.SpecObj, error) {
 
 // GetUpdates implements ConsensusAPI.
 func (p *PortalLightApi) GetUpdates(firstPeriod uint64, count uint64) ([]common.SpecObj, error) {
-	lightClientUpdateKey := &LightClientUpdateKey{
+	lightClientUpdateKey := &beacon.LightClientUpdateKey{
 		StartPeriod: firstPeriod,
 		Count:       count,
 	}
@@ -135,7 +136,7 @@ func (p *PortalLightApi) GetUpdates(firstPeriod uint64, count uint64) ([]common.
 	if err != nil {
 		return nil, err
 	}
-	var lightClientUpdateRange LightClientUpdateRange = make([]ForkedLightClientUpdate, 0)
+	var lightClientUpdateRange beacon.LightClientUpdateRange = make([]beacon.ForkedLightClientUpdate, 0)
 	err = lightClientUpdateRange.Deserialize(p.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 	if err != nil {
 		return nil, err

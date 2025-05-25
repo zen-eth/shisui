@@ -11,8 +11,8 @@ import (
 	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/ztyp/codec"
-	"github.com/zen-eth/shisui/beacon"
 	"github.com/zen-eth/shisui/portalwire"
+	"github.com/zen-eth/shisui/types/beacon"
 	"github.com/zen-eth/shisui/types/history"
 )
 
@@ -21,6 +21,7 @@ var defaultTimeout = time.Second * 4
 type Oracle interface {
 	GetHistoricalSummaries(epoch uint64) (capella.HistoricalSummaries, error)
 	GetBlockHeaderByHash(hash []byte) (*types.Header, error)
+	GetFinalizedStateRoot() ([]byte, error)
 }
 
 var _ Oracle = &ValidationOracle{}
@@ -90,4 +91,19 @@ func (o *ValidationOracle) GetBlockHeaderByHash(hash []byte) (*types.Header, err
 		return nil, err
 	}
 	return history.DecodeBlockHeader(headerWithProof.Header)
+}
+
+func (o *ValidationOracle) GetFinalizedStateRoot() ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+	res := ""
+	err := o.client.CallContext(ctx, &res, "portal_beaconFinalizedStateRoot")
+	if err != nil {
+		return nil, err
+	}
+	root, err := hexutil.Decode(res)
+	if err != nil {
+		return nil, err
+	}
+	return root, nil
 }

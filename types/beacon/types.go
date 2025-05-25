@@ -20,6 +20,16 @@ var (
 	Deneb     common.ForkDigest = [4]byte{0x6a, 0x95, 0xa1, 0xa9}
 )
 
+type ContentType byte
+
+const (
+	LightClientBootstrap        ContentType = 0x10
+	LightClientUpdate           ContentType = 0x11
+	LightClientFinalityUpdate   ContentType = 0x12
+	LightClientOptimisticUpdate ContentType = 0x13
+	HistoricalSummaries         ContentType = 0x14
+)
+
 // note: We changed the generated file since fastssz issues which can't be passed by the CI, so we commented the go:generate line
 ///go:generate sszgen --path types.go --exclude-objs ForkedLightClientBootstrap,ForkedLightClientUpdate,LightClientUpdateRange,ForkedLightClientOptimisticUpdate,ForkedLightClientFinalityUpdate,HistoricalSummariesProof,HistoricalSummariesWithProof,ForkedHistoricalSummariesWithProof
 

@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
-	"math/big"
 	"net"
 	"os"
 	"testing"
@@ -21,50 +20,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zen-eth/shisui/portalwire"
 	"github.com/zen-eth/shisui/storage"
-	"gopkg.in/yaml.v3"
 )
 
 //go:embed testdata/shanghaibody.txt
 var bodyData string
-
-//go:embed testdata/epoch.txt
-var epochAccuHex string
 
 func ContentId(contentKey []byte) []byte {
 	digest := sha256.Sum256(contentKey)
 	return digest[:]
 }
 
-func TestValidateHeader(t *testing.T) {
-	entries, err := parseBlockHeaderKeyContent()
-	require.NoError(t, err)
-	historyNetwork, err := genHistoryNetwork(":7891", nil)
-	require.NoError(t, err)
-	for _, entry := range entries {
-		err = historyNetwork.validateContent(entry.key, entry.value)
-		require.NoError(t, err)
-
-		headerWithProof, err := DecodeBlockHeaderWithProof(entry.value)
-		require.NoError(t, err)
-		// invalid blockhash
-		_, err = ValidateBlockHeaderBytes(headerWithProof.Header, entry.key)
-		require.Equal(t, ErrInvalidBlockHash, err)
-		header, err := ValidateBlockHeaderBytes(headerWithProof.Header, entry.key[1:])
-		require.NoError(t, err)
-		// wrong header number
-		header.Number = big.NewInt(0).Add(header.Number, big.NewInt(122))
-		valid, err := historyNetwork.verifyHeader(header, headerWithProof.Proof)
-		require.False(t, valid)
-		require.NoError(t, err)
-	}
-}
-
 func TestReceiptsAndBody(t *testing.T) {
 	entryMap, err := parseDataForBlock()
-	require.NoError(t, err)
-	testReceiptsAndBody(entryMap, t)
-
-	entryMap, err = parseDataForBlock()
 	require.NoError(t, err)
 	testReceiptsAndBody(entryMap, t)
 }
@@ -84,11 +51,11 @@ func testReceiptsAndBody(entryMap map[string]contentEntry, t *testing.T) {
 	require.NoError(t, err)
 
 	bodyEntry := entryMap["body"]
-	err = historyNetwork.validateContent(bodyEntry.key, bodyEntry.value)
+	err = historyNetwork.validateContents([][]byte{bodyEntry.key}, [][]byte{bodyEntry.value})
 	require.NoError(t, err)
 
 	receiptsEntry := entryMap["receipts"]
-	err = historyNetwork.validateContent(receiptsEntry.key, receiptsEntry.value)
+	err = historyNetwork.validateContents([][]byte{receiptsEntry.key}, [][]byte{receiptsEntry.value})
 	require.NoError(t, err)
 	// test for portalReceipts encode and decode
 	portalReceipts := new(PortalReceipts)
@@ -105,23 +72,6 @@ func TestPortalBlockShanghai(t *testing.T) {
 	body, err := DecodePortalBlockBodyBytes(bodyBytes)
 	require.NoError(t, err)
 	require.True(t, len(body.Withdrawals) > 0)
-}
-
-func TestValidateEpochAccu(t *testing.T) {
-	if is32Bits() {
-		return
-	}
-	historyNetwork, err := genHistoryNetwork(":7892", nil)
-	require.NoError(t, err)
-	epochAccuBytes, err := hexutil.Decode(epochAccuHex)
-	require.NoError(t, err)
-	epochAccu, err := decodeEpochAccumulator(epochAccuBytes)
-	require.NoError(t, err)
-	epochRoot, err := epochAccu.HashTreeRoot()
-	require.NoError(t, err)
-	root := MixInLength(epochRoot, epochSize)
-
-	require.True(t, historyNetwork.masterAccumulator.Contains(root))
 }
 
 func TestGetContentByKey(t *testing.T) {
@@ -223,60 +173,15 @@ type Entry struct {
 	ContentValue string `yaml:"content_value"`
 }
 
-func TestValidateContents(t *testing.T) {
-	file, err := os.ReadFile("./testdata/hive_gossip.yaml")
-	require.NoError(t, err)
-	entries := make([]Entry, 0)
-	err = yaml.Unmarshal(file, &entries)
-	require.NoError(t, err)
-	historyNetwork, err := genHistoryNetwork(":7897", nil)
-	require.NoError(t, err)
-
-	keys := make([][]byte, 0)
-	values := make([][]byte, 0)
-
-	for _, entry := range entries {
-		keys = append(keys, hexutil.MustDecode(entry.ContentKey))
-		values = append(values, hexutil.MustDecode(entry.ContentValue))
-	}
-	err = historyNetwork.validateContents(keys, values)
-	require.NoError(t, err)
-}
-
 type contentEntry struct {
 	key   []byte
 	value []byte
 }
 
-func parseBlockHeaderKeyContent() ([]contentEntry, error) {
-	headWithProofBytes, err := os.ReadFile("./testdata/header_with_proofs.json")
-	if err != nil {
-		return nil, err
-	}
-	headerMap := make(map[string]map[string]string)
+type MockValidator struct{}
 
-	err = json.Unmarshal(headWithProofBytes, &headerMap)
-	if err != nil {
-		return nil, err
-	}
-	res := make([]contentEntry, 0)
-	for _, v := range headerMap {
-		entry := contentEntry{}
-		val := v["value"]
-		bytes, err := hexutil.Decode(val)
-		if err != nil {
-			return nil, err
-		}
-		entry.value = bytes
-		key := v["content_key"]
-		keyBytes, err := hexutil.Decode(key)
-		if err != nil {
-			return nil, err
-		}
-		entry.key = keyBytes
-		res = append(res, entry)
-	}
-	return res, nil
+func (m *MockValidator) ValidateContent(contentKey, content []byte) error {
+	return nil
 }
 
 func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
@@ -350,17 +255,12 @@ func genHistoryNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
 		}
 	}()
 
-	accu, err := NewMasterAccumulator()
-	if err != nil {
-		return nil, err
-	}
-
 	err = portalProtocol.Start()
 	if err != nil {
 		return nil, err
 	}
 
-	return NewHistoryNetwork(portalProtocol, &accu, nil), nil
+	return NewHistoryNetwork(portalProtocol, &MockValidator{}), nil
 }
 
 func parseDataForBlock() (map[string]contentEntry, error) {

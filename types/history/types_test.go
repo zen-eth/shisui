@@ -165,6 +165,14 @@ func TestEphemeralType(t *testing.T) {
 	err = val.UnmarshalSSZ(hexutil.MustDecode(entry.ContentValue))
 	require.NoError(t, err)
 
+	header, err := DecodeBlockHeader(val.Payload[0][:])
+	require.NoError(t, err)
+	require.Equal(t, header.Number.Uint64(), uint64(20000000))
+
+	header1, err := DecodeBlockHeader(val.Payload[1][:])
+	require.NoError(t, err)
+	require.Equal(t, header1.Number.Uint64(), uint64(19999999))
+
 	valBytes, err := val.MarshalSSZ()
 	require.NoError(t, err)
 	require.Equal(t, hexutil.Encode(valBytes), entry.ContentValue)
