@@ -458,7 +458,11 @@ func (n *Node) initBeaconNetwork() error {
 		return err
 	}
 
-	n.beaconNetwork = beacon.NewBeaconNetwork(protocol, beaconClient)
+	client := rpc.DialInProc(n.rpcServer)
+	oracle := validation.NewOracle(client)
+	validator := beacon.NewBeaconValidator(oracle, configs.Mainnet)
+
+	n.beaconNetwork = beacon.NewBeaconNetwork(protocol, beaconClient, validator)
 	return nil
 }
 
@@ -507,7 +511,9 @@ func (n *Node) initStateNetwork() error {
 	}
 
 	client := rpc.DialInProc(n.rpcServer)
-	n.stateNetwork = state.NewStateNetwork(protocol, client)
+	oracle := validation.NewOracle(client)
+	validator := state.NewStateValidator(oracle)
+	n.stateNetwork = state.NewStateNetwork(protocol, validator)
 	return nil
 }
 

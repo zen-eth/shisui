@@ -3,9 +3,12 @@ package state
 import (
 	"bytes"
 	"errors"
+	"fmt"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/ztyp/codec"
+	"github.com/zen-eth/shisui/state/trie"
 	"github.com/zen-eth/shisui/validation"
 )
 
@@ -101,6 +104,84 @@ func (s *StateValidator) validateContractByteCode(contentKey []byte, content []b
 	}
 	if !bytes.Equal(accountState.CodeHash, contractByteCodeKey.CodeHash[:]) {
 		return errors.New("account state is invalid")
+	}
+	return nil
+}
+
+func validateTrieProof(rootHash common.Bytes32, path []byte, proof *TrieProof) (EncodedTrieNode, []byte, error) {
+	if len(*proof) == 0 {
+		return nil, nil, errors.New("proof should not be empty")
+	}
+	firstNode := []EncodedTrieNode(*proof)[0]
+	err := checkNodeHash(&firstNode, rootHash[:])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	node := firstNode
+	remainingPath := path
+
+	for _, nextNode := range []EncodedTrieNode(*proof)[1:] {
+		n, err := trie.DecodeTrieNode(nil, node)
+		if err != nil {
+			return nil, nil, err
+		}
+		hashNode, p, err := trie.TraverseTrieNode(n, remainingPath)
+		if err != nil {
+			return nil, nil, err
+		}
+		err = checkNodeHash(&nextNode, hashNode)
+
+		if err != nil {
+			return nil, nil, err
+		}
+
+		node = nextNode
+		remainingPath = p
+	}
+	return node, remainingPath, nil
+}
+
+func checkNodeHash(node *EncodedTrieNode, hash []byte) error {
+	nodeHash := node.NodeHash()
+	if !bytes.Equal(nodeHash[:], hash) {
+		return fmt.Errorf("node hash is not equal, expect: %v, actual: %v", hash, nodeHash)
+	}
+	return nil
+}
+
+func validateAccountState(rootHash common.Bytes32, addressHash common.Bytes32, proof *TrieProof) (*types.StateAccount, error) {
+	path := make([]byte, 0, len(addressHash)*2)
+	for _, item := range addressHash {
+		before, after := unpackNibblePair(item)
+		path = append(path, before, after)
+	}
+	lastProof, p, err := validateTrieProof(rootHash, path, proof)
+	if err != nil {
+		return nil, err
+	}
+	n, err := trie.DecodeTrieNode(nil, lastProof)
+	if err != nil {
+		return nil, err
+	}
+	stateBytes, _, err := trie.TraverseTrieNode(n, p)
+	if err != nil {
+		return nil, err
+	}
+	return types.FullAccount(stateBytes)
+}
+
+func validateNodeTrieProof(rootHash common.Bytes32, nodeHash common.Bytes32, path *Nibbles, proof *TrieProof) error {
+	lastNode, p, err := validateTrieProof(rootHash, path.Nibbles, proof)
+	if err != nil {
+		return err
+	}
+	if len(p) != 0 {
+		return errors.New("path is too long")
+	}
+	err = checkNodeHash(&lastNode, nodeHash[:])
+	if err != nil {
+		return err
 	}
 	return nil
 }

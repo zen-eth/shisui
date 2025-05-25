@@ -20,6 +20,7 @@ import (
 	"github.com/protolambda/ztyp/tree"
 	portalwire2 "github.com/zen-eth/shisui/portalwire"
 	"github.com/zen-eth/shisui/storage"
+	"github.com/zen-eth/shisui/types/beacon"
 )
 
 func SetupBeaconNetwork(addr string, bootNodes []*enode.Node) (*Network, error) {
@@ -91,90 +92,90 @@ func SetupBeaconNetwork(addr string, bootNodes []*enode.Node) (*Network, error) 
 		}
 	}()
 
-	return NewBeaconNetwork(portalProtocol, nil), nil
+	return NewBeaconNetwork(portalProtocol, nil, nil), nil
 }
 
-func GetLightClientBootstrap(number uint8) (ForkedLightClientBootstrap, error) {
+func GetLightClientBootstrap(number uint8) (beacon.ForkedLightClientBootstrap, error) {
 	file, err := os.ReadFile(fmt.Sprintf("testdata/beacon/LightClientBootstrap/ssz_random/case_%d/serialized.ssz_snappy", number))
 	if err != nil {
-		return ForkedLightClientBootstrap{}, err
+		return beacon.ForkedLightClientBootstrap{}, err
 	}
 	data, err := snappy.Decode(nil, file)
 	if err != nil {
-		return ForkedLightClientBootstrap{}, err
+		return beacon.ForkedLightClientBootstrap{}, err
 	}
-	bootstrap := &ForkedLightClientBootstrap{}
+	bootstrap := &beacon.ForkedLightClientBootstrap{}
 
 	forkData := make([]byte, 0)
-	forkData = append(forkData, Capella[:]...)
+	forkData = append(forkData, beacon.Capella[:]...)
 	forkData = append(forkData, data...)
 	err = bootstrap.Deserialize(configs.Mainnet, codec.NewDecodingReader(bytes.NewReader(forkData), uint64(len(forkData))))
 	if err != nil {
-		return ForkedLightClientBootstrap{}, err
+		return beacon.ForkedLightClientBootstrap{}, err
 	}
 	return *bootstrap, nil
 }
 
-func GetClientUpdate(number uint8) (ForkedLightClientUpdate, error) {
+func GetClientUpdate(number uint8) (beacon.ForkedLightClientUpdate, error) {
 	file, err := os.ReadFile(fmt.Sprintf("testdata/beacon/LightClientUpdate/ssz_random/case_%d/serialized.ssz_snappy", number))
 	if err != nil {
-		return ForkedLightClientUpdate{}, err
+		return beacon.ForkedLightClientUpdate{}, err
 	}
 	data, err := snappy.Decode(nil, file)
 	if err != nil {
-		return ForkedLightClientUpdate{}, err
+		return beacon.ForkedLightClientUpdate{}, err
 	}
-	update := &ForkedLightClientUpdate{}
+	update := &beacon.ForkedLightClientUpdate{}
 
 	forkData := make([]byte, 0)
-	forkData = append(forkData, Capella[:]...)
+	forkData = append(forkData, beacon.Capella[:]...)
 	forkData = append(forkData, data...)
 	err = update.Deserialize(configs.Mainnet, codec.NewDecodingReader(bytes.NewReader(forkData), uint64(len(forkData))))
 	if err != nil {
-		return ForkedLightClientUpdate{}, err
+		return beacon.ForkedLightClientUpdate{}, err
 	}
 	return *update, nil
 }
 
-func GetLightClientFinalityUpdate(number uint8) (ForkedLightClientFinalityUpdate, error) {
+func GetLightClientFinalityUpdate(number uint8) (beacon.ForkedLightClientFinalityUpdate, error) {
 	file, err := os.ReadFile(fmt.Sprintf("testdata/beacon/deneb/LightClientFinalityUpdate/ssz_random/case_%d/serialized.ssz_snappy", number))
 	if err != nil {
-		return ForkedLightClientFinalityUpdate{}, err
+		return beacon.ForkedLightClientFinalityUpdate{}, err
 	}
 	data, err := snappy.Decode(nil, file)
 	if err != nil {
-		return ForkedLightClientFinalityUpdate{}, err
+		return beacon.ForkedLightClientFinalityUpdate{}, err
 	}
 	update := &deneb.LightClientFinalityUpdate{}
 	err = update.Deserialize(configs.Mainnet, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 	if err != nil {
-		return ForkedLightClientFinalityUpdate{}, err
+		return beacon.ForkedLightClientFinalityUpdate{}, err
 	}
-	bootstrap := &ForkedLightClientFinalityUpdate{
-		ForkDigest:                Deneb,
+	bootstrap := &beacon.ForkedLightClientFinalityUpdate{
+		ForkDigest:                beacon.Deneb,
 		LightClientFinalityUpdate: update,
 	}
 
 	return *bootstrap, nil
 }
 
-func GetLightClientOptimisticUpdate(number uint8) (ForkedLightClientOptimisticUpdate, error) {
+func GetLightClientOptimisticUpdate(number uint8) (beacon.ForkedLightClientOptimisticUpdate, error) {
 	file, err := os.ReadFile(fmt.Sprintf("testdata/beacon/deneb/LightClientOptimisticUpdate/ssz_random/case_%d/serialized.ssz_snappy", number))
 	if err != nil {
-		return ForkedLightClientOptimisticUpdate{}, err
+		return beacon.ForkedLightClientOptimisticUpdate{}, err
 	}
 	data, err := snappy.Decode(nil, file)
 	if err != nil {
-		return ForkedLightClientOptimisticUpdate{}, err
+		return beacon.ForkedLightClientOptimisticUpdate{}, err
 	}
-	bootstrap := &ForkedLightClientOptimisticUpdate{}
+	bootstrap := &beacon.ForkedLightClientOptimisticUpdate{}
 
 	forkData := make([]byte, 0)
-	forkData = append(forkData, Deneb[:]...)
+	forkData = append(forkData, beacon.Deneb[:]...)
 	forkData = append(forkData, data...)
 	err = bootstrap.Deserialize(configs.Mainnet, codec.NewDecodingReader(bytes.NewReader(forkData), uint64(len(forkData))))
 	if err != nil {
-		return ForkedLightClientOptimisticUpdate{}, err
+		return beacon.ForkedLightClientOptimisticUpdate{}, err
 	}
 	return *bootstrap, nil
 }

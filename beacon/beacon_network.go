@@ -5,18 +5,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	ssz "github.com/ferranbt/fastssz"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
-	"github.com/protolambda/zrnt/eth2/util/merkle"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/tree"
 	"github.com/zen-eth/shisui/portalwire"
 	"github.com/zen-eth/shisui/storage"
+	"github.com/zen-eth/shisui/types/beacon"
+	"github.com/zen-eth/shisui/validation"
 )
 
 const (
@@ -34,9 +34,10 @@ type Network struct {
 	closeCtx       context.Context
 	closeFunc      context.CancelFunc
 	lightClient    *ConsensusLightClient
+	validator      validation.Validator
 }
 
-func NewBeaconNetwork(portalProtocol *portalwire.PortalProtocol, client *ConsensusLightClient) *Network {
+func NewBeaconNetwork(portalProtocol *portalwire.PortalProtocol, client *ConsensusLightClient, validator validation.Validator) *Network {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Network{
@@ -46,6 +47,7 @@ func NewBeaconNetwork(portalProtocol *portalwire.PortalProtocol, client *Consens
 		closeFunc:      cancel,
 		log:            log.New("sub-protocol", "beacon"),
 		lightClient:    client,
+		validator:      validator,
 	}
 }
 
@@ -71,7 +73,7 @@ func (bn *Network) Stop() {
 }
 
 func (bn *Network) GetUpdates(firstPeriod, count uint64) ([]common.SpecObj, error) {
-	lightClientUpdateKey := &LightClientUpdateKey{
+	lightClientUpdateKey := &beacon.LightClientUpdateKey{
 		StartPeriod: firstPeriod,
 		Count:       count,
 	}
@@ -80,7 +82,7 @@ func (bn *Network) GetUpdates(firstPeriod, count uint64) ([]common.SpecObj, erro
 	if err != nil {
 		return nil, err
 	}
-	var lightClientUpdateRange LightClientUpdateRange = make([]ForkedLightClientUpdate, 0)
+	var lightClientUpdateRange beacon.LightClientUpdateRange = make([]beacon.ForkedLightClientUpdate, 0)
 	err = lightClientUpdateRange.Deserialize(bn.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 	if err != nil {
 		return nil, err
@@ -94,7 +96,7 @@ func (bn *Network) GetUpdates(firstPeriod, count uint64) ([]common.SpecObj, erro
 }
 
 func (bn *Network) GetCheckpointData(checkpointHash tree.Root) (common.SpecObj, error) {
-	bootstrapKey := &LightClientBootstrapKey{
+	bootstrapKey := &beacon.LightClientBootstrapKey{
 		BlockHash: checkpointHash[:],
 	}
 
@@ -103,7 +105,7 @@ func (bn *Network) GetCheckpointData(checkpointHash tree.Root) (common.SpecObj, 
 		return nil, err
 	}
 
-	var forkedLightClientBootstrap *ForkedLightClientBootstrap
+	var forkedLightClientBootstrap *beacon.ForkedLightClientBootstrap
 	err = forkedLightClientBootstrap.Deserialize(bn.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 	if err != nil {
 		return nil, err
@@ -112,7 +114,7 @@ func (bn *Network) GetCheckpointData(checkpointHash tree.Root) (common.SpecObj, 
 }
 
 func (bn *Network) GetFinalityUpdate(finalizedSlot uint64) (common.SpecObj, error) {
-	finalityUpdateKey := &LightClientFinalityUpdateKey{
+	finalityUpdateKey := &beacon.LightClientFinalityUpdateKey{
 		FinalizedSlot: finalizedSlot,
 	}
 	data, err := bn.getContent(LightClientFinalityUpdate, finalityUpdateKey)
@@ -120,7 +122,7 @@ func (bn *Network) GetFinalityUpdate(finalizedSlot uint64) (common.SpecObj, erro
 		return nil, err
 	}
 
-	var forkedLightClientFinalityUpdate *ForkedLightClientFinalityUpdate
+	var forkedLightClientFinalityUpdate *beacon.ForkedLightClientFinalityUpdate
 	err = forkedLightClientFinalityUpdate.Deserialize(bn.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 	if err != nil {
 		return nil, err
@@ -130,7 +132,7 @@ func (bn *Network) GetFinalityUpdate(finalizedSlot uint64) (common.SpecObj, erro
 }
 
 func (bn *Network) GetOptimisticUpdate(optimisticSlot uint64) (common.SpecObj, error) {
-	optimisticUpdateKey := &LightClientOptimisticUpdateKey{
+	optimisticUpdateKey := &beacon.LightClientOptimisticUpdateKey{
 		OptimisticSlot: optimisticSlot,
 	}
 
@@ -139,7 +141,7 @@ func (bn *Network) GetOptimisticUpdate(optimisticSlot uint64) (common.SpecObj, e
 		return nil, err
 	}
 
-	var forkedLightClientOptimisticUpdate *ForkedLightClientOptimisticUpdate
+	var forkedLightClientOptimisticUpdate *beacon.ForkedLightClientOptimisticUpdate
 	err = forkedLightClientOptimisticUpdate.Deserialize(bn.spec, codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
 	if err != nil {
 		return nil, err
@@ -175,116 +177,10 @@ func (bn *Network) getContent(contentType storage.ContentType, beaconContentKey 
 	return content, nil
 }
 
-func (bn *Network) validateContent(contentKey []byte, content []byte) error {
-	switch storage.ContentType(contentKey[0]) {
-	case LightClientUpdate:
-		var lightClientUpdateRange LightClientUpdateRange = make([]ForkedLightClientUpdate, 0)
-		err := lightClientUpdateRange.Deserialize(bn.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
-		if err != nil {
-			return err
-		}
-		lightClientUpdateKey := &LightClientUpdateKey{}
-		err = lightClientUpdateKey.UnmarshalSSZ(contentKey[1:])
-		if err != nil {
-			return err
-		}
-		if lightClientUpdateKey.Count != uint64(len(lightClientUpdateRange)) {
-			return fmt.Errorf("light client updates count does not match the content key count: %d != %d", len(lightClientUpdateRange), lightClientUpdateKey.Count)
-		}
-		return nil
-	case LightClientBootstrap:
-		var forkedLightClientBootstrap ForkedLightClientBootstrap
-		err := forkedLightClientBootstrap.Deserialize(bn.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
-		if err != nil {
-			return err
-		}
-		currentSlot := bn.spec.TimeToSlot(common.Timestamp(time.Now().Unix()), common.Timestamp(GenesisTime))
-
-		genericBootstrap, err := FromBootstrap(forkedLightClientBootstrap.Bootstrap)
-		if err != nil {
-			return err
-		}
-		fourMonth := time.Hour * 24 * 30 * 4
-		fourMonthInSlots := common.Timestamp(fourMonth.Seconds()) / (bn.spec.SECONDS_PER_SLOT)
-		fourMonthAgoSlot := currentSlot - common.Slot(fourMonthInSlots)
-
-		if genericBootstrap.Header.Slot < fourMonthAgoSlot {
-			return fmt.Errorf("light client bootstrap slot is too old: %d", genericBootstrap.Header.Slot)
-		}
-		return nil
-	case LightClientFinalityUpdate:
-		lightClientFinalityUpdateKey := &LightClientFinalityUpdateKey{}
-		err := lightClientFinalityUpdateKey.UnmarshalSSZ(contentKey[1:])
-		if err != nil {
-			return err
-		}
-		var forkedLightClientFinalityUpdate ForkedLightClientFinalityUpdate
-		err = forkedLightClientFinalityUpdate.Deserialize(bn.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
-		if err != nil {
-			return err
-		}
-		if forkedLightClientFinalityUpdate.ForkDigest != Deneb {
-			return fmt.Errorf("light client finality update is not from the recent fork. Expected deneb, got %v", forkedLightClientFinalityUpdate.ForkDigest)
-		}
-		finalizedSlot := lightClientFinalityUpdateKey.FinalizedSlot
-		genericUpdate, err := FromLightClientFinalityUpdate(forkedLightClientFinalityUpdate.LightClientFinalityUpdate)
-		if err != nil {
-			return err
-		}
-		if finalizedSlot != uint64(genericUpdate.FinalizedHeader.Slot) {
-			return fmt.Errorf("light client finality update finalized slot does not match the content key finalized slot: %d != %d", genericUpdate.FinalizedHeader.Slot, finalizedSlot)
-		}
-		return nil
-	case LightClientOptimisticUpdate:
-		lightClientOptimisticUpdateKey := &LightClientOptimisticUpdateKey{}
-		err := lightClientOptimisticUpdateKey.UnmarshalSSZ(contentKey[1:])
-		if err != nil {
-			return err
-		}
-		var forkedLightClientOptimisticUpdate ForkedLightClientOptimisticUpdate
-		err = forkedLightClientOptimisticUpdate.Deserialize(bn.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
-		if err != nil {
-			return err
-		}
-		if forkedLightClientOptimisticUpdate.ForkDigest != Deneb {
-			return fmt.Errorf("light client optimistic update is not from the recent fork. Expected deneb, got %v", forkedLightClientOptimisticUpdate.ForkDigest)
-		}
-		genericUpdate, err := FromLightClientOptimisticUpdate(forkedLightClientOptimisticUpdate.LightClientOptimisticUpdate)
-		if err != nil {
-			return err
-		}
-		// Check if key signature slot matches the light client optimistic update signature slot
-		if lightClientOptimisticUpdateKey.OptimisticSlot != uint64(genericUpdate.SignatureSlot) {
-			return fmt.Errorf("light client optimistic update signature slot does not match the content key signature slot: %d != %d", genericUpdate.SignatureSlot, lightClientOptimisticUpdateKey.OptimisticSlot)
-		}
-		return nil
-	// TODO: VERIFY
-	case HistoricalSummaries:
-		forkedHistoricalSummariesWithProof, err := bn.generalSummariesValidation(contentKey, content)
-		if err != nil {
-			return err
-		}
-		// TODO get root from light client
-		header := bn.lightClient.GetFinalityHeader()
-		if header == nil {
-			return fmt.Errorf("finality header is nil")
-		}
-		latestFinalizedRoot := header.StateRoot
-
-		valid := bn.stateSummariesValidation(*forkedHistoricalSummariesWithProof, latestFinalizedRoot)
-		if !valid {
-			return errors.New("merkle proof validation failed for HistoricalSummariesProof")
-		}
-		return nil
-	default:
-		return fmt.Errorf("unknown content type %v", contentKey[0])
-	}
-}
-
 func (bn *Network) validateContents(contentKeys [][]byte, contents [][]byte) error {
 	for i, content := range contents {
 		contentKey := contentKeys[i]
-		err := bn.validateContent(contentKey, content)
+		err := bn.validator.ValidateContent(contentKey, content)
 		if err != nil {
 			bn.log.Error("content validate failed", "contentKey", hexutil.Encode(contentKey), "err", err)
 			return fmt.Errorf("content validate failed with content key %x", contentKey)
@@ -327,29 +223,4 @@ func (bn *Network) processContentLoop(ctx context.Context) {
 			}(ctx)
 		}
 	}
-}
-
-func (bn *Network) generalSummariesValidation(contentKey, content []byte) (*ForkedHistoricalSummariesWithProof, error) {
-	key := &HistoricalSummariesWithProofKey{}
-	err := key.Deserialize(codec.NewDecodingReader(bytes.NewReader(contentKey[1:]), uint64(len(contentKey[1:]))))
-	if err != nil {
-		return nil, err
-	}
-	forkedHistoricalSummariesWithProof := &ForkedHistoricalSummariesWithProof{}
-	err = forkedHistoricalSummariesWithProof.Deserialize(bn.spec, codec.NewDecodingReader(bytes.NewReader(content), uint64(len(content))))
-	if err != nil {
-		return nil, err
-	}
-	if forkedHistoricalSummariesWithProof.HistoricalSummariesWithProof.EPOCH != common.Epoch(key.Epoch) {
-		return nil, fmt.Errorf("historical summaries with proof epoch does not match the content key epoch: %d != %d", forkedHistoricalSummariesWithProof.HistoricalSummariesWithProof.EPOCH, key.Epoch)
-	}
-	return forkedHistoricalSummariesWithProof, nil
-}
-
-func (bn *Network) stateSummariesValidation(f ForkedHistoricalSummariesWithProof, latestFinalizedRoot common.Root) bool {
-	proof := f.HistoricalSummariesWithProof.Proof
-	summariesRoot := f.HistoricalSummariesWithProof.HistoricalSummaries.HashTreeRoot(bn.spec, tree.GetHashFn())
-
-	gIndex := 59
-	return merkle.VerifyMerkleBranch(summariesRoot, proof.Proof[:], 5, uint64(gIndex), latestFinalizedRoot)
 }
