@@ -134,7 +134,7 @@ func (h *Network) getBlockHashByNumber(number uint64) ([]byte, error) {
 	}
 	// no error
 	if err == nil {
-		return blockHash, err
+		return blockHash, nil
 	}
 	// no content in local storage
 	content, _, err := h.portalProtocol.ContentLookup(contentKey, contentId)
