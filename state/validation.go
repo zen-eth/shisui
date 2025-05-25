@@ -110,7 +110,7 @@ func (s *StateValidator) validateContractByteCode(contentKey []byte, content []b
 
 func validateTrieProof(rootHash common.Bytes32, path []byte, proof *TrieProof) (EncodedTrieNode, []byte, error) {
 	if len(*proof) == 0 {
-		return nil, nil, errors.New("proof should be empty")
+		return nil, nil, errors.New("proof should not be empty")
 	}
 	firstNode := []EncodedTrieNode(*proof)[0]
 	err := checkNodeHash(&firstNode, rootHash[:])
@@ -150,9 +150,9 @@ func checkNodeHash(node *EncodedTrieNode, hash []byte) error {
 	return nil
 }
 
-func validateAccountState(rootHash common.Bytes32, addrrssHash common.Bytes32, proof *TrieProof) (*types.StateAccount, error) {
-	path := make([]byte, 0, len(addrrssHash)*2)
-	for _, item := range addrrssHash {
+func validateAccountState(rootHash common.Bytes32, addressHash common.Bytes32, proof *TrieProof) (*types.StateAccount, error) {
+	path := make([]byte, 0, len(addressHash)*2)
+	for _, item := range addressHash {
 		before, after := unpackNibblePair(item)
 		path = append(path, before, after)
 	}
