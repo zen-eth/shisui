@@ -1824,6 +1824,7 @@ func (p *PortalProtocol) offerWorker() {
 			permit := p.Utp.getOutboundLimit()
 			if permit == PermitReject {
 				p.Log.Debug("utp rate limited, rejecting offer", "offerRequestWithNode", offerRequestWithNode)
+				continue
 			}
 			_, err := p.offer(offerRequestWithNode.Node, offerRequestWithNode.Request, permit)
 			if err != nil {
