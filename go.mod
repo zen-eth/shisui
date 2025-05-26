@@ -6,7 +6,7 @@ replace github.com/protolambda/zrnt v0.34.1 => github.com/optimism-java/zrnt v0.
 
 require (
 	github.com/OffchainLabs/go-bitfield v0.0.0-20250408211841-ad7364de91a5
-	github.com/VictoriaMetrics/fastcache v1.12.2
+	github.com/VictoriaMetrics/fastcache v1.12.4
 	github.com/aws/smithy-go v1.22.3
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/ethereum/go-ethereum v1.15.8
@@ -112,7 +112,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
 	google.golang.org/protobuf v1.35.2 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
