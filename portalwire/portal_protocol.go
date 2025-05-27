@@ -13,8 +13,6 @@ import (
 	"net"
 	"slices"
 	"sort"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -1934,49 +1932,76 @@ func (p *PortalProtocol) collectTableNodes(rip net.IP, distances []uint, limit i
 }
 
 func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bool, error) {
-	lookupContext, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	resChan := make(chan *traceContentInfoResp, alpha)
-	hasResult := int32(0)
-
-	result := ContentInfoResp{}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
+	resultChan := make(chan *ContentInfoResp, 1)
 
 	go func() {
-		defer wg.Done()
-		for res := range resChan {
-			if res.Flag != ContentEnrsSelector {
-				result.Content = res.Content.([]byte)
-				result.UtpTransfer = res.UtpTransfer
-			}
-		}
+		defer close(resultChan)
+
+		newLookup(ctx, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
+			return p.contentLookupWorker(n, contentKey, resultChan, cancel)
+		}).run()
 	}()
 
-	newLookup(lookupContext, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
-		return p.contentLookupWorker(n, contentKey, resChan, cancel, &hasResult)
-	}).run()
-	close(resChan)
-
-	wg.Wait()
-	if hasResult == 1 {
+	select {
+	case result, ok := <-resultChan:
+		if !ok || result == nil {
+			return nil, false, ErrContentNotFound
+		}
 		return result.Content, result.UtpTransfer, nil
+	case <-ctx.Done():
+		return nil, false, fmt.Errorf("content lookup timeout: %w", ctx.Err())
+	}
+}
+
+func (p *PortalProtocol) contentLookupWorker(n *enode.Node, contentKey []byte, resultChan chan<- *ContentInfoResp, cancel context.CancelFunc) ([]*enode.Node, error) {
+	flag, content, err := p.findContent(n, contentKey)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, false, ErrContentNotFound
+	p.Log.Debug("contentLookupWorker receive response", "ip", n.IP().String(), "flag", flag)
+
+	switch flag {
+	case ContentRawSelector, ContentConnIdSelector:
+		contentBytes, ok := content.([]byte)
+		if !ok {
+			return []*enode.Node{}, fmt.Errorf("failed to assert to raw content, value is: %v", content)
+		}
+
+		result := &ContentInfoResp{
+			Content:     contentBytes,
+			UtpTransfer: flag == ContentConnIdSelector,
+		}
+
+		select {
+		case resultChan <- result:
+			p.Log.Debug("contentLookupWorker found content", "ip", n.IP().String(), "port", n.UDP())
+			cancel()
+		default:
+		}
+
+		return []*enode.Node{}, nil
+
+	case ContentEnrsSelector:
+		nodes, ok := content.([]*enode.Node)
+		if !ok {
+			return []*enode.Node{}, fmt.Errorf("failed to assert to enrs content, value is: %v", content)
+		}
+		return nodes, nil
+
+	default:
+		return []*enode.Node{}, fmt.Errorf("unknown content flag: %d", flag)
+	}
 }
 
 func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*TraceContentResult, error) {
-	lookupContext, cancel := context.WithCancel(context.Background())
-	// resp channel
-	resChan := make(chan *traceContentInfoResp, alpha)
-
-	hasResult := int32(0)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	traceContentRes := &TraceContentResult{}
-
 	selfHexId := "0x" + p.Self().ID().String()
 
 	trace := &Trace{
@@ -1988,129 +2013,124 @@ func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*Trac
 		Cancelled:   make([]string, 0),
 	}
 
-	nodes := p.table.findnodeByID(enode.ID(contentId), bucketSize, false)
+	p.setupLocalTraceInfo(trace, selfHexId, contentId)
 
+	resultChan := make(chan *traceContentInfoResp, 1)
+
+	go func() {
+		defer close(resultChan)
+
+		newLookup(ctx, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
+			return p.traceContentLookupWorker(n, contentKey, contentId, resultChan, trace, cancel)
+		}).run()
+	}()
+
+	select {
+	case result, ok := <-resultChan:
+		if ok && result != nil {
+			hexId := "0x" + result.Node.ID().String()
+			trace.ReceivedFrom = hexId
+			traceContentRes.Content = hexutil.Encode(result.Content.([]byte))
+			traceContentRes.UtpTransfer = result.UtpTransfer
+			trace.Responses[hexId] = RespByNode{}
+		}
+	case <-ctx.Done():
+		p.Log.Warn("TraceContentLookup timeout")
+	}
+
+	traceContentRes.Trace = *trace
+	return traceContentRes, nil
+}
+
+func (p *PortalProtocol) setupLocalTraceInfo(trace *Trace, selfHexId string, contentId []byte) {
+	nodes := p.table.findnodeByID(enode.ID(contentId), bucketSize, false)
 	localResponse := make([]string, 0, len(nodes.entries))
 	for _, node := range nodes.entries {
 		id := "0x" + node.ID().String()
 		localResponse = append(localResponse, id)
 	}
+
 	trace.Responses[selfHexId] = RespByNode{
 		DurationMs:    0,
 		RespondedWith: localResponse,
 	}
 
 	dis := p.Distance(p.Self().ID(), enode.ID(contentId))
-
 	trace.Metadata[selfHexId] = &NodeMetadata{
 		Enr:      p.Self().String(),
 		Distance: hexutil.Encode(dis[:]),
 	}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-		for res := range resChan {
-			node := res.Node
-			hexId := "0x" + node.ID().String()
-			dis := p.Distance(node.ID(), enode.ID(contentId))
-			p.Log.Debug("reveice res", "id", hexId, "flag", res.Flag)
-			trace.Metadata[hexId] = &NodeMetadata{
-				Enr:      node.String(),
-				Distance: hexutil.Encode(dis[:]),
-			}
-			// no content return
-			if traceContentRes.Content == "" {
-				if res.Flag == ContentRawSelector || res.Flag == ContentConnIdSelector {
-					trace.ReceivedFrom = hexId
-					content := res.Content.([]byte)
-					traceContentRes.Content = hexutil.Encode(content)
-					traceContentRes.UtpTransfer = res.UtpTransfer
-					trace.Responses[hexId] = RespByNode{}
-				} else {
-					nodes := res.Content.([]*enode.Node)
-					respByNode := RespByNode{
-						RespondedWith: make([]string, 0, len(nodes)),
-					}
-					for _, node := range nodes {
-						idInner := "0x" + node.ID().String()
-						respByNode.RespondedWith = append(respByNode.RespondedWith, idInner)
-						if _, ok := trace.Metadata[idInner]; !ok {
-							dis := p.Distance(node.ID(), enode.ID(contentId))
-							trace.Metadata[idInner] = &NodeMetadata{
-								Enr:      node.String(),
-								Distance: hexutil.Encode(dis[:]),
-							}
-						}
-						trace.Responses[hexId] = respByNode
-					}
-				}
-			} else {
-				trace.Cancelled = append(trace.Cancelled, hexId)
-			}
-		}
-	}()
-
-	lookup := newLookup(lookupContext, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
-		return p.contentLookupWorker(n, contentKey, resChan, cancel, &hasResult)
-	})
-	lookup.run()
-	close(resChan)
-
-	wg.Wait()
-	if hasResult == 0 {
-		cancel()
-	}
-	traceContentRes.Trace = *trace
-
-	return traceContentRes, nil
 }
 
-func (p *PortalProtocol) contentLookupWorker(n *enode.Node, contentKey []byte, resChan chan<- *traceContentInfoResp, cancel context.CancelFunc, done *int32) ([]*enode.Node, error) {
-	wrapedNode := make([]*enode.Node, 0)
+func (p *PortalProtocol) traceContentLookupWorker(n *enode.Node, contentKey []byte, contentId []byte, resultChan chan<- *traceContentInfoResp, trace *Trace, cancel context.CancelFunc) ([]*enode.Node, error) {
 	flag, content, err := p.findContent(n, contentKey)
 	if err != nil {
 		return nil, err
 	}
-	p.Log.Debug("traceContentLookupWorker reveice response", "ip", n.IP().String(), "flag", flag)
+
+	p.Log.Debug("traceContentLookupWorker receive response", "ip", n.IP().String(), "flag", flag)
+
+	hexId := "0x" + n.ID().String()
+	dis := p.Distance(n.ID(), enode.ID(contentId))
+
+	trace.Metadata[hexId] = &NodeMetadata{
+		Enr:      n.String(),
+		Distance: hexutil.Encode(dis[:]),
+	}
 
 	switch flag {
 	case ContentRawSelector, ContentConnIdSelector:
-		content, ok := content.([]byte)
+		contentBytes, ok := content.([]byte)
 		if !ok {
-			return wrapedNode, fmt.Errorf("failed to assert to raw content, value is: %v", content)
+			return []*enode.Node{}, fmt.Errorf("failed to assert to raw content, value is: %v", content)
 		}
-		res := &traceContentInfoResp{
+
+		result := &traceContentInfoResp{
 			Node:        n,
 			Flag:        flag,
-			Content:     content,
-			UtpTransfer: false,
+			Content:     contentBytes,
+			UtpTransfer: flag == ContentConnIdSelector,
 		}
-		if flag == ContentConnIdSelector {
-			res.UtpTransfer = true
-		}
-		if atomic.CompareAndSwapInt32(done, 0, 1) {
-			p.Log.Debug("contentLookupWorker find content", "ip", n.IP().String(), "port", n.UDP())
-			resChan <- res
+
+		select {
+		case resultChan <- result:
+			p.Log.Debug("traceContentLookupWorker found content", "ip", n.IP().String(), "port", n.UDP())
 			cancel()
+		default:
+			trace.Cancelled = append(trace.Cancelled, hexId)
 		}
-		return wrapedNode, err
+
+		return []*enode.Node{}, nil
+
 	case ContentEnrsSelector:
 		nodes, ok := content.([]*enode.Node)
 		if !ok {
-			return wrapedNode, fmt.Errorf("failed to assert to enrs content, value is: %v", content)
+			return []*enode.Node{}, fmt.Errorf("failed to assert to enrs content, value is: %v", content)
 		}
-		resChan <- &traceContentInfoResp{
-			Node:        n,
-			Flag:        flag,
-			Content:     content,
-			UtpTransfer: false,
+
+		respByNode := RespByNode{
+			RespondedWith: make([]string, 0, len(nodes)),
 		}
+
+		for _, node := range nodes {
+			idInner := "0x" + node.ID().String()
+			respByNode.RespondedWith = append(respByNode.RespondedWith, idInner)
+
+			if _, ok := trace.Metadata[idInner]; !ok {
+				dis := p.Distance(node.ID(), enode.ID(contentId))
+				trace.Metadata[idInner] = &NodeMetadata{
+					Enr:      node.String(),
+					Distance: hexutil.Encode(dis[:]),
+				}
+			}
+		}
+
+		trace.Responses[hexId] = respByNode
 		return nodes, nil
+
+	default:
+		return []*enode.Node{}, fmt.Errorf("unknown content flag: %d", flag)
 	}
-	return wrapedNode, nil
 }
 
 func (p *PortalProtocol) ToContentId(contentKey []byte) []byte {
