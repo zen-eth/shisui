@@ -1959,13 +1959,9 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 
 	resultChan := make(chan *ContentInfoResp, 1)
 
-	go func() {
-		defer close(resultChan)
-
-		newLookup(ctx, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
-			return p.contentLookupWorker(n, contentKey, resultChan, cancel)
-		}).run()
-	}()
+	go newLookup(ctx, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
+		return p.contentLookupWorker(ctx, n, contentKey, resultChan)
+	}).run()
 
 	select {
 	case result, ok := <-resultChan:
@@ -1978,7 +1974,7 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 	}
 }
 
-func (p *PortalProtocol) contentLookupWorker(n *enode.Node, contentKey []byte, resultChan chan<- *ContentInfoResp, cancel context.CancelFunc) ([]*enode.Node, error) {
+func (p *PortalProtocol) contentLookupWorker(ctx context.Context, n *enode.Node, contentKey []byte, resultChan chan<- *ContentInfoResp) ([]*enode.Node, error) {
 	flag, content, err := p.findContent(n, contentKey)
 	if err != nil {
 		return nil, err
@@ -2001,7 +1997,7 @@ func (p *PortalProtocol) contentLookupWorker(n *enode.Node, contentKey []byte, r
 		select {
 		case resultChan <- result:
 			p.Log.Debug("contentLookupWorker found content", "ip", n.IP().String(), "port", n.UDP())
-			cancel()
+		case <-ctx.Done():
 		default:
 		}
 
@@ -2039,13 +2035,9 @@ func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*Trac
 
 	resultChan := make(chan *traceContentInfoResp, 1)
 
-	go func() {
-		defer close(resultChan)
-
-		newLookup(ctx, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
-			return p.traceContentLookupWorker(n, contentKey, contentId, resultChan, trace, cancel)
-		}).run()
-	}()
+	go newLookup(ctx, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
+		return p.traceContentLookupWorker(n, contentKey, contentId, resultChan, trace, cancel)
+	}).run()
 
 	select {
 	case result, ok := <-resultChan:
