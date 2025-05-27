@@ -91,7 +91,10 @@ func (it *lookup) advance() bool {
 
 func (it *lookup) shutdown() {
 	for it.queries > 0 {
-		<-it.replyCh
+		select {
+		case <-it.replyCh:
+		default:
+		}
 		it.queries--
 	}
 	it.queryfunc = nil

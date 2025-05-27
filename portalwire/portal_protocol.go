@@ -874,7 +874,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 			}
 			return 0xff, nil, err
 		}
-		p.Log.Trace("<< CONTENT/"+p.protocolName, "id", target.ID(), "size", n, "data", data)
+		p.Log.Trace("<< CONTENT/"+p.protocolName, "id", target.ID(), "size", n)
 		data, err = p.decodeUtpContent(target, data)
 		if err != nil {
 			if metrics.Enabled() {
@@ -1644,7 +1644,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						defer readCancel()
 						n, err = conn.ReadToEOF(readCtx, &data)
 						conn.Close()
-						p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n, "data", data)
+						p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n)
 						if metrics.Enabled() {
 							p.portalMetrics.messagesReceivedContent.Mark(1)
 						}
