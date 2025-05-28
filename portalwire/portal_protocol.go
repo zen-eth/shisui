@@ -2135,7 +2135,7 @@ func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*Trac
 // run completely event drive for content look up
 func (state *contentLookupState) run() {
 	defer func() {
-		close(state.resultChan)
+		//close(state.resultChan)
 		state.cancel()
 	}()
 	state.initCandidates()
