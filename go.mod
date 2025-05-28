@@ -2,7 +2,7 @@ module github.com/zen-eth/shisui
 
 go 1.24.2
 
-replace github.com/protolambda/zrnt v0.34.1 => github.com/optimism-java/zrnt v0.32.4-0.20240415084906-d9dbf06b32f7
+replace github.com/protolambda/zrnt v0.34.1 => github.com/optimism-java/zrnt v0.32.4-0.20250528142456-bc543d07ddb2
 
 require (
 	github.com/OffchainLabs/go-bitfield v0.0.0-20250408211841-ad7364de91a5
