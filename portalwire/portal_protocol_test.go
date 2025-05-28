@@ -509,7 +509,7 @@ func TestContentLookup(t *testing.T) {
 	_, err = node2.ping(node3.localNode.Node())
 	assert.NoError(t, err)
 
-	res, _, err := node1.ContentLookup(contentKey, contentId)
+	res, _, err := node2.ContentLookup(contentKey, contentId)
 	assert.NoError(t, err)
 	assert.Equal(t, res, content)
 
@@ -548,20 +548,27 @@ func TestTraceContentLookup(t *testing.T) {
 	content := []byte{0x1, 0x2}
 	contentId := node1.toContentId(contentKey)
 
-	err = node1.storage.Put(nil, contentId, content)
-	assert.NoError(t, err)
-
 	node1Id := hexutil.Encode(node1.Self().ID().Bytes())
 	node2Id := hexutil.Encode(node2.Self().ID().Bytes())
 	node3Id := hexutil.Encode(node3.Self().ID().Bytes())
 
-	res, err := node3.TraceContentLookup(contentKey, contentId)
+	err = node1.storage.Put(nil, contentId, content)
 	assert.NoError(t, err)
-	assert.Equal(t, res.Content, hexutil.Encode(content))
-	assert.Equal(t, res.UtpTransfer, false)
-	assert.Equal(t, res.Trace.Origin, node3Id)
-	assert.Equal(t, res.Trace.TargetId, hexutil.Encode(contentId))
-	assert.Equal(t, res.Trace.ReceivedFrom, node1Id)
+	res, err := node1.TraceContentLookup(contentKey, contentId)
+	assert.NoError(t, err)
+	assert.Equal(t, hexutil.Encode(content), res.Content)
+	assert.Equal(t, false, res.UtpTransfer)
+	assert.Equal(t, node1Id, res.Trace.Origin)
+	assert.Equal(t, hexutil.Encode(contentId), res.Trace.TargetId)
+	assert.Equal(t, node1Id, res.Trace.ReceivedFrom)
+
+	res, err = node3.TraceContentLookup(contentKey, contentId)
+	assert.NoError(t, err)
+	assert.Equal(t, hexutil.Encode(content), res.Content)
+	assert.Equal(t, false, res.UtpTransfer)
+	assert.Equal(t, node3Id, res.Trace.Origin)
+	assert.Equal(t, hexutil.Encode(contentId), res.Trace.TargetId)
+	assert.Equal(t, node1Id, res.Trace.ReceivedFrom)
 
 	// check nodeMeta
 	node1Meta := res.Trace.Metadata[node1Id]

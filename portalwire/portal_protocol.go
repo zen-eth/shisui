@@ -13,6 +13,8 @@ import (
 	"net"
 	"slices"
 	"sort"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -1953,65 +1955,121 @@ func (p *PortalProtocol) collectTableNodes(rip net.IP, distances []uint, limit i
 	return nodes
 }
 
+// ContentLookupResult 包含查找结果
+type ContentLookupResult struct {
+	Content     []byte
+	UtpTransfer bool
+	FoundAt     *enode.Node
+}
+
+// contentLookupState 管理查找状态
+type contentLookupState struct {
+	target     enode.ID
+	contentKey []byte
+	protocol   *PortalProtocol
+	ctx        context.Context
+	cancel     context.CancelFunc
+
+	// 查找状态
+	contacted  map[enode.ID]bool
+	pending    map[enode.ID]bool
+	candidates *nodeQueue
+
+	// 并发控制
+	resultChan    chan *ContentLookupResult
+	newNodeChan   chan *enode.Node // 新节点通知
+	newNodeCount  atomic.Int32
+	queryDoneChan chan *enode.Node // 查询完成通知
+	mu            sync.Mutex
+	found         atomic.Bool
+	activeQueries int // 正在进行的查询数量
+
+	trace *Trace
+}
+
+// traceContentLookupState 带追踪的查找状态
+type traceContentLookupState struct {
+	*contentLookupState
+	trace *Trace
+}
+
+// nodeQueue 按距离排序的节点队列
+type nodeQueue struct {
+	target enode.ID
+	nodes  []*enode.Node
+}
+
+func newNodeQueue(target enode.ID) *nodeQueue {
+	return &nodeQueue{target: target, nodes: make([]*enode.Node, 0)}
+}
+
+func (nq *nodeQueue) push(n *enode.Node) {
+	// 按距离插入排序
+	dist := enode.LogDist(nq.target, n.ID())
+	insertPos := 0
+	for i, existing := range nq.nodes {
+		if enode.LogDist(nq.target, existing.ID()) > dist {
+			insertPos = i
+			break
+		}
+		insertPos = i + 1
+	}
+
+	// 插入节点
+	nq.nodes = append(nq.nodes, nil)
+	copy(nq.nodes[insertPos+1:], nq.nodes[insertPos:])
+	nq.nodes[insertPos] = n
+
+	// 限制队列大小
+	if len(nq.nodes) > bucketSize {
+		nq.nodes = nq.nodes[:bucketSize]
+	}
+}
+
+func (nq *nodeQueue) pop() *enode.Node {
+	if len(nq.nodes) == 0 {
+		return nil
+	}
+	node := nq.nodes[0]
+	nq.nodes = nq.nodes[1:]
+	return node
+}
+
+func (nq *nodeQueue) len() int {
+	return len(nq.nodes)
+}
+
 func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	resultChan := make(chan *ContentInfoResp, 1)
+	state := &contentLookupState{
+		target:        enode.ID(contentId),
+		contentKey:    contentKey,
+		protocol:      p,
+		ctx:           ctx,
+		cancel:        cancel,
+		contacted:     make(map[enode.ID]bool),
+		pending:       make(map[enode.ID]bool),
+		candidates:    newNodeQueue(enode.ID(contentId)),
+		resultChan:    make(chan *ContentLookupResult, 1),
+		newNodeChan:   make(chan *enode.Node, 100),
+		queryDoneChan: make(chan *enode.Node, 100),
+	}
 
-	go newLookup(ctx, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
-		return p.contentLookupWorker(ctx, n, contentKey, resultChan)
-	}).run()
+	if !state.hasLocalResult() {
+		go state.run()
+	}
 
+	// 等待结果
 	select {
-	case result, ok := <-resultChan:
-		if !ok || result == nil {
-			return nil, false, ErrContentNotFound
+	case result := <-state.resultChan:
+		if result != nil {
+			return result.Content, result.UtpTransfer, nil
 		}
-		return result.Content, result.UtpTransfer, nil
+		return nil, false, ErrContentNotFound
 	case <-ctx.Done():
 		return nil, false, fmt.Errorf("content lookup timeout: %w", ctx.Err())
-	}
-}
-
-func (p *PortalProtocol) contentLookupWorker(ctx context.Context, n *enode.Node, contentKey []byte, resultChan chan<- *ContentInfoResp) ([]*enode.Node, error) {
-	flag, content, err := p.findContent(n, contentKey)
-	if err != nil {
-		return nil, err
-	}
-
-	p.Log.Debug("contentLookupWorker receive response", "ip", n.IP().String(), "flag", flag)
-
-	switch flag {
-	case ContentRawSelector, ContentConnIdSelector:
-		contentBytes, ok := content.([]byte)
-		if !ok {
-			return []*enode.Node{}, fmt.Errorf("failed to assert to raw content, value is: %v", content)
-		}
-
-		result := &ContentInfoResp{
-			Content:     contentBytes,
-			UtpTransfer: flag == ContentConnIdSelector,
-		}
-
-		select {
-		case resultChan <- result:
-			p.Log.Debug("contentLookupWorker found content", "ip", n.IP().String(), "port", n.UDP())
-		case <-ctx.Done():
-		default:
-		}
-
-		return []*enode.Node{}, nil
-
-	case ContentEnrsSelector:
-		nodes, ok := content.([]*enode.Node)
-		if !ok {
-			return []*enode.Node{}, fmt.Errorf("failed to assert to enrs content, value is: %v", content)
-		}
-		return nodes, nil
-
-	default:
-		return []*enode.Node{}, fmt.Errorf("unknown content flag: %d", flag)
 	}
 }
 
@@ -2030,30 +2088,310 @@ func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*Trac
 		Metadata:    make(map[string]*NodeMetadata),
 		Cancelled:   make([]string, 0),
 	}
-
 	p.setupLocalTraceInfo(trace, selfHexId, contentId)
 
-	resultChan := make(chan *traceContentInfoResp, 1)
-
-	go newLookup(ctx, p.table, enode.ID(contentId), func(n *enode.Node) ([]*enode.Node, error) {
-		return p.traceContentLookupWorker(n, contentKey, contentId, resultChan, trace, cancel)
-	}).run()
-
-	select {
-	case result, ok := <-resultChan:
-		if ok && result != nil {
-			hexId := "0x" + result.Node.ID().String()
-			trace.ReceivedFrom = hexId
-			traceContentRes.Content = hexutil.Encode(result.Content.([]byte))
-			traceContentRes.UtpTransfer = result.UtpTransfer
-			trace.Responses[hexId] = RespByNode{}
-		}
-	case <-ctx.Done():
-		p.Log.Warn("TraceContentLookup timeout")
+	state := &contentLookupState{
+		target:        enode.ID(contentId),
+		contentKey:    contentKey,
+		protocol:      p,
+		ctx:           ctx,
+		cancel:        cancel,
+		contacted:     make(map[enode.ID]bool),
+		pending:       make(map[enode.ID]bool),
+		candidates:    newNodeQueue(enode.ID(contentId)),
+		resultChan:    make(chan *ContentLookupResult, 1),
+		newNodeChan:   make(chan *enode.Node, 100),
+		queryDoneChan: make(chan *enode.Node, 100),
+		trace:         trace,
 	}
 
+	if !state.hasLocalResult() {
+		go state.run()
+	}
+
+	// 等待结果
+	select {
+	case result := <-state.resultChan:
+		if result != nil {
+			hexId := "0x" + result.FoundAt.ID().String()
+			trace.ReceivedFrom = hexId
+			traceContentRes.Content = hexutil.Encode(result.Content)
+			traceContentRes.UtpTransfer = result.UtpTransfer
+
+			// 确保找到内容的节点有一个空的响应记录（表示它有内容，不返回其他节点）
+			if _, exists := trace.Responses[hexId]; !exists {
+				trace.Responses[hexId] = RespByNode{
+					RespondedWith: nil,
+				}
+			}
+		}
+	case <-ctx.Done():
+		return nil, fmt.Errorf("content lookup timeout: %w", ctx.Err())
+	}
 	traceContentRes.Trace = *trace
 	return traceContentRes, nil
+}
+
+// run completely event drive for content look up
+func (state *contentLookupState) run() {
+	defer func() {
+		close(state.resultChan)
+		state.cancel()
+	}()
+	state.initCandidates()
+	const maxConcurrent = 3
+	activeChan := make(chan struct{}, maxConcurrent)
+
+	// 启动初始查询
+	state.startAvailableQueries(activeChan)
+
+	// 主事件循环
+	for {
+		select {
+		case <-state.ctx.Done():
+			return
+
+		case newNode := <-state.newNodeChan:
+			state.addNewCandidate(newNode)
+			// try start new queries
+			state.startAvailableQueries(activeChan)
+
+		case completedNode := <-state.queryDoneChan:
+			state.onQueryCompleted(completedNode)
+			<-activeChan
+			// try start new queries
+			state.startAvailableQueries(activeChan)
+			if state.isLookupComplete() {
+				return
+			}
+
+		case result := <-state.resultChan:
+			// 找到内容了，直接返回
+			if result != nil {
+				state.resultChan <- result
+			}
+			return
+		}
+	}
+}
+
+// startAvailableQueries 启动可用的查询
+func (state *contentLookupState) startAvailableQueries(activeChan chan struct{}) {
+	for {
+		if state.found.Load() {
+			return
+		}
+
+		state.mu.Lock()
+		// 检查是否还能启动新查询
+		if len(activeChan) >= cap(activeChan) {
+			state.mu.Unlock()
+			return
+		}
+
+		// 获取下一个候选节点
+		node := state.candidates.pop()
+		if node == nil {
+			state.mu.Unlock()
+			return
+		}
+
+		// 检查是否已经联系过
+		if state.contacted[node.ID()] || state.pending[node.ID()] {
+			state.mu.Unlock()
+			continue
+		}
+
+		state.pending[node.ID()] = true
+		state.activeQueries++
+		state.mu.Unlock()
+
+		// 启动查询
+		go func(n *enode.Node) {
+			select {
+			case activeChan <- struct{}{}:
+				state.queryNode(n)
+			case <-state.ctx.Done():
+				// 清理状态
+				state.mu.Lock()
+				delete(state.pending, n.ID())
+				state.contacted[n.ID()] = true
+				state.activeQueries--
+				state.mu.Unlock()
+				// 通知查询完成
+				select {
+				case state.queryDoneChan <- n:
+				case <-state.ctx.Done():
+				}
+				return
+			}
+		}(node)
+	}
+}
+
+// queryNode 查询单个节点
+func (state *contentLookupState) queryNode(node *enode.Node) {
+	// 通知查询完成
+	defer func() {
+		select {
+		case state.queryDoneChan <- node:
+		case <-state.ctx.Done():
+		}
+	}()
+
+	if state.found.Load() {
+		return
+	}
+
+	flag, content, err := state.protocol.findContent(node, state.contentKey)
+	if err != nil {
+		state.protocol.Log.Debug("content lookup query failed",
+			"node", node.ID(), "err", err)
+		return
+	}
+
+	hexId := "0x" + node.ID().String()
+	if state.trace != nil {
+		state.mu.Lock()
+
+		dis := state.protocol.Distance(node.ID(), state.target)
+
+		state.trace.Metadata[hexId] = &NodeMetadata{
+			Enr:      node.String(),
+			Distance: hexutil.Encode(dis[:]),
+		}
+		state.mu.Unlock()
+	}
+
+	switch flag {
+	case ContentRawSelector, ContentConnIdSelector:
+		contentBytes, ok := content.([]byte)
+		if !ok {
+			state.protocol.Log.Error("invalid content type",
+				"node", node.ID(), "content", content)
+			return
+		}
+
+		result := &ContentLookupResult{
+			Content:     contentBytes,
+			UtpTransfer: flag == ContentConnIdSelector,
+			FoundAt:     node,
+		}
+
+		if !state.found.Load() && state.found.CompareAndSwap(false, true) {
+			defer state.cancel()
+			select {
+			case state.resultChan <- result:
+			default:
+			}
+		}
+
+	case ContentEnrsSelector:
+		nodes, ok := content.([]*enode.Node)
+		if !ok {
+			state.protocol.Log.Error("invalid enrs type",
+				"node", node.ID(), "content", content)
+			return
+		}
+		if state.trace != nil {
+			state.handleEnrsWithTrace(hexId, nodes)
+			return
+		}
+		for _, newNode := range nodes {
+			if newNode.ID() == state.protocol.Self().ID() {
+				continue
+			}
+			state.newNodeCount.Add(1)
+			select {
+			case state.newNodeChan <- newNode:
+			case <-state.ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+func (state *contentLookupState) handleEnrsWithTrace(fromHexId string, nodes []*enode.Node) {
+	respByNode := RespByNode{
+		RespondedWith: make([]string, 0, len(nodes)),
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	for _, newNode := range nodes {
+		idInner := "0x" + newNode.ID().String()
+		respByNode.RespondedWith = append(respByNode.RespondedWith, idInner)
+
+		if _, ok := state.trace.Metadata[idInner]; !ok {
+			dis := state.protocol.Distance(newNode.ID(), state.target)
+			state.trace.Metadata[idInner] = &NodeMetadata{
+				Enr:      newNode.String(),
+				Distance: hexutil.Encode(dis[:]),
+			}
+		}
+		if newNode.ID() == state.protocol.Self().ID() {
+			continue
+		}
+		select {
+		case state.newNodeChan <- newNode:
+		case <-state.ctx.Done():
+			return
+		}
+	}
+	state.trace.Responses[fromHexId] = respByNode
+}
+
+// addNewCandidate 添加新候选节点
+func (state *contentLookupState) addNewCandidate(node *enode.Node) {
+	if state.found.Load() {
+		return
+	}
+	// 检查是否已经处理过
+	if !state.contacted[node.ID()] && !state.pending[node.ID()] {
+		state.candidates.push(node)
+	}
+}
+
+// onQueryCompleted 处理查询完成
+func (state *contentLookupState) onQueryCompleted(node *enode.Node) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	delete(state.pending, node.ID())
+	state.contacted[node.ID()] = true
+	state.activeQueries--
+}
+
+// isLookupComplete 检查查找是否完成
+func (state *contentLookupState) isLookupComplete() bool {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	// 如果已经找到内容，或者没有候选节点且没有正在进行的查询
+	return state.found.Load() || (state.candidates.len() == 0 && state.activeQueries == 0)
+}
+
+// hasLocalResult 检查本地是否有结果
+func (state *contentLookupState) hasLocalResult() bool {
+	if content, err := state.protocol.storage.Get(state.contentKey, state.target[:]); err == nil {
+		result := &ContentLookupResult{
+			Content:     content,
+			UtpTransfer: false,
+			FoundAt:     state.protocol.Self(),
+		}
+		state.resultChan <- result
+		return true
+	}
+	return false
+}
+
+// initCandidates 初始化候选节点
+func (state *contentLookupState) initCandidates() {
+	closestNodes := state.protocol.findNodesCloseToContent(state.target[:], bucketSize)
+	for _, node := range closestNodes {
+		if node.ID() != state.protocol.Self().ID() {
+			state.candidates.push(node)
+		}
+	}
 }
 
 func (p *PortalProtocol) setupLocalTraceInfo(trace *Trace, selfHexId string, contentId []byte) {
