@@ -8,6 +8,7 @@ import (
 	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/beacon/deneb"
+	"github.com/protolambda/zrnt/eth2/beacon/electra"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/tree"
 )
@@ -18,6 +19,7 @@ var (
 	Bellatrix common.ForkDigest = [4]byte{0x0, 0x0, 0x0, 0x0}
 	Capella   common.ForkDigest = [4]byte{0xbb, 0xa4, 0xda, 0x96}
 	Deneb     common.ForkDigest = [4]byte{0x6a, 0x95, 0xa1, 0xa9}
+	Electra   common.ForkDigest = [4]byte{0xad, 0x53, 0x2c, 0xeb}
 )
 
 type ContentType byte
@@ -99,6 +101,8 @@ func (flcb *ForkedLightClientBootstrap) Deserialize(spec *common.Spec, dr *codec
 		flcb.Bootstrap = &capella.LightClientBootstrap{}
 	case Deneb:
 		flcb.Bootstrap = &deneb.LightClientBootstrap{}
+	case Electra:
+		flcb.Bootstrap = &electra.LightClientBootstrap{}
 	default:
 		return errors.New("unknown fork digest")
 	}
@@ -148,6 +152,8 @@ func (flcu *ForkedLightClientUpdate) Deserialize(spec *common.Spec, dr *codec.De
 		flcu.LightClientUpdate = &capella.LightClientUpdate{}
 	case Deneb:
 		flcu.LightClientUpdate = &deneb.LightClientUpdate{}
+	case Electra:
+		flcu.LightClientUpdate = &electra.LightClientUpdate{}
 	default:
 		return errors.New("unknown fork digest")
 	}
@@ -232,7 +238,7 @@ func (flcou *ForkedLightClientOptimisticUpdate) Deserialize(spec *common.Spec, d
 		flcou.LightClientOptimisticUpdate = &altair.LightClientOptimisticUpdate{}
 	case Capella:
 		flcou.LightClientOptimisticUpdate = &capella.LightClientOptimisticUpdate{}
-	case Deneb:
+	case Deneb, Electra:
 		flcou.LightClientOptimisticUpdate = &deneb.LightClientOptimisticUpdate{}
 	default:
 		return errors.New("unknown fork digest")
@@ -271,7 +277,7 @@ func (flcou *ForkedLightClientOptimisticUpdate) GetSignatureSlot() uint64 {
 		return uint64(flcou.LightClientOptimisticUpdate.(*altair.LightClientOptimisticUpdate).SignatureSlot)
 	case Capella:
 		return uint64(flcou.LightClientOptimisticUpdate.(*capella.LightClientOptimisticUpdate).SignatureSlot)
-	case Deneb:
+	case Deneb, Electra:
 		return uint64(flcou.LightClientOptimisticUpdate.(*deneb.LightClientOptimisticUpdate).SignatureSlot)
 	}
 	return 0
@@ -295,6 +301,8 @@ func (flcfu *ForkedLightClientFinalityUpdate) Deserialize(spec *common.Spec, dr 
 		flcfu.LightClientFinalityUpdate = &capella.LightClientFinalityUpdate{}
 	case Deneb:
 		flcfu.LightClientFinalityUpdate = &deneb.LightClientFinalityUpdate{}
+	case Electra:
+		flcfu.LightClientFinalityUpdate = &electra.LightClientFinalityUpdate{}
 	default:
 		return errors.New("unknown fork digest")
 	}
@@ -334,6 +342,8 @@ func (flcfu *ForkedLightClientFinalityUpdate) GetBeaconSlot() uint64 {
 		return uint64(flcfu.LightClientFinalityUpdate.(*capella.LightClientFinalityUpdate).FinalizedHeader.Beacon.Slot)
 	case Deneb:
 		return uint64(flcfu.LightClientFinalityUpdate.(*deneb.LightClientFinalityUpdate).FinalizedHeader.Beacon.Slot)
+	case Electra:
+		return uint64(flcfu.LightClientFinalityUpdate.(*electra.LightClientFinalityUpdate).FinalizedHeader.Beacon.Slot)
 	}
 	return 0
 }

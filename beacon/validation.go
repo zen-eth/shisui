@@ -80,7 +80,7 @@ func (b *BeaconValidator) ValidateContent(contentKey []byte, content []byte) err
 			return err
 		}
 		// TODO it should be Electra now
-		if forkedLightClientFinalityUpdate.ForkDigest != beacon.Deneb {
+		if forkedLightClientFinalityUpdate.ForkDigest != beacon.Electra {
 			return fmt.Errorf("light client finality update is not from the recent fork. Expected deneb, got %v", forkedLightClientFinalityUpdate.ForkDigest)
 		}
 		finalizedSlot := lightClientFinalityUpdateKey.FinalizedSlot
@@ -88,10 +88,9 @@ func (b *BeaconValidator) ValidateContent(contentKey []byte, content []byte) err
 		if err != nil {
 			return err
 		}
-		if finalizedSlot != uint64(genericUpdate.FinalizedHeader.Slot) {
+		if finalizedSlot > uint64(genericUpdate.FinalizedHeader.Slot) {
 			return fmt.Errorf("light client finality update finalized slot does not match the content key finalized slot: %d != %d", genericUpdate.FinalizedHeader.Slot, finalizedSlot)
 		}
-		// TODO miss some validation
 		return nil
 	case beacon.LightClientOptimisticUpdate:
 		lightClientOptimisticUpdateKey := &beacon.LightClientOptimisticUpdateKey{}
@@ -105,7 +104,7 @@ func (b *BeaconValidator) ValidateContent(contentKey []byte, content []byte) err
 			return err
 		}
 		// TODO it should be Electra now
-		if forkedLightClientOptimisticUpdate.ForkDigest != beacon.Deneb {
+		if forkedLightClientOptimisticUpdate.ForkDigest != beacon.Electra {
 			return fmt.Errorf("light client optimistic update is not from the recent fork. Expected deneb, got %v", forkedLightClientOptimisticUpdate.ForkDigest)
 		}
 		genericUpdate, err := FromLightClientOptimisticUpdate(forkedLightClientOptimisticUpdate.LightClientOptimisticUpdate)
