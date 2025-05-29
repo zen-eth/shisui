@@ -81,6 +81,8 @@ const (
 
 	lookupRequestLimit = 3 // max requests against a single node during lookup
 
+	lookupContentTimeout = 30 * time.Second
+
 	maxPacketSize = 1280
 )
 
@@ -1955,12 +1957,13 @@ func (p *PortalProtocol) collectTableNodes(rip net.IP, distances []uint, limit i
 }
 
 func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), lookupContentTimeout)
 	defer cancel()
 
 	state := newContentLookupState(ctx, cancel, p, contentId, contentKey, nil)
 
 	if !state.hasLocalResult() {
+		// antipool
 		go state.run()
 	}
 
@@ -1977,7 +1980,7 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 }
 
 func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*TraceContentResult, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), lookupContentTimeout)
 	defer cancel()
 
 	traceContentRes := &TraceContentResult{}
