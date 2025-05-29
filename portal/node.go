@@ -294,10 +294,11 @@ func (n *Node) initUDP() error {
 // initDiscV5 initializes the discV5 protocol and local node
 func (n *Node) initDiscV5() error {
 	discCfg := discover.Config{
-		PrivateKey:  n.config.PrivateKey,
-		NetRestrict: n.config.PortalProtocolConfig.NetRestrict,
-		Bootnodes:   n.config.PortalProtocolConfig.BootstrapNodes,
-		Log:         log.New("protocol", "discV5"),
+		PrivateKey:    n.config.PrivateKey,
+		NetRestrict:   n.config.PortalProtocolConfig.NetRestrict,
+		Bootnodes:     n.config.PortalProtocolConfig.BootstrapNodes,
+		V5RespTimeout: n.config.PortalProtocolConfig.Discv5RespTimeout,
+		Log:           log.New("protocol", "discV5"),
 	}
 
 	nodeDB, err := enode.OpenDB(n.config.PortalProtocolConfig.NodeDBPath)

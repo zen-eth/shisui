@@ -61,6 +61,8 @@ const (
 
 	DefaultUtpConnSize = 64
 
+	DefaultDiscV5RespTimeout = 3 * time.Second
+
 	// These are the concurrent offers per Portal wire protocol that is running.
 	// Using the `offerQueue` allows for limiting the amount of offers send and
 	// thus how many streams can be started.
@@ -213,6 +215,7 @@ type PortalProtocolConfig struct {
 	clock                         mclock.Clock
 	TrustedBlockRoot              []byte
 	MaxUtpConnSize                int
+	Discv5RespTimeout             time.Duration
 }
 
 func DefaultPortalProtocolConfig() *PortalProtocolConfig {
@@ -230,6 +233,7 @@ func DefaultPortalProtocolConfig() *PortalProtocolConfig {
 		clock:                         mclock.System{},
 		TrustedBlockRoot:              make([]byte, 0),
 		MaxUtpConnSize:                DefaultUtpConnSize,
+		Discv5RespTimeout:             DefaultDiscV5RespTimeout,
 	}
 }
 
