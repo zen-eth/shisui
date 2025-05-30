@@ -610,7 +610,7 @@ func (p *PortalProtocol) findContent(ctx context.Context, node *enode.Node, cont
 	talkRequestBytes := make([]byte, 1+len(findContentBytes))
 	talkRequestBytes[0] = FINDCONTENT
 	copy(talkRequestBytes[1:], findContentBytes)
-	talkResp, err := p.DiscV5.TalkRequestWithContext(ctx, node, p.protocolId, talkRequestBytes)
+	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
 		return 0xff, nil, err
 	}
