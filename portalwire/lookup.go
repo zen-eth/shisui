@@ -19,7 +19,6 @@ package portalwire
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"sync"
 	"sync/atomic"
@@ -535,7 +534,7 @@ func (state *contentLookupState) onQueryCompleted(node *enode.Node) {
 func (state *contentLookupState) isLookupComplete() bool {
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	fmt.Println("found=", state.found.Load(), ";candidates.len=", state.candidates.len(), ";activeQueries=", state.activeQueries)
+	state.protocol.Log.Trace("found", state.found.Load(), "candidates.len", state.candidates.len(), "activeQueries", state.activeQueries)
 	return state.found.Load() || (state.candidates.len() == 0 && state.activeQueries == 0)
 }
 

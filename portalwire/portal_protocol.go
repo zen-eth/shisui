@@ -110,7 +110,7 @@ const (
 	contentOverhead          = 1 + 1           // msg id + SSZ Union selector
 	enrOverhead              = 4               // per added ENR, 4 bytes offset overheadvar expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
 	expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
-	DefaultLookupPoolSize    = 100
+	DefaultLookupPoolSize    = 200
 )
 
 var maxPayloadSize = maxPacketSize - talkRespOverhead - contentOverhead
