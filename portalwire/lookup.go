@@ -323,14 +323,10 @@ func (state *contentLookupState) run() {
 
 		case newNode := <-state.newNodeChan:
 			state.addNewCandidate(newNode)
-			// try start new queries
-			state.startAvailableQueries(activeChan)
 
 		case completedNode := <-state.queryDoneChan:
 			state.onQueryCompleted(completedNode)
 			<-activeChan
-			// try start new queries
-			state.startAvailableQueries(activeChan)
 			if state.isLookupComplete() {
 				// It will not affect the normal process
 				// If no content is found, it read a nil value
@@ -341,6 +337,8 @@ func (state *contentLookupState) run() {
 				}
 				return
 			}
+			// try start new queries
+			state.startAvailableQueries(activeChan)
 		}
 	}
 }
@@ -348,14 +346,21 @@ func (state *contentLookupState) run() {
 // startAvailableQueries 启动可用的查询
 func (state *contentLookupState) startAvailableQueries(activeChan chan struct{}) {
 	for {
+		select {
+		case <-state.ctx.Done():
+			return
+		default:
+		}
 		if state.found.Load() {
 			return
 		}
 
 		state.mu.Lock()
 		// 检查是否还能启动新查询
-		if len(activeChan) >= cap(activeChan) {
+		activeChanCount := len(activeChan)
+		if activeChanCount >= 3 {
 			state.mu.Unlock()
+			state.protocol.Log.Trace("active channel element count greater than 3")
 			return
 		}
 
@@ -382,17 +387,6 @@ func (state *contentLookupState) startAvailableQueries(activeChan chan struct{})
 			case activeChan <- struct{}{}:
 				state.queryNode(n)
 			case <-state.ctx.Done():
-				// 清理状态
-				state.mu.Lock()
-				delete(state.pending, n.ID())
-				state.contacted[n.ID()] = true
-				state.activeQueries--
-				state.mu.Unlock()
-				// 通知查询完成
-				select {
-				case state.queryDoneChan <- n:
-				case <-state.ctx.Done():
-				}
 				return
 			}
 		}(node)
@@ -408,12 +402,16 @@ func (state *contentLookupState) queryNode(node *enode.Node) {
 		case <-state.ctx.Done():
 		}
 	}()
-
+	select {
+	case <-state.ctx.Done():
+		return
+	default:
+	}
 	if state.found.Load() {
 		return
 	}
 
-	flag, content, err := state.protocol.findContent(node, state.contentKey)
+	flag, content, err := state.protocol.findContent(state.ctx, node, state.contentKey)
 	if err != nil {
 		state.protocol.Log.Debug("content lookup query failed",
 			"node", node.ID(), "err", err)

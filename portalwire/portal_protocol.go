@@ -593,7 +593,7 @@ func (p *PortalProtocol) findNodes(node *enode.Node, distances []uint) ([]*enode
 	return p.processNodes(node, talkResp, distances)
 }
 
-func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte, interface{}, error) {
+func (p *PortalProtocol) findContent(ctx context.Context, node *enode.Node, contentKey []byte) (byte, interface{}, error) {
 	findContent := &FindContent{
 		ContentKey: contentKey,
 	}
@@ -610,7 +610,7 @@ func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte,
 	talkRequestBytes := make([]byte, 1+len(findContentBytes))
 	talkRequestBytes[0] = FINDCONTENT
 	copy(talkRequestBytes[1:], findContentBytes)
-	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
+	talkResp, err := p.DiscV5.TalkRequestWithContext(ctx, node, p.protocolId, talkRequestBytes)
 	if err != nil {
 		return 0xff, nil, err
 	}

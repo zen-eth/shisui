@@ -312,12 +312,12 @@ func TestPortalWireProtocol(t *testing.T) {
 	err = node1.storage.Put(nil, node1.toContentId([]byte("test_key")), []byte("test_value"))
 	assert.NoError(t, err)
 
-	flag, content, err := node2.findContent(node1.localNode.Node(), []byte("test_key"))
+	flag, content, err := node2.findContent(context.Background(), node1.localNode.Node(), []byte("test_key"))
 	assert.NoError(t, err)
 	assert.Equal(t, ContentRawSelector, flag)
 	assert.Equal(t, []byte("test_value"), content)
 
-	flag, content, err = node2.findContent(node3.localNode.Node(), []byte("test_key"))
+	flag, content, err = node2.findContent(context.Background(), node3.localNode.Node(), []byte("test_key"))
 	assert.NoError(t, err)
 	assert.Equal(t, ContentEnrsSelector, flag)
 	assert.Equal(t, 1, len(content.([]*enode.Node)))
@@ -332,7 +332,7 @@ func TestPortalWireProtocol(t *testing.T) {
 	err = node1.storage.Put(nil, node1.toContentId([]byte("large_test_key")), largeTestContent)
 	assert.NoError(t, err)
 
-	flag, content, err = node2.findContent(node1.localNode.Node(), []byte("large_test_key"))
+	flag, content, err = node2.findContent(context.Background(), node1.localNode.Node(), []byte("large_test_key"))
 	assert.NoError(t, err)
 	assert.Equal(t, largeTestContent, content)
 	assert.Equal(t, ContentConnIdSelector, flag)
