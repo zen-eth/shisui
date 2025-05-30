@@ -10,6 +10,7 @@ import (
 	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/beacon/deneb"
+	"github.com/protolambda/zrnt/eth2/beacon/electra"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/protolambda/zrnt/eth2/util/merkle"
 	"github.com/zen-eth/shisui/types/beacon"
@@ -62,30 +63,6 @@ type GenericBootstrap struct {
 	Header                     *common.BeaconBlockHeader
 	CurrentSyncCommittee       common.SyncCommittee
 	CurrentSyncCommitteeBranch altair.SyncCommitteeProofBranch
-}
-
-func FromBootstrap(commonBootstrap common.SpecObj) (*GenericBootstrap, error) {
-	switch bootstrap := commonBootstrap.(type) {
-	case *deneb.LightClientBootstrap:
-		return &GenericBootstrap{
-			Header:                     &bootstrap.Header.Beacon,
-			CurrentSyncCommittee:       bootstrap.CurrentSyncCommittee,
-			CurrentSyncCommitteeBranch: bootstrap.CurrentSyncCommitteeBranch,
-		}, nil
-	case *capella.LightClientBootstrap:
-		return &GenericBootstrap{
-			Header:                     &bootstrap.Header.Beacon,
-			CurrentSyncCommittee:       bootstrap.CurrentSyncCommittee,
-			CurrentSyncCommitteeBranch: bootstrap.CurrentSyncCommitteeBranch,
-		}, nil
-	case *altair.LightClientBootstrap:
-		return &GenericBootstrap{
-			Header:                     &bootstrap.Header.Beacon,
-			CurrentSyncCommittee:       bootstrap.CurrentSyncCommittee,
-			CurrentSyncCommitteeBranch: bootstrap.CurrentSyncCommitteeBranch,
-		}, nil
-	}
-	return nil, errors.New("unknown bootstrap type")
 }
 
 func NewConsensusLightClient(api ConsensusAPI, config *Config, checkpointBlockRoot common.Root, logger log.Logger) (*ConsensusLightClient, error) {
@@ -256,11 +233,11 @@ func (c *ConsensusLightClient) bootstrap() error {
 	if err != nil {
 		return err
 	}
-	bootstrap, err := FromBootstrap(forkedBootstrap)
-	if err != nil {
-		return err
+	bootstrap, ok := forkedBootstrap.(*electra.LightClientBootstrap)
+	if !ok {
+		return errors.New("invalid bootstrap")
 	}
-	isValid := c.isValidCheckpoint(bootstrap.Header.Slot)
+	isValid := c.isValidCheckpoint(bootstrap.Header.Beacon.Slot)
 	if !isValid {
 		if c.Config.StrictCheckpointAge {
 			return errors.New("checkpoint is too old")
@@ -269,7 +246,7 @@ func (c *ConsensusLightClient) bootstrap() error {
 		}
 	}
 
-	committeeValid := c.isCurrentCommitteeProofValid(*bootstrap.Header, bootstrap.CurrentSyncCommittee, bootstrap.CurrentSyncCommitteeBranch)
+	committeeValid := c.isCurrentCommitteeProofValid(bootstrap.Header.Beacon, bootstrap.CurrentSyncCommittee, bootstrap.CurrentSyncCommitteeBranch)
 
 	headerHash := bootstrap.Header.HashTreeRoot(tree.GetHashFn()).String()
 	expectedHash := c.InitialCheckpoint.String()
@@ -285,9 +262,9 @@ func (c *ConsensusLightClient) bootstrap() error {
 	}
 
 	c.Store = LightClientStore{
-		FinalizedHeader:               bootstrap.Header,
+		FinalizedHeader:               &bootstrap.Header.Beacon,
 		CurrentSyncCommittee:          &bootstrap.CurrentSyncCommittee,
-		OptimisticHeader:              bootstrap.Header,
+		OptimisticHeader:              &bootstrap.Header.Beacon,
 		PreviousMaxActiveParticipants: view.Uint64View(0),
 		CurrentMaxActiveParticipants:  view.Uint64View(0),
 	}
@@ -311,7 +288,7 @@ func (c *ConsensusLightClient) isValidCheckpoint(blockHashSlot common.Slot) bool
 	return uint64(slotAge) < c.Config.MaxCheckpointAge
 }
 
-func (c *ConsensusLightClient) VerifyGenericUpdate(update *GenericUpdate) error {
+func (c *ConsensusLightClient) VerifyGenericUpdate(store *LightClientStore, update *GenericUpdate, expectedSlot uint64, genesisRoot common.Root, forkVersion [4]byte) error {
 	bits := c.getBits(update.SyncAggregate.SyncCommitteeBits)
 	if bits == 0 {
 		return ErrInsufficientParticipation
@@ -365,7 +342,7 @@ func (c *ConsensusLightClient) VerifyGenericUpdate(update *GenericUpdate) error 
 
 	pks := c.getParticipatingKeys(*syncCommittee, update.SyncAggregate.SyncCommitteeBits)
 
-	isValidSig, err := c.VerifySyncCommitteeSignature(pks, *update.AttestedHeader, update.SyncAggregate.SyncCommitteeSignature, update.SignatureSlot)
+	isValidSig, err := c.VerifySyncCommitteeSignature(pks, *update.AttestedHeader, update.SyncAggregate.SyncCommitteeSignature, genesisRoot, forkVersion)
 	if err != nil {
 		return err
 	}
@@ -380,7 +357,8 @@ func (c *ConsensusLightClient) VerifyUpdate(update common.SpecObj) error {
 	if err != nil {
 		return err
 	}
-	return c.VerifyGenericUpdate(genericUpdate)
+	expectCurrentSlot := c.expectedCurrentSlot()
+	return c.VerifyGenericUpdate(&c.Store, genericUpdate, uint64(expectCurrentSlot), c.Config.Chain.GenesisRoot, c.Config.Spec.ForkVersion(genericUpdate.SignatureSlot))
 }
 
 func (c *ConsensusLightClient) VerifyFinalityUpdate(update common.SpecObj) error {
@@ -388,7 +366,8 @@ func (c *ConsensusLightClient) VerifyFinalityUpdate(update common.SpecObj) error
 	if err != nil {
 		return err
 	}
-	return c.VerifyGenericUpdate(genericUpdate)
+	expectCurrentSlot := c.expectedCurrentSlot()
+	return c.VerifyGenericUpdate(&c.Store, genericUpdate, uint64(expectCurrentSlot), c.Config.Chain.GenesisRoot, c.Config.Spec.ForkVersion(genericUpdate.SignatureSlot))
 }
 
 func (c *ConsensusLightClient) VerifyOptimisticUpdate(update common.SpecObj) error {
@@ -396,7 +375,8 @@ func (c *ConsensusLightClient) VerifyOptimisticUpdate(update common.SpecObj) err
 	if err != nil {
 		return err
 	}
-	return c.VerifyGenericUpdate(genericUpdate)
+	expectCurrentSlot := c.expectedCurrentSlot()
+	return c.VerifyGenericUpdate(&c.Store, genericUpdate, uint64(expectCurrentSlot), c.Config.Chain.GenesisRoot, c.Config.Spec.ForkVersion(genericUpdate.SignatureSlot))
 }
 
 func (c *ConsensusLightClient) ApplyGenericUpdate(update *GenericUpdate) {
@@ -489,9 +469,9 @@ func (c *ConsensusLightClient) ApplyOptimisticUpdate(update common.SpecObj) erro
 	return nil
 }
 
-func (c *ConsensusLightClient) VerifySyncCommitteeSignature(pks []common.BLSPubkey, attestedHeader common.BeaconBlockHeader, signature common.BLSSignature, signatureSlot common.Slot) (bool, error) {
+func (c *ConsensusLightClient) VerifySyncCommitteeSignature(pks []common.BLSPubkey, attestedHeader common.BeaconBlockHeader, signature common.BLSSignature, genesisRoot common.Root, forkVersion [4]byte) (bool, error) {
 	headerRoot := attestedHeader.HashTreeRoot(tree.GetHashFn())
-	signingRoot := c.ComputeCommitteeSignRoot(headerRoot, signatureSlot)
+	signingRoot := c.ComputeCommitteeSignRoot(genesisRoot, headerRoot, forkVersion)
 	blsuPubKeys := make([]*blsu.Pubkey, 0, len(pks))
 	for _, p := range pks {
 		blsuPubKey, err := p.Pubkey()
@@ -507,10 +487,8 @@ func (c *ConsensusLightClient) VerifySyncCommitteeSignature(pks []common.BLSPubk
 	return blsu.FastAggregateVerify(blsuPubKeys, signingRoot[:], blsuSig), nil
 }
 
-func (c *ConsensusLightClient) ComputeCommitteeSignRoot(headerRoot tree.Root, slot common.Slot) common.Root {
-	genesisRoot := c.Config.Chain.GenesisRoot
+func (c *ConsensusLightClient) ComputeCommitteeSignRoot(genesisRoot common.Root, headerRoot tree.Root, forkVersion [4]byte) common.Root {
 	domainType := hexutil.MustDecode("0x07000000")
-	forkVersion := c.Config.Spec.ForkVersion(slot)
 	domain := common.ComputeDomain(common.BLSDomainType(domainType), forkVersion, genesisRoot)
 	return ComputeSigningRoot(headerRoot, domain)
 }
@@ -528,7 +506,7 @@ func (c *ConsensusLightClient) slotTimestamp(slot common.Slot) (common.Timestamp
 	return atSlot, nil
 }
 
-func (c *ConsensusLightClient) isCurrentCommitteeProofValid(attestedHeader common.BeaconBlockHeader, currentCommittee common.SyncCommittee, currentCommitteeBranch altair.SyncCommitteeProofBranch) bool {
+func (c *ConsensusLightClient) isCurrentCommitteeProofValid(attestedHeader common.BeaconBlockHeader, currentCommittee common.SyncCommittee, currentCommitteeBranch electra.CurrentSyncCommitteeBranch) bool {
 	return merkle.VerifyMerkleBranch(currentCommittee.HashTreeRoot(c.Config.Spec, tree.GetHashFn()), currentCommitteeBranch[:], 5, 22, attestedHeader.StateRoot)
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/protolambda/zrnt/eth2/beacon/common"
+	"github.com/protolambda/zrnt/eth2/beacon/electra"
 	"github.com/protolambda/zrnt/eth2/util/merkle"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/tree"
@@ -55,16 +56,20 @@ func (b *BeaconValidator) ValidateContent(contentKey []byte, content []byte) err
 		}
 		currentSlot := b.spec.TimeToSlot(common.Timestamp(time.Now().Unix()), common.Timestamp(GenesisTime))
 
-		genericBootstrap, err := FromBootstrap(forkedLightClientBootstrap.Bootstrap)
+		bootstrap := forkedLightClientBootstrap.Bootstrap
 		if err != nil {
 			return err
+		}
+		value, ok := bootstrap.(*electra.LightClientBootstrap)
+		if !ok {
+			return errors.New("invalid bootstrap")
 		}
 		fourMonth := time.Hour * 24 * 30 * 4
 		fourMonthInSlots := common.Timestamp(fourMonth.Seconds()) / (b.spec.SECONDS_PER_SLOT)
 		fourMonthAgoSlot := currentSlot - common.Slot(fourMonthInSlots)
 
-		if genericBootstrap.Header.Slot < fourMonthAgoSlot {
-			return fmt.Errorf("light client bootstrap slot is too old: %d", genericBootstrap.Header.Slot)
+		if value.Header.Beacon.Slot < fourMonthAgoSlot {
+			return fmt.Errorf("light client bootstrap slot is too old: %d", value.Header.Beacon.Slot)
 		}
 		// TODO validate with finalized header
 		return nil
