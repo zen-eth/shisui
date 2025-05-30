@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/panjf2000/ants/v2"
 	"io"
 	"math/big"
 	"net"
@@ -109,6 +110,7 @@ const (
 	contentOverhead          = 1 + 1           // msg id + SSZ Union selector
 	enrOverhead              = 4               // per added ENR, 4 bytes offset overheadvar expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
 	expirationVersionMinutes = 5 * time.Minute // cache versionsCache expiration time in minutes
+	DefaultLookupPoolSize    = 100
 )
 
 var maxPayloadSize = maxPacketSize - talkRespOverhead - contentOverhead
@@ -279,6 +281,8 @@ type PortalProtocol struct {
 	transferringKeyCache  *fastcache.Cache
 
 	versionsCache cache.Cache[*enode.Node, uint8]
+
+	lookupContentPool *ants.Pool
 }
 
 func defaultContentIdFunc(contentKey []byte) []byte {
@@ -301,7 +305,11 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 	}
 
 	closeCtx, cancelCloseCtx := context.WithCancel(context.Background())
-
+	pool, err := ants.NewPool(DefaultLookupPoolSize, ants.WithPreAlloc(true))
+	if err != nil {
+		cancelCloseCtx()
+		return nil, err
+	}
 	protocol := &PortalProtocol{
 		protocolId:                string(protocolId),
 		protocolName:              protocolId.Name(),
@@ -328,6 +336,7 @@ func NewPortalProtocol(config *PortalProtocolConfig, protocolId ProtocolId, priv
 		Utp:                       utp,
 		currentVersions:           currentVersions,
 		transferringKeyCache:      fastcache.New(config.ContentKeyCacheSize),
+		lookupContentPool:         pool,
 	}
 
 	for _, setOpt := range setOpts {
@@ -1962,9 +1971,8 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 
 	state := newContentLookupState(ctx, cancel, p, contentId, contentKey, nil)
 
-	if !state.hasLocalResult() {
-		// antipool
-		go state.run()
+	if err := p.lookupContentPool.Submit(state.run); err != nil {
+		return nil, false, ErrContentNotFound
 	}
 
 	// 等待结果
@@ -1998,8 +2006,8 @@ func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*Trac
 
 	state := newContentLookupState(ctx, cancel, p, contentId, contentKey, trace)
 
-	if !state.hasLocalResult() {
-		go state.run()
+	if err := p.lookupContentPool.Submit(state.run); err != nil {
+		return nil, ErrContentNotFound
 	}
 
 	// 等待结果

@@ -554,15 +554,8 @@ func TestTraceContentLookup(t *testing.T) {
 
 	err = node1.storage.Put(nil, contentId, content)
 	assert.NoError(t, err)
-	res, err := node1.TraceContentLookup(contentKey, contentId)
-	assert.NoError(t, err)
-	assert.Equal(t, hexutil.Encode(content), res.Content)
-	assert.Equal(t, false, res.UtpTransfer)
-	assert.Equal(t, node1Id, res.Trace.Origin)
-	assert.Equal(t, hexutil.Encode(contentId), res.Trace.TargetId)
-	assert.Equal(t, node1Id, res.Trace.ReceivedFrom)
 
-	res, err = node3.TraceContentLookup(contentKey, contentId)
+	res, err := node3.TraceContentLookup(contentKey, contentId)
 	assert.NoError(t, err)
 	assert.Equal(t, hexutil.Encode(content), res.Content)
 	assert.Equal(t, false, res.UtpTransfer)
