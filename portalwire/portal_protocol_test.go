@@ -220,7 +220,7 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 		defer connId2Conn.Close()
 		var buf []byte
 		n, err := connId2Conn.ReadToEOF(context.Background(), &buf)
-		assert.NoError(t, err)
+		assert.Equal(t, io.EOF, err)
 		assert.Equal(t, len(cliSendMsgWithCid2)+len(largeTestContent), n)
 		assert.True(t, bytes.Equal([]byte(cliSendMsgWithCid2), buf[:len(cliSendMsgWithCid2)]))
 		assert.True(t, bytes.Equal(largeTestContent, buf[len(cliSendMsgWithCid2):]))

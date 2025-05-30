@@ -877,7 +877,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		defer readCancel()
 		var data []byte
 		n, err := conn.ReadToEOF(readCtx, &data)
-		if err != nil {
+		if err != nil && !errors.Is(err, io.EOF) {
 			if metrics.Enabled() {
 				p.portalMetrics.utpInFailRead.Inc(1)
 			}
@@ -1535,7 +1535,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailConn.Inc(1)
 						}
-						p.Log.Error("failed to accept utp connection for handle find content", "connId", connectionId.Send, "err", err)
+						p.Log.Error("failed to accept utp connection for handle find content", "addr", addr.String(), "connId", connectionId.Send, "err", err)
 						return
 					}
 
@@ -1642,7 +1642,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 							if metrics.Enabled() {
 								p.portalMetrics.utpInFailConn.Inc(1)
 							}
-							p.Log.Error("failed to accept utp connection for handle offer", "connId", connectionId.Send, "err", err)
+							p.Log.Error("failed to accept utp connection for handle offer", "addr", addr.String(), "connId", connectionId.Send, "err", err)
 							return
 						}
 
@@ -1840,7 +1840,7 @@ func (p *PortalProtocol) offerWorker() {
 			}
 			_, err := p.offer(offerRequestWithNode.Node, offerRequestWithNode.Request, permit)
 			if err != nil {
-				p.Log.Error("failed to offer", "err", err)
+				p.Log.Error("failed to offer", "destNodeId", offerRequestWithNode.Node.ID().String(), "ip", offerRequestWithNode.Node.IP().String(), "port", offerRequestWithNode.Node.UDP(), "err", err)
 			}
 		}
 	}

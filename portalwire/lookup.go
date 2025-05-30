@@ -281,7 +281,7 @@ type contentLookupState struct {
 	queryDoneChan chan *enode.Node // query done notify
 	mu            sync.Mutex
 	found         atomic.Bool
-	activeQueries *atomic.Int32
+	activeQueries int
 
 	trace *Trace
 }
@@ -300,7 +300,6 @@ func newContentLookupState(ctx context.Context, cancel context.CancelFunc, p *Po
 		newNodeChan:   make(chan *enode.Node, 100),
 		queryDoneChan: make(chan *enode.Node, 100),
 		trace:         trace,
-		activeQueries: &atomic.Int32{},
 	}
 }
 
@@ -344,9 +343,7 @@ func (state *contentLookupState) run() {
 	}
 }
 
-var queryNodeGoroutines = atomic.Int32{}
-
-// startAvailableQueries 启动可用的查询
+// startAvailableQueries start a available query
 func (state *contentLookupState) startAvailableQueries(activeChan chan struct{}) {
 	for {
 		select {
@@ -358,35 +355,27 @@ func (state *contentLookupState) startAvailableQueries(activeChan chan struct{})
 			return
 		}
 		state.mu.Lock()
-		// 获取下一个候选节点
+
 		node := state.candidates.pop()
 		if node == nil {
 			state.mu.Unlock()
 			return
 		}
 
-		// 检查是否已经联系过
 		if state.contacted[node.ID()] || state.pending[node.ID()] {
 			state.mu.Unlock()
 			continue
 		}
 
-		// 检查是否还能启动新查询
-		if state.activeQueries.Load() >= 3 {
-			state.protocol.Log.Trace("active channel element count greater than 3")
+		if state.activeQueries >= 3 {
 			state.mu.Unlock()
 			return
 		}
-		state.activeQueries.Add(1)
+		state.activeQueries++
 		state.pending[node.ID()] = true
 		state.mu.Unlock()
 
-		// 启动查询
 		go func(n *enode.Node) {
-			state.protocol.Log.Info("start a new goroutine to query node", "target", state.target.String(), "state.activeGoroutines", state.activeQueries.Load(), "totalGoroutines", queryNodeGoroutines.Add(1))
-			defer func() {
-				state.protocol.Log.Info("exit a goroutine of querying node", "target", state.target.String(), "state.activeGoroutines", state.activeQueries.Load(), "totalGoroutines", queryNodeGoroutines.Add(-1))
-			}()
 			select {
 			case activeChan <- struct{}{}:
 				state.queryNode(n)
@@ -397,7 +386,6 @@ func (state *contentLookupState) startAvailableQueries(activeChan chan struct{})
 	}
 }
 
-// queryNode 查询单个节点
 func (state *contentLookupState) queryNode(node *enode.Node) {
 	// 通知查询完成
 	defer func() {
@@ -511,12 +499,10 @@ func (state *contentLookupState) handleEnrsWithTrace(fromHexId string, nodes []*
 	state.trace.Responses[fromHexId] = respByNode
 }
 
-// addNewCandidate 添加新候选节点
 func (state *contentLookupState) addNewCandidate(node *enode.Node) {
 	if state.found.Load() {
 		return
 	}
-	// 检查是否已经处理过
 	if !state.contacted[node.ID()] && !state.pending[node.ID()] {
 		state.candidates.push(node)
 	}
@@ -529,13 +515,15 @@ func (state *contentLookupState) onQueryCompleted(node *enode.Node) {
 
 	delete(state.pending, node.ID())
 	state.contacted[node.ID()] = true
-	state.activeQueries.Add(-1)
+	state.activeQueries--
 }
 
 // isLookupComplete 检查查找是否完成
 func (state *contentLookupState) isLookupComplete() bool {
-	state.protocol.Log.Trace("found", state.found.Load(), "candidates.len", state.candidates.len(), "activeQueries", state.activeQueries)
-	return state.found.Load() || (state.candidates.len() == 0 && state.activeQueries.Load() == 0)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.protocol.Log.Trace("check lookup complete", "found", state.found.Load(), "candidates.len", state.candidates.len(), "activeQueries", state.activeQueries)
+	return state.found.Load() || (state.candidates.len() == 0 && state.activeQueries == 0)
 }
 
 // hasLocalResult 检查本地是否有结果
