@@ -283,23 +283,25 @@ type contentLookupState struct {
 	found         atomic.Bool
 	activeQueries int // active query count
 
-	trace *Trace
+	trace            *Trace
+	activeGoroutines *atomic.Int32
 }
 
 func newContentLookupState(ctx context.Context, cancel context.CancelFunc, p *PortalProtocol, contentId []byte, contentKey []byte, trace *Trace) *contentLookupState {
 	return &contentLookupState{
-		target:        enode.ID(contentId),
-		contentKey:    contentKey,
-		protocol:      p,
-		ctx:           ctx,
-		cancel:        cancel,
-		contacted:     make(map[enode.ID]bool),
-		pending:       make(map[enode.ID]bool),
-		candidates:    newNodeQueue(enode.ID(contentId)),
-		resultChan:    make(chan *ContentLookupResult, 1),
-		newNodeChan:   make(chan *enode.Node, 100),
-		queryDoneChan: make(chan *enode.Node, 100),
-		trace:         trace,
+		target:           enode.ID(contentId),
+		contentKey:       contentKey,
+		protocol:         p,
+		ctx:              ctx,
+		cancel:           cancel,
+		contacted:        make(map[enode.ID]bool),
+		pending:          make(map[enode.ID]bool),
+		candidates:       newNodeQueue(enode.ID(contentId)),
+		resultChan:       make(chan *ContentLookupResult, 1),
+		newNodeChan:      make(chan *enode.Node, 100),
+		queryDoneChan:    make(chan *enode.Node, 100),
+		trace:            trace,
+		activeGoroutines: &atomic.Int32{},
 	}
 }
 
@@ -343,6 +345,8 @@ func (state *contentLookupState) run() {
 	}
 }
 
+var queryNodeGoroutines = atomic.Int32{}
+
 // startAvailableQueries 启动可用的查询
 func (state *contentLookupState) startAvailableQueries(activeChan chan struct{}) {
 	for {
@@ -383,6 +387,10 @@ func (state *contentLookupState) startAvailableQueries(activeChan chan struct{})
 
 		// 启动查询
 		go func(n *enode.Node) {
+			state.protocol.Log.Info("start a new goroutine to query node", "state.activeGoroutines", state.activeGoroutines.Add(1), "totalGoroutines", queryNodeGoroutines.Add(1))
+			defer func() {
+				state.protocol.Log.Info("exit a goroutine of querying node", "state.activeGoroutines", state.activeGoroutines.Add(-1), "totalGoroutines", queryNodeGoroutines.Add(-1))
+			}()
 			select {
 			case activeChan <- struct{}{}:
 				state.queryNode(n)
