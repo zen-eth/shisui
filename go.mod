@@ -27,7 +27,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834
 	github.com/urfave/cli/v2 v2.27.6
-	github.com/zen-eth/utp-go v0.0.0-20250530141745-e4d89d3f1ad0
+	github.com/zen-eth/utp-go v0.0.0-20250531091903-1e1f1dd8910c
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/sync v0.14.0

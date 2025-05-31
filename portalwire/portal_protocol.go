@@ -774,7 +774,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 							Type: Failed,
 						}
 					}
-					p.Log.Error("failed to dial utp connection", "err", err)
+					p.Log.Error("failed to dial utp connection", "destId", target.ID().String(), "ip", target.IP().String(), "port", target.UDP(), "err", err)
 					return
 				}
 
@@ -1535,7 +1535,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailConn.Inc(1)
 						}
-						p.Log.Error("failed to accept utp connection for handle find content", "addr", addr.String(), "connId", connectionId.Send, "err", err)
+						p.Log.Error("failed to accept utp connection for handle find content", "destId", n.ID().String(), "addr", addr.String(), "connId", connectionId.Send, "err", err)
 						return
 					}
 
@@ -1642,7 +1642,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 							if metrics.Enabled() {
 								p.portalMetrics.utpInFailConn.Inc(1)
 							}
-							p.Log.Error("failed to accept utp connection for handle offer", "addr", addr.String(), "connId", connectionId.Send, "err", err)
+							p.Log.Error("failed to accept utp connection for handle offer", "destId", node.ID().String(), "addr", addr.String(), "connId", connectionId.Send, "err", err)
 							return
 						}
 
@@ -1653,12 +1653,16 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						defer readCancel()
 						n, err = conn.ReadToEOF(readCtx, &data)
 						conn.Close()
+						if err != nil && !errors.Is(err, io.EOF) {
+							if metrics.Enabled() {
+								p.portalMetrics.utpInFailRead.Inc(1)
+							}
+							p.Log.Error("failed to read from the accepted utp connection for handling offer", "addr", addr.String(), "connId", connectionId.Send, "err", err)
+							return
+						}
 						p.Log.Trace("<< OFFER_CONTENT/"+p.protocolName, "id", node.ID(), "size", n)
 						if metrics.Enabled() {
 							p.portalMetrics.messagesReceivedContent.Mark(1)
-						}
-						if err != nil && !errors.Is(err, io.EOF) {
-							return
 						}
 
 						err = p.handleOfferedContents(node.ID(), contentKeys, data)
