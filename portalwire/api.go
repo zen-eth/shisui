@@ -1,7 +1,6 @@
 package portalwire
 
 import (
-	"context"
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -411,7 +410,7 @@ func (p *PortalProtocolAPI) FindContent(enr string, contentKey string) (interfac
 		return nil, err
 	}
 
-	flag, findContent, err := p.portalProtocol.findContent(context.Background(), n, contentKeyBytes)
+	flag, findContent, err := p.portalProtocol.findContent(n, contentKeyBytes)
 	if err != nil {
 		return nil, err
 	}

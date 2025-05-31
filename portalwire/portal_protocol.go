@@ -593,7 +593,7 @@ func (p *PortalProtocol) findNodes(node *enode.Node, distances []uint) ([]*enode
 	return p.processNodes(node, talkResp, distances)
 }
 
-func (p *PortalProtocol) findContent(ctx context.Context, node *enode.Node, contentKey []byte) (byte, interface{}, error) {
+func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte, interface{}, error) {
 	findContent := &FindContent{
 		ContentKey: contentKey,
 	}
