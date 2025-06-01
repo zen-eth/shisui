@@ -312,7 +312,7 @@ func (state *contentLookupState) run() {
 		state.cancel()
 	}()
 	state.initCandidates()
-	const maxConcurrent = 3
+	const maxConcurrent = 1
 	activeChan := make(chan struct{}, maxConcurrent)
 
 	// 启动初始查询
@@ -370,7 +370,7 @@ func (state *contentLookupState) startAvailableQueries(activeChan chan struct{})
 			continue
 		}
 
-		if state.activeQueries >= 3 {
+		if state.activeQueries >= 1 {
 			state.protocol.Log.Info("exceed active query limit", "contentKey", hexutil.Encode(state.contentKey), "state.activeQueries", state.activeQueries)
 			state.mu.Unlock()
 			return
