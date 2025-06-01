@@ -18,6 +18,7 @@ package portalwire
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -307,6 +308,7 @@ func newContentLookupState(ctx context.Context, cancel context.CancelFunc, p *Po
 // run completely event drive for content look up
 func (state *contentLookupState) run() {
 	defer func() {
+		state.protocol.Log.Info("content lookup task done", "found", state.found.Load(), "ctx.err", state.ctx.Err(), "contentKey", hex.EncodeToString(state.contentKey))
 		state.cancel()
 	}()
 	state.initCandidates()
@@ -408,7 +410,7 @@ func (state *contentLookupState) queryNode(node *enode.Node) {
 	flag, content, err := state.protocol.findContent(state.ctx, node, state.contentKey)
 	if err != nil {
 		state.protocol.Log.Error("content lookup query failed",
-			"node", node.ID(), "err", err)
+			"node", node.ID(), "contentKey", hexutil.Encode(state.contentKey), "err", err)
 		return
 	}
 	state.protocol.Log.Info("findContent method end", "node", node.ID(), "contentKey", hexutil.Encode(state.contentKey))
