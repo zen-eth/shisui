@@ -209,8 +209,8 @@ github.com/onsi/ginkgo v1.14.0/go.mod h1:iSB4RoI2tjJc9BBv4NKIKWKya62Rps+oPG/Lv9k
 github.com/onsi/gomega v1.7.1/go.mod h1:XdKZgCCFLUoM/7CFJVPcG8C1xQ1AJ0vpAezJrB7JYyY=
 github.com/onsi/gomega v1.10.1 h1:o0+MgICZLuZ7xjH7Vx6zS/zcu93/BEp1VwkIW1mEXCE=
 github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1ybHNo=
-github.com/optimism-java/shisui v1.14.6-0.20250516133529-e5d979e5825f h1:/qGqNuNi9Q+/WZAikhZEHvwhm8TIwVxgamxk9G8mkfg=
-github.com/optimism-java/shisui v1.14.6-0.20250516133529-e5d979e5825f/go.mod h1:Cak0mDbSoH9geLA691ioescz1vXoXchz7rxF1DcNizE=
+github.com/optimism-java/shisui v1.14.6-0.20250526144834-7569b8f3f6b5 h1:pu6xWJifKseNAUB37VC4mn0xceUwQu2ogECgXCHtwEg=
+github.com/optimism-java/shisui v1.14.6-0.20250526144834-7569b8f3f6b5/go.mod h1:Cak0mDbSoH9geLA691ioescz1vXoXchz7rxF1DcNizE=
 github.com/optimism-java/zrnt v0.32.4-0.20250528142456-bc543d07ddb2 h1:F40qRmm51C04XA8zZWSd1dZDu57OOPKTyiKpUFuLw68=
 github.com/optimism-java/zrnt v0.32.4-0.20250528142456-bc543d07ddb2/go.mod h1:A0fezkp9Tt3GBLATSPIbuY4ywYESyAuc/FFmPKg8Lqs=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
@@ -299,8 +299,8 @@ github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1/go.mod h1:Ohn+xnUBi
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
-github.com/zen-eth/utp-go v0.0.0-20250517113239-5d962dd66394 h1:iBectudmNrjGXexs3R/GEYbJHZ5RNdpUOoBc0GYFRGU=
-github.com/zen-eth/utp-go v0.0.0-20250517113239-5d962dd66394/go.mod h1:j1tRbjVA455+fpF7B9yh+qkld0OQCXwMzb9dyuRWFGs=
+github.com/zen-eth/utp-go v0.0.0-20250601092006-0508310c08c3 h1:VT3Obx3YsaqB9sKHFDflbIsmFp2+zPvDSH+LvxIYA88=
+github.com/zen-eth/utp-go v0.0.0-20250601092006-0508310c08c3/go.mod h1:j1tRbjVA455+fpF7B9yh+qkld0OQCXwMzb9dyuRWFGs=
 go.uber.org/automaxprocs v1.6.0 h1:O3y2/QNTOdbF+e/dpXNNW7Rx2hZ4sTIPyybbxyNqTUs=
 go.uber.org/automaxprocs v1.6.0/go.mod h1:ifeIMSnPZuznNm6jmdzmU3/bfk01Fe2fotchwEFJ8r8=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=

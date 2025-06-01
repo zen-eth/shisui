@@ -7,46 +7,41 @@ import (
 	"testing"
 )
 
-func testUtpControllerPermitAcquisition(t *testing.T, getPermit func() (Permit, bool)) {
-	firstPermit, ok := getPermit()
-	require.True(t, ok)
+func testUtpControllerPermitAcquisition(t *testing.T, getPermit func() Permit, releasePermit func(Permit)) {
+	firstPermit := getPermit()
 	require.NotNil(t, firstPermit)
 
-	noPermit, ok := getPermit()
-	require.False(t, ok)
-	require.NotNil(t, noPermit)
-	noPermit.Release()
-	stillLimited, ok := getPermit()
-	require.False(t, ok)
-	require.NotNil(t, stillLimited)
+	noPermit := getPermit()
+	require.Equal(t, PermitReject, noPermit)
+	releasePermit(noPermit)
+	stillLimited := getPermit()
+	require.Equal(t, PermitReject, stillLimited)
 
 	// after release permit, should be able to get permit again
-	firstPermit.Release()
-	secondPermit, ok := getPermit()
-	require.True(t, ok)
+	releasePermit(firstPermit)
+	secondPermit := getPermit()
 	require.NotNil(t, secondPermit)
 
 	// should not be able to get permit
-	noPermit, ok = getPermit()
-	require.False(t, ok)
-	require.NotNil(t, noPermit)
+	noPermit = getPermit()
+	require.Equal(t, PermitReject, noPermit)
 }
 
 func TestUtpController_GetPermit(t *testing.T) {
 	utpCtrl := newUtpController(1)
-	testUtpControllerPermitAcquisition(t, utpCtrl.GetInboundPermit)
-	testUtpControllerPermitAcquisition(t, utpCtrl.GetOutboundPermit)
+	testUtpControllerPermitAcquisition(t, utpCtrl.GetInboundPermit, utpCtrl.Release)
+	testUtpControllerPermitAcquisition(t, utpCtrl.GetOutboundPermit, utpCtrl.Release)
 }
 
-func testUtpControllerConcurrencyGetPermitAcquisition(t *testing.T, getPermit func() (Permit, bool)) {
+func testUtpControllerConcurrencyGetPermitAcquisition(t *testing.T, getPermit func() Permit) {
 	var permitCount atomic.Int32
 	var wg sync.WaitGroup
 	wg.Add(10)
 	for i := 0; i < 10; i++ {
 		go func() {
 			defer wg.Done()
-			_, ok := getPermit()
-			if ok {
+			permit := getPermit()
+			if permit == PermitInbound || permit == PermitOutbound {
 				permitCount.Add(1)
 			}
 		}()

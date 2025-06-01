@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -219,7 +220,7 @@ func TestPortalWireProtocolUdp(t *testing.T) {
 		defer connId2Conn.Close()
 		var buf []byte
 		n, err := connId2Conn.ReadToEOF(context.Background(), &buf)
-		assert.NoError(t, err)
+		assert.Equal(t, io.EOF, err)
 		assert.Equal(t, len(cliSendMsgWithCid2)+len(largeTestContent), n)
 		assert.True(t, bytes.Equal([]byte(cliSendMsgWithCid2), buf[:len(cliSendMsgWithCid2)]))
 		assert.True(t, bytes.Equal(largeTestContent, buf[len(cliSendMsgWithCid2):]))
@@ -311,12 +312,12 @@ func TestPortalWireProtocol(t *testing.T) {
 	err = node1.storage.Put(nil, node1.toContentId([]byte("test_key")), []byte("test_value"))
 	assert.NoError(t, err)
 
-	flag, content, err := node2.findContent(node1.localNode.Node(), []byte("test_key"))
+	flag, content, err := node2.findContent(context.Background(), node1.localNode.Node(), []byte("test_key"))
 	assert.NoError(t, err)
 	assert.Equal(t, ContentRawSelector, flag)
 	assert.Equal(t, []byte("test_value"), content)
 
-	flag, content, err = node2.findContent(node3.localNode.Node(), []byte("test_key"))
+	flag, content, err = node2.findContent(context.Background(), node3.localNode.Node(), []byte("test_key"))
 	assert.NoError(t, err)
 	assert.Equal(t, ContentEnrsSelector, flag)
 	assert.Equal(t, 1, len(content.([]*enode.Node)))
@@ -331,7 +332,7 @@ func TestPortalWireProtocol(t *testing.T) {
 	err = node1.storage.Put(nil, node1.toContentId([]byte("large_test_key")), largeTestContent)
 	assert.NoError(t, err)
 
-	flag, content, err = node2.findContent(node1.localNode.Node(), []byte("large_test_key"))
+	flag, content, err = node2.findContent(context.Background(), node1.localNode.Node(), []byte("large_test_key"))
 	assert.NoError(t, err)
 	assert.Equal(t, largeTestContent, content)
 	assert.Equal(t, ContentConnIdSelector, flag)
@@ -355,7 +356,7 @@ func TestPortalWireProtocol(t *testing.T) {
 		Request: testTransientOfferRequest,
 	}
 
-	contentKeys, err := node1.offer(node3.localNode.Node(), offerRequest, &NoPermit{})
+	contentKeys, err := node1.offer(node3.localNode.Node(), offerRequest, PermitNotLimit)
 	assert.Equal(t, uint64(2), bitfield.Bitlist(contentKeys).Count())
 	assert.NoError(t, err)
 
@@ -402,7 +403,7 @@ func TestPortalWireProtocol(t *testing.T) {
 		Request: testTransientOfferRequestWithResult,
 	}
 
-	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest, &NoPermit{})
+	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest, PermitNotLimit)
 	assert.NoError(t, err)
 
 	offerTrace := <-testTransientOfferRequestWithResult.Result
@@ -421,7 +422,7 @@ func TestPortalWireProtocol(t *testing.T) {
 
 	err = node3.storage.Put(nil, node3.toContentId(testTraceEntry.ContentKey), testTraceEntry.Content)
 	assert.NoError(t, err)
-	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest1, &NoPermit{})
+	_, err = node1.offer(node3.localNode.Node(), traceOfferRequest1, PermitNotLimit)
 	assert.NoError(t, err)
 
 	offerTrace1 := <-testTransientOfferRequestWithResult1.Result
@@ -480,7 +481,6 @@ func TestContentLookup(t *testing.T) {
 	node2.Log = testlog.Logger(t, log.LvlInfo)
 	err = node2.Start()
 	assert.NoError(t, err)
-	fmt.Println(node2.localNode.Node().String())
 
 	node3, err := setupLocalPortalNode(":17779", []*enode.Node{node1.localNode.Node(), node2.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
@@ -508,7 +508,7 @@ func TestContentLookup(t *testing.T) {
 	_, err = node2.ping(node3.localNode.Node())
 	assert.NoError(t, err)
 
-	res, _, err := node1.ContentLookup(contentKey, contentId)
+	res, _, err := node2.ContentLookup(contentKey, contentId)
 	assert.NoError(t, err)
 	assert.Equal(t, res, content)
 
@@ -547,20 +547,20 @@ func TestTraceContentLookup(t *testing.T) {
 	content := []byte{0x1, 0x2}
 	contentId := node1.toContentId(contentKey)
 
-	err = node1.storage.Put(nil, contentId, content)
-	assert.NoError(t, err)
-
 	node1Id := hexutil.Encode(node1.Self().ID().Bytes())
 	node2Id := hexutil.Encode(node2.Self().ID().Bytes())
 	node3Id := hexutil.Encode(node3.Self().ID().Bytes())
 
+	err = node1.storage.Put(nil, contentId, content)
+	assert.NoError(t, err)
+
 	res, err := node3.TraceContentLookup(contentKey, contentId)
 	assert.NoError(t, err)
-	assert.Equal(t, res.Content, hexutil.Encode(content))
-	assert.Equal(t, res.UtpTransfer, false)
-	assert.Equal(t, res.Trace.Origin, node3Id)
-	assert.Equal(t, res.Trace.TargetId, hexutil.Encode(contentId))
-	assert.Equal(t, res.Trace.ReceivedFrom, node1Id)
+	assert.Equal(t, hexutil.Encode(content), res.Content)
+	assert.Equal(t, false, res.UtpTransfer)
+	assert.Equal(t, node3Id, res.Trace.Origin)
+	assert.Equal(t, hexutil.Encode(contentId), res.Trace.TargetId)
+	assert.Equal(t, node1Id, res.Trace.ReceivedFrom)
 
 	// check nodeMeta
 	node1Meta := res.Trace.Metadata[node1Id]
@@ -730,7 +730,7 @@ func TestOfferV1(t *testing.T) {
 		Request: testTransientOfferRequest,
 	}
 	// all accept
-	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest, &NoPermit{})
+	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest, PermitNotLimit)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(contentKeys))
 	for _, val := range contentKeys {
@@ -740,7 +740,7 @@ func TestOfferV1(t *testing.T) {
 	// one reject
 	node1.storage.Put(testEntry1.ContentKey, node2.toContentId(testEntry1.ContentKey), testEntry1.Content)
 	node1.transferringKeyCache.Set(testEntry2.ContentKey, EmptyBytes)
-	acceptCodes, err := node2.offer(node1.localNode.Node(), offerRequest, &NoPermit{})
+	acceptCodes, err := node2.offer(node1.localNode.Node(), offerRequest, PermitNotLimit)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(acceptCodes))
 	assert.Equal(t, uint8(AlreadyStored), acceptCodes[0])
@@ -980,6 +980,61 @@ func TestGetOrStoreHighestVersionOverflow(t *testing.T) {
 	assert.Equal(t, 1, node1.versionsCache.Len())
 }
 
+func TestHandleFindContent_Ratelimit(t *testing.T) {
+	original := maxPayloadSize
+	maxPayloadSize = 10
+	defer func() {
+		maxPayloadSize = original
+	}()
+
+	node1, err := setupLocalPortalNode(":3321", nil, 0, 0, 1)
+	assert.NoError(t, err)
+	node1.Log = testlog.Logger(t, log.LevelCrit)
+	err = node1.Start()
+	assert.NoError(t, err)
+	defer stopNode(node1)
+
+	node2, err := setupLocalPortalNode(":3322", []*enode.Node{node1.localNode.Node()}, 64, 0, 1)
+	assert.NoError(t, err)
+	node2.Log = testlog.Logger(t, log.LevelCrit)
+	err = node2.Start()
+	assert.NoError(t, err)
+	defer stopNode(node2)
+
+	for i := 0; i < 10; i++ {
+		key := []byte(fmt.Sprintf("test_entry_key_%d", i))
+		value := []byte(fmt.Sprintf("test_entry_value_%d", i))
+		node2.storage.Put(key, node2.toContentId(key), value)
+	}
+
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", node1.localNode.Node().IPAddr().String(), node1.localNode.Node().UDP()))
+	assert.NoError(t, err)
+	testKey := &FindContent{
+		ContentKey: []byte("test_entry_key_1"),
+	}
+	var permitCount atomic.Int32
+	permitCountPtr := &permitCount
+
+	var wg sync.WaitGroup
+	var waitGoroutines sync.WaitGroup
+	wg.Add(1000)
+	waitGoroutines.Add(1000)
+	for i := 0; i < 1000; i++ {
+		go func() {
+			defer wg.Done()
+			waitGoroutines.Wait()
+			content, err2 := node2.handleFindContent(node1.localNode.Node(), addr, testKey)
+			assert.NoError(t, err2)
+			if len(content) != 2 {
+				permitCountPtr.Add(1)
+			}
+		}()
+		waitGoroutines.Done()
+	}
+	wg.Wait()
+	assert.Equal(t, int32(64), permitCountPtr.Load())
+}
+
 func TestAcceptCode_Ratelmit(t *testing.T) {
 	node1, err := setupLocalPortalNode(":3321", nil, 0, 0, 1)
 	assert.NoError(t, err)
@@ -1017,7 +1072,7 @@ func TestAcceptCode_Ratelmit(t *testing.T) {
 		Request: testTransientOfferRequest,
 	}
 	// all accept
-	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest, &NoPermit{})
+	contentKeys, err := node1.offer(node2.localNode.Node(), offerRequest, PermitReject)
 	assert.NoError(t, err)
 	assert.Len(t, contentKeys, 2, "excepted: 2, but got: %d", len(contentKeys))
 	for _, val := range contentKeys {

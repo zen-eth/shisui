@@ -18,8 +18,13 @@ package portalwire
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
@@ -205,4 +210,348 @@ func (it *lookupIterator) Next() bool {
 // Close ends the iterator.
 func (it *lookupIterator) Close() {
 	it.cancel()
+}
+
+// nodeQueue 按距离排序的节点队列
+type nodeQueue struct {
+	target enode.ID
+	nodes  []*enode.Node
+}
+
+func newNodeQueue(target enode.ID) *nodeQueue {
+	return &nodeQueue{target: target, nodes: make([]*enode.Node, 0)}
+}
+
+func (nq *nodeQueue) push(n *enode.Node) {
+	// 按距离插入排序
+	dist := enode.LogDist(nq.target, n.ID())
+	insertPos := 0
+	for i, existing := range nq.nodes {
+		if enode.LogDist(nq.target, existing.ID()) > dist {
+			insertPos = i
+			break
+		}
+		insertPos = i + 1
+	}
+
+	// 插入节点
+	nq.nodes = append(nq.nodes, nil)
+	copy(nq.nodes[insertPos+1:], nq.nodes[insertPos:])
+	nq.nodes[insertPos] = n
+
+	// 限制队列大小
+	if len(nq.nodes) > bucketSize {
+		nq.nodes = nq.nodes[:bucketSize]
+	}
+}
+
+func (nq *nodeQueue) pop() *enode.Node {
+	if len(nq.nodes) == 0 {
+		return nil
+	}
+	node := nq.nodes[0]
+	nq.nodes = nq.nodes[1:]
+	return node
+}
+
+func (nq *nodeQueue) len() int {
+	return len(nq.nodes)
+}
+
+// ContentLookupResult contains found result
+type ContentLookupResult struct {
+	Content     []byte
+	UtpTransfer bool
+	FoundAt     *enode.Node
+}
+
+// contentLookupState hold lookup state
+type contentLookupState struct {
+	target     enode.ID
+	contentKey []byte
+	protocol   *PortalProtocol
+	ctx        context.Context
+	cancel     context.CancelFunc
+
+	contacted  map[enode.ID]bool
+	pending    map[enode.ID]bool
+	candidates *nodeQueue
+
+	// concurrency control
+	resultChan    chan *ContentLookupResult
+	newNodeChan   chan *enode.Node // new node found notify
+	queryDoneChan chan *enode.Node // query done notify
+	mu            sync.Mutex
+	found         atomic.Bool
+	activeQueries int
+
+	trace *Trace
+}
+
+func newContentLookupState(ctx context.Context, cancel context.CancelFunc, p *PortalProtocol, contentId []byte, contentKey []byte, trace *Trace) *contentLookupState {
+	return &contentLookupState{
+		target:        enode.ID(contentId),
+		contentKey:    contentKey,
+		protocol:      p,
+		ctx:           ctx,
+		cancel:        cancel,
+		contacted:     make(map[enode.ID]bool),
+		pending:       make(map[enode.ID]bool),
+		candidates:    newNodeQueue(enode.ID(contentId)),
+		resultChan:    make(chan *ContentLookupResult, 1),
+		newNodeChan:   make(chan *enode.Node, 100),
+		queryDoneChan: make(chan *enode.Node, 100),
+		trace:         trace,
+	}
+}
+
+// run completely event drive for content look up
+func (state *contentLookupState) run() {
+	defer func() {
+		state.protocol.Log.Info("content lookup task done", "found", state.found.Load(), "ctx.err", state.ctx.Err(), "contentKey", hex.EncodeToString(state.contentKey))
+		state.cancel()
+	}()
+	state.initCandidates()
+	const maxConcurrent = 1
+	activeChan := make(chan struct{}, maxConcurrent)
+
+	// 启动初始查询
+	state.startAvailableQueries(activeChan)
+
+	// 主事件循环
+	for {
+		select {
+		case <-state.ctx.Done():
+			return
+
+		case newNode := <-state.newNodeChan:
+			state.addNewCandidate(newNode)
+
+		case completedNode := <-state.queryDoneChan:
+			state.onQueryCompleted(completedNode)
+			<-activeChan
+			if state.isLookupComplete() {
+				// It will not affect the normal process
+				// If no content is found, it read a nil value
+				// state.resultChan will not be closed anytime
+				select {
+				case state.resultChan <- nil:
+				default:
+				}
+				return
+			}
+			// try start new queries
+			state.startAvailableQueries(activeChan)
+		}
+	}
+}
+
+// startAvailableQueries start a available query
+func (state *contentLookupState) startAvailableQueries(activeChan chan struct{}) {
+	for {
+		select {
+		case <-state.ctx.Done():
+			return
+		default:
+		}
+		if state.found.Load() {
+			state.protocol.Log.Info("content has been found, will not start a new goroutine", "contentKey", hexutil.Encode(state.contentKey))
+			return
+		}
+		state.mu.Lock()
+		node := state.candidates.pop()
+		if node == nil {
+			state.mu.Unlock()
+			return
+		}
+
+		if state.contacted[node.ID()] || state.pending[node.ID()] {
+			state.mu.Unlock()
+			continue
+		}
+
+		if state.activeQueries >= 1 {
+			state.protocol.Log.Info("exceed active query limit", "contentKey", hexutil.Encode(state.contentKey), "state.activeQueries", state.activeQueries)
+			state.mu.Unlock()
+			return
+		}
+		state.activeQueries++
+		state.pending[node.ID()] = true
+		state.mu.Unlock()
+
+		go func(n *enode.Node) {
+			select {
+			case activeChan <- struct{}{}:
+				state.queryNode(n)
+			case <-state.ctx.Done():
+				return
+			}
+		}(node)
+	}
+}
+
+func (state *contentLookupState) queryNode(node *enode.Node) {
+	// notify query done
+	defer func() {
+		select {
+		case state.queryDoneChan <- node:
+		case <-state.ctx.Done():
+		}
+	}()
+	select {
+	case <-state.ctx.Done():
+		return
+	default:
+	}
+	if state.found.Load() {
+		return
+	}
+	state.protocol.Log.Info("findContent method start", "node", node.ID(), "contentKey", hexutil.Encode(state.contentKey))
+	flag, content, err := state.protocol.findContent(state.ctx, node, state.contentKey)
+	if err != nil {
+		state.protocol.Log.Error("content lookup query failed",
+			"node", node.ID(), "contentKey", hexutil.Encode(state.contentKey), "err", err)
+		return
+	}
+	state.protocol.Log.Info("findContent method end", "node", node.ID(), "contentKey", hexutil.Encode(state.contentKey))
+
+	hexId := "0x" + node.ID().String()
+	if state.trace != nil {
+		state.mu.Lock()
+
+		dis := state.protocol.Distance(node.ID(), state.target)
+
+		state.trace.Metadata[hexId] = &NodeMetadata{
+			Enr:      node.String(),
+			Distance: hexutil.Encode(dis[:]),
+		}
+		state.mu.Unlock()
+	}
+
+	switch flag {
+	case ContentRawSelector, ContentConnIdSelector:
+		contentBytes, ok := content.([]byte)
+		if !ok {
+			state.protocol.Log.Error("invalid content type",
+				"node", node.ID(), "content", content)
+			return
+		}
+
+		result := &ContentLookupResult{
+			Content:     contentBytes,
+			UtpTransfer: flag == ContentConnIdSelector,
+			FoundAt:     node,
+		}
+
+		if state.found.CompareAndSwap(false, true) {
+			state.protocol.Log.Info("found content", "node", node.ID(), "contentKey", hexutil.Encode(state.contentKey))
+			select {
+			case state.resultChan <- result:
+			default:
+			}
+		}
+
+	case ContentEnrsSelector:
+		nodes, ok := content.([]*enode.Node)
+		if !ok {
+			state.protocol.Log.Error("invalid enrs type",
+				"node", node.ID(), "content", content)
+			return
+		}
+		if state.trace != nil {
+			state.handleEnrsWithTrace(hexId, nodes)
+			return
+		}
+		for _, newNode := range nodes {
+			if newNode.ID() == state.protocol.Self().ID() {
+				continue
+			}
+			select {
+			case state.newNodeChan <- newNode:
+			case <-state.ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+func (state *contentLookupState) handleEnrsWithTrace(fromHexId string, nodes []*enode.Node) {
+	respByNode := RespByNode{
+		RespondedWith: make([]string, 0, len(nodes)),
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	for _, newNode := range nodes {
+		idInner := "0x" + newNode.ID().String()
+		respByNode.RespondedWith = append(respByNode.RespondedWith, idInner)
+
+		if _, ok := state.trace.Metadata[idInner]; !ok {
+			dis := state.protocol.Distance(newNode.ID(), state.target)
+			state.trace.Metadata[idInner] = &NodeMetadata{
+				Enr:      newNode.String(),
+				Distance: hexutil.Encode(dis[:]),
+			}
+		}
+		if newNode.ID() == state.protocol.Self().ID() {
+			continue
+		}
+		select {
+		case state.newNodeChan <- newNode:
+		case <-state.ctx.Done():
+			return
+		}
+	}
+	state.trace.Responses[fromHexId] = respByNode
+}
+
+func (state *contentLookupState) addNewCandidate(node *enode.Node) {
+	if state.found.Load() {
+		return
+	}
+	if !state.contacted[node.ID()] && !state.pending[node.ID()] {
+		state.candidates.push(node)
+	}
+}
+
+// onQueryCompleted 处理查询完成
+func (state *contentLookupState) onQueryCompleted(node *enode.Node) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	delete(state.pending, node.ID())
+	state.contacted[node.ID()] = true
+	state.activeQueries--
+}
+
+// isLookupComplete 检查查找是否完成
+func (state *contentLookupState) isLookupComplete() bool {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.protocol.Log.Trace("check lookup complete", "found", state.found.Load(), "candidates.len", state.candidates.len(), "activeQueries", state.activeQueries)
+	return state.found.Load() || (state.candidates.len() == 0 && state.activeQueries == 0)
+}
+
+// hasLocalResult 检查本地是否有结果
+func (state *contentLookupState) hasLocalResult() bool {
+	if content, err := state.protocol.storage.Get(state.contentKey, state.target[:]); err == nil {
+		result := &ContentLookupResult{
+			Content:     content,
+			UtpTransfer: false,
+			FoundAt:     state.protocol.Self(),
+		}
+		state.resultChan <- result
+		return true
+	}
+	return false
+}
+
+// initCandidates 初始化候选节点
+func (state *contentLookupState) initCandidates() {
+	closestNodes := state.protocol.findNodesCloseToContent(state.target[:], bucketSize)
+	for _, node := range closestNodes {
+		if node.ID() != state.protocol.Self().ID() {
+			state.candidates.push(node)
+		}
+	}
 }

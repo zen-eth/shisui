@@ -1,6 +1,7 @@
 package portalwire
 
 import (
+	"context"
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -410,7 +411,7 @@ func (p *PortalProtocolAPI) FindContent(enr string, contentKey string) (interfac
 		return nil, err
 	}
 
-	flag, findContent, err := p.portalProtocol.findContent(n, contentKeyBytes)
+	flag, findContent, err := p.portalProtocol.findContent(context.Background(), n, contentKeyBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -474,7 +475,7 @@ func (p *PortalProtocolAPI) Offer(enr string, contentItems [][2]string) (string,
 		Kind:    TransientOfferRequestKind,
 		Request: transientOfferRequest,
 	}
-	accept, err := p.portalProtocol.offer(n, offerReq, &NoPermit{})
+	accept, err := p.portalProtocol.offer(n, offerReq, PermitNotLimit)
 	if err != nil {
 		return "", err
 	}
@@ -519,7 +520,7 @@ func (p *PortalProtocolAPI) TraceOffer(enr string, key string, value string) (in
 		Request: transientOfferRequestWithResult,
 	}
 
-	_, err = p.portalProtocol.offer(n, offerReq, &NoPermit{})
+	_, err = p.portalProtocol.offer(n, offerReq, PermitNotLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -554,7 +555,6 @@ func (p *PortalProtocolAPI) RecursiveFindContent(contentKeyHex string) (*Content
 			UtpTransfer: false,
 		}, nil
 	}
-	p.portalProtocol.Log.Warn("find content err", "contextKey", hexutil.Encode(contentKey), "err", err)
 
 	content, utpTransfer, err := p.portalProtocol.ContentLookup(contentKey, contentId)
 
@@ -683,7 +683,7 @@ func (p *PortalProtocolAPI) PutContent(contentKeyHex, contentHex string) (*PutCo
 					continue
 				}
 
-				_, offerErr := p.portalProtocol.offer(nodeToOffer, offerReq, &NoPermit{})
+				_, offerErr := p.portalProtocol.offer(nodeToOffer, offerReq, PermitNotLimit)
 				if offerErr != nil {
 					p.portalProtocol.Log.Warn("Failed to offer content to lookup node", "node", nodeToOffer.ID(), "err", offerErr)
 					continue
