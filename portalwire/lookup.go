@@ -443,7 +443,8 @@ func (state *contentLookupState) queryNode(node *enode.Node) {
 			FoundAt:     node,
 		}
 
-		if !state.found.Load() && state.found.CompareAndSwap(false, true) {
+		if state.found.CompareAndSwap(false, true) {
+			state.protocol.Log.Info("found content", "node", node.ID(), "contentKey", hexutil.Encode(state.contentKey))
 			select {
 			case state.resultChan <- result:
 			default:

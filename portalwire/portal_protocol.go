@@ -1975,7 +1975,7 @@ var concurrencyLookup = atomic.Int32{}
 func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), lookupContentTimeout)
 	defer cancel()
-
+	start := time.Now()
 	state := newContentLookupState(ctx, cancel, p, contentId, contentKey, nil)
 	defer concurrencyLookup.Add(-1)
 	if err := p.lookupContentPool.Submit(state.run); err != nil {
@@ -1987,12 +1987,13 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 	// 等待结果
 	select {
 	case result := <-state.resultChan:
+        p.Log.Info("get content result", "duration", time.Since(start).Milliseconds(), "contentKey", hexutil.Encode(contentKey))
 		if result != nil {
 			return result.Content, result.UtpTransfer, nil
 		}
 		return nil, false, ErrContentNotFound
 	case <-ctx.Done():
-		return nil, false, fmt.Errorf("content lookup timeout: %w", ctx.Err())
+		return nil, false, fmt.Errorf("content lookup timeout: %w", ctx.Err(), "contentKey", hexutil.Encode(contentKey))
 	}
 }
 
