@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/panjf2000/ants/v2"
 	"io"
 	"math/big"
 	"net"
@@ -17,6 +16,8 @@ import (
 	"sort"
 	"sync/atomic"
 	"time"
+
+	"github.com/panjf2000/ants/v2"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -611,7 +612,7 @@ func (p *PortalProtocol) findContent(ctx context.Context, node *enode.Node, cont
 	talkRequestBytes := make([]byte, 1+len(findContentBytes))
 	talkRequestBytes[0] = FINDCONTENT
 	copy(talkRequestBytes[1:], findContentBytes)
-	talkResp, err := p.DiscV5.TalkRequestWithContext(ctx, node, p.protocolId, talkRequestBytes)
+	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
 	if err != nil {
 		return 0xff, nil, fmt.Errorf("find content in discv5 has err: %s", err.Error())
 	}
