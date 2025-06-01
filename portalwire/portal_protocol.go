@@ -593,7 +593,7 @@ func (p *PortalProtocol) findNodes(node *enode.Node, distances []uint) ([]*enode
 	return p.processNodes(node, talkResp, distances)
 }
 
-func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte, interface{}, error) {
+func (p *PortalProtocol) findContent(ctx context.Context, node *enode.Node, contentKey []byte) (byte, interface{}, error) {
 	findContent := &FindContent{
 		ContentKey: contentKey,
 	}
@@ -610,7 +610,7 @@ func (p *PortalProtocol) findContent(node *enode.Node, contentKey []byte) (byte,
 	talkRequestBytes := make([]byte, 1+len(findContentBytes))
 	talkRequestBytes[0] = FINDCONTENT
 	copy(talkRequestBytes[1:], findContentBytes)
-	talkResp, err := p.DiscV5.TalkRequest(node, p.protocolId, talkRequestBytes)
+	talkResp, err := p.DiscV5.TalkRequestWithContext(ctx, node, p.protocolId, talkRequestBytes)
 	if err != nil {
 		return 0xff, nil, err
 	}
@@ -1490,7 +1490,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 			Content: content,
 		}
 
-		p.Log.Trace(">> CONTENT_RAW/"+p.protocolName, "protocol", p.protocolName, "source", addr, "content", rawContentMsg)
+		p.Log.Trace(">> CONTENT_RAW/"+p.protocolName, "protocol", p.protocolName, "source", addr, "content.len", len(rawContentMsg.Content))
 		if metrics.Enabled() {
 			p.portalMetrics.messagesSentContent.Mark(1)
 		}
@@ -1549,21 +1549,20 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 						p.Log.Error("encode utp content failed", "err", err)
 						return
 					}
-					var n int
-					n, err = conn.Write(writeCtx, content)
+
+					_, err = conn.Write(writeCtx, content)
 					conn.Close()
 					if err != nil {
 						if metrics.Enabled() {
 							p.portalMetrics.utpOutFailWrite.Inc(1)
 						}
-						p.Log.Error("failed to write content to utp connection", "err", err)
+						p.Log.Error("failed to write content to utp connection", "err", err, "destId", n.ID().String(), "destAddr", addr.String(), "connId", connectionId.Send)
 						return
 					}
 
 					if metrics.Enabled() {
 						p.portalMetrics.utpOutSuccess.Inc(1)
 					}
-					p.Log.Trace("wrote content size to utp connection", "n", n)
 					return
 				}
 			}

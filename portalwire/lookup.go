@@ -403,7 +403,7 @@ func (state *contentLookupState) queryNode(node *enode.Node) {
 		return
 	}
 
-	flag, content, err := state.protocol.findContent(node, state.contentKey)
+	flag, content, err := state.protocol.findContent(state.ctx, node, state.contentKey)
 	if err != nil {
 		state.protocol.Log.Debug("content lookup query failed",
 			"node", node.ID(), "err", err)

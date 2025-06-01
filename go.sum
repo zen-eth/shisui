@@ -210,8 +210,8 @@ github.com/onsi/ginkgo v1.14.0/go.mod h1:iSB4RoI2tjJc9BBv4NKIKWKya62Rps+oPG/Lv9k
 github.com/onsi/gomega v1.7.1/go.mod h1:XdKZgCCFLUoM/7CFJVPcG8C1xQ1AJ0vpAezJrB7JYyY=
 github.com/onsi/gomega v1.10.1 h1:o0+MgICZLuZ7xjH7Vx6zS/zcu93/BEp1VwkIW1mEXCE=
 github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1ybHNo=
-github.com/optimism-java/shisui v1.14.6-0.20250526144834-7569b8f3f6b5 h1:pu6xWJifKseNAUB37VC4mn0xceUwQu2ogECgXCHtwEg=
-github.com/optimism-java/shisui v1.14.6-0.20250526144834-7569b8f3f6b5/go.mod h1:Cak0mDbSoH9geLA691ioescz1vXoXchz7rxF1DcNizE=
+github.com/optimism-java/shisui v1.14.6-0.20250601035333-bda51ce0ffcc h1:DB30ET9ucUiO8hJhEUHxPZtP/KcSNVZ/uS7vQITTd54=
+github.com/optimism-java/shisui v1.14.6-0.20250601035333-bda51ce0ffcc/go.mod h1:Cak0mDbSoH9geLA691ioescz1vXoXchz7rxF1DcNizE=
 github.com/optimism-java/zrnt v0.32.4-0.20250528142456-bc543d07ddb2 h1:F40qRmm51C04XA8zZWSd1dZDu57OOPKTyiKpUFuLw68=
 github.com/optimism-java/zrnt v0.32.4-0.20250528142456-bc543d07ddb2/go.mod h1:A0fezkp9Tt3GBLATSPIbuY4ywYESyAuc/FFmPKg8Lqs=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
