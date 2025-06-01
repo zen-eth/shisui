@@ -481,7 +481,6 @@ func TestContentLookup(t *testing.T) {
 	node2.Log = testlog.Logger(t, log.LvlInfo)
 	err = node2.Start()
 	assert.NoError(t, err)
-	fmt.Println(node2.localNode.Node().String())
 
 	node3, err := setupLocalPortalNode(":17779", []*enode.Node{node1.localNode.Node(), node2.localNode.Node()}, DefaultUtpConnSize)
 	assert.NoError(t, err)
@@ -1025,7 +1024,6 @@ func TestHandleFindContent_Ratelimit(t *testing.T) {
 			defer wg.Done()
 			waitGoroutines.Wait()
 			content, err2 := node2.handleFindContent(node1.localNode.Node(), addr, testKey)
-			fmt.Println(hexutil.Encode(content))
 			assert.NoError(t, err2)
 			if len(content) != 2 {
 				permitCountPtr.Add(1)
