@@ -15,6 +15,7 @@ import (
 	"net"
 	"slices"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -598,7 +599,7 @@ func (p *PortalProtocol) findContent(ctx context.Context, node *enode.Node, cont
 		ContentKey: contentKey,
 	}
 
-	p.Log.Trace(">> FIND_CONTENT/"+p.protocolName, "id", node.ID(), "findContent", findContent)
+	p.Log.Info(">> FIND_CONTENT/"+p.protocolName, "id", node.ID(), "findContent", findContent)
 	if metrics.Enabled() {
 		p.portalMetrics.messagesSentFindContent.Mark(1)
 	}
@@ -612,7 +613,7 @@ func (p *PortalProtocol) findContent(ctx context.Context, node *enode.Node, cont
 	copy(talkRequestBytes[1:], findContentBytes)
 	talkResp, err := p.DiscV5.TalkRequestWithContext(ctx, node, p.protocolId, talkRequestBytes)
 	if err != nil {
-		return 0xff, nil, err
+		return 0xff, nil, fmt.Errorf("find content in discv5 has err: %s", err.Error())
 	}
 
 	return p.processContent(node, talkResp)
@@ -1968,15 +1969,19 @@ func (p *PortalProtocol) collectTableNodes(rip net.IP, distances []uint, limit i
 	return nodes
 }
 
+var concurrencyLookup = atomic.Int32{}
+
 func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), lookupContentTimeout)
 	defer cancel()
 
 	state := newContentLookupState(ctx, cancel, p, contentId, contentKey, nil)
-
+	defer concurrencyLookup.Add(-1)
 	if err := p.lookupContentPool.Submit(state.run); err != nil {
 		return nil, false, ErrContentNotFound
 	}
+	c := concurrencyLookup.Add(1)
+	p.Log.Info("submitted a state to contentLookup pool", "concurrency", c)
 
 	// 等待结果
 	select {

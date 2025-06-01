@@ -19,10 +19,11 @@ package portalwire
 import (
 	"context"
 	"errors"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
@@ -352,10 +353,10 @@ func (state *contentLookupState) startAvailableQueries(activeChan chan struct{})
 		default:
 		}
 		if state.found.Load() {
+			state.protocol.Log.Info("content has been found, will not start a new goroutine", "contentKey", hexutil.Encode(state.contentKey))
 			return
 		}
 		state.mu.Lock()
-
 		node := state.candidates.pop()
 		if node == nil {
 			state.mu.Unlock()
@@ -368,6 +369,7 @@ func (state *contentLookupState) startAvailableQueries(activeChan chan struct{})
 		}
 
 		if state.activeQueries >= 3 {
+			state.protocol.Log.Info("exceed active query limit", "contentKey", hexutil.Encode(state.contentKey), "state.activeQueries", state.activeQueries)
 			state.mu.Unlock()
 			return
 		}
@@ -387,7 +389,7 @@ func (state *contentLookupState) startAvailableQueries(activeChan chan struct{})
 }
 
 func (state *contentLookupState) queryNode(node *enode.Node) {
-	// 通知查询完成
+	// notify query done
 	defer func() {
 		select {
 		case state.queryDoneChan <- node:
@@ -402,13 +404,14 @@ func (state *contentLookupState) queryNode(node *enode.Node) {
 	if state.found.Load() {
 		return
 	}
-
+	state.protocol.Log.Info("findContent method start", "node", node.ID(), "contentKey", hexutil.Encode(state.contentKey))
 	flag, content, err := state.protocol.findContent(state.ctx, node, state.contentKey)
 	if err != nil {
-		state.protocol.Log.Debug("content lookup query failed",
+		state.protocol.Log.Error("content lookup query failed",
 			"node", node.ID(), "err", err)
 		return
 	}
+	state.protocol.Log.Info("findContent method end", "node", node.ID(), "contentKey", hexutil.Encode(state.contentKey))
 
 	hexId := "0x" + node.ID().String()
 	if state.trace != nil {
