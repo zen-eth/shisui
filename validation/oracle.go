@@ -3,6 +3,7 @@ package validation
 import (
 	"bytes"
 	"context"
+	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -23,6 +24,8 @@ type Oracle interface {
 	GetBlockHeaderByHash(hash []byte) (*types.Header, error)
 	GetFinalizedStateRoot() ([]byte, error)
 }
+
+var ErrOracle = errors.New("oracle error")
 
 var _ Oracle = &ValidationOracle{}
 
@@ -55,7 +58,7 @@ func (o *ValidationOracle) GetHistoricalSummaries(epoch uint64) (capella.Histori
 	res := &portalwire.ContentInfo{}
 	err = o.client.CallContext(ctx, res, "portal_beaconGetContent", arg)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, ErrOracle)
 	}
 	data, err := hexutil.Decode(res.Content)
 	if err != nil {
@@ -80,7 +83,7 @@ func (o *ValidationOracle) GetBlockHeaderByHash(hash []byte) (*types.Header, err
 	res := &portalwire.ContentInfo{}
 	err := o.client.CallContext(ctx, res, "portal_historyGetContent", arg)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, ErrOracle)
 	}
 	data, err := hexutil.Decode(res.Content)
 	if err != nil {
@@ -99,7 +102,7 @@ func (o *ValidationOracle) GetFinalizedStateRoot() ([]byte, error) {
 	res := ""
 	err := o.client.CallContext(ctx, &res, "portal_beaconFinalizedStateRoot")
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, ErrOracle)
 	}
 	root, err := hexutil.Decode(res)
 	if err != nil {

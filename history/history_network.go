@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/panjf2000/ants/v2"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
@@ -207,6 +208,9 @@ func (h *Network) processContentLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case contentElement := <-contentChan:
+			if metrics.Enabled() {
+				h.portalProtocol.GetMetrics().ContentQueueGauge.Dec(1)
+			}
 			err := antsPool.Submit(func() {
 				err := h.validateContents(contentElement.ContentKeys, contentElement.Contents)
 				if err != nil {
@@ -240,6 +244,13 @@ func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) erro
 		}
 		err = h.validator.ValidateContent(contentKey, content)
 		if err != nil {
+			if metrics.Enabled() {
+				if errors.Is(err, validation.ErrOracle) {
+					h.portalProtocol.GetMetrics().ValidationOracleFailed.Inc(1)
+				} else {
+					h.portalProtocol.GetMetrics().ValidationNormalFailed.Inc(1)
+				}
+			}
 			return fmt.Errorf("content validate failed with content key %x, err is %w", contentKey, err)
 		}
 		_ = h.portalProtocol.Put(contentKey, contentId, content)
