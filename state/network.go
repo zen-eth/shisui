@@ -2,9 +2,11 @@ package state
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
 	"github.com/zen-eth/shisui/portalwire"
@@ -54,6 +56,9 @@ func (h *Network) processContentLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case contentElement := <-contentChan:
+			if metrics.Enabled() {
+				h.portalProtocol.GetMetrics().ContentQueueGauge.Dec(1)
+			}
 			err := h.validateContents(contentElement.ContentKeys, contentElement.Contents)
 			if err != nil {
 				continue
@@ -82,6 +87,13 @@ func (h *Network) validateContents(contentKeys [][]byte, contents [][]byte) erro
 		contentKey := contentKeys[i]
 		err := h.validator.ValidateContent(contentKey, content)
 		if err != nil {
+			if metrics.Enabled() {
+				if errors.Is(err, validation.ErrOracle) {
+					h.portalProtocol.GetMetrics().ValidationOracleFailed.Inc(1)
+				} else {
+					h.portalProtocol.GetMetrics().ValidationNormalFailed.Inc(1)
+				}
+			}
 			h.log.Error("content validate failed", "contentKey", hexutil.Encode(contentKey), "err", err)
 			return err
 		}

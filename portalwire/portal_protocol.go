@@ -749,7 +749,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 
 				if err != nil {
 					if metrics.Enabled() {
-						p.portalMetrics.utpOutFailConn.Inc(1)
+						p.portalMetrics.utpOutOfferFailConn.Inc(1)
 					}
 					if resultChan != nil {
 						resultChan <- &OfferTrace{
@@ -767,7 +767,7 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				conn.Close()
 				if err != nil {
 					if metrics.Enabled() {
-						p.portalMetrics.utpOutFailWrite.Inc(1)
+						p.portalMetrics.utpOutOfferFailWrite.Inc(1)
 					}
 					if resultChan != nil {
 						resultChan <- &OfferTrace{
@@ -780,7 +780,6 @@ func (p *PortalProtocol) processOffer(target *enode.Node, resp []byte, request *
 				p.Log.Trace(">> CONTENT/"+p.protocolName, "id", target.ID(), "size", written)
 				if metrics.Enabled() {
 					p.portalMetrics.messagesSentContent.Mark(1)
-					p.portalMetrics.utpOutSuccess.Inc(1)
 				}
 				if resultChan != nil {
 					resultChan <- &OfferTrace{
@@ -849,7 +848,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		conn, err := p.Utp.DialWithCid(connctx, target, connId)
 		if err != nil {
 			if metrics.Enabled() {
-				p.portalMetrics.utpInFailConn.Inc(1)
+				p.portalMetrics.utpOutContentFailConn.Inc(1)
 			}
 			return 0xff, nil, err
 		}
@@ -861,7 +860,7 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		n, err := conn.ReadToEOF(readCtx, &data)
 		if err != nil {
 			if metrics.Enabled() {
-				p.portalMetrics.utpInFailRead.Inc(1)
+				p.portalMetrics.utpInContentFailRead.Inc(1)
 			}
 			return 0xff, nil, err
 		}
@@ -869,13 +868,12 @@ func (p *PortalProtocol) processContent(target *enode.Node, resp []byte) (byte, 
 		data, err = p.decodeUtpContent(target, data)
 		if err != nil {
 			if metrics.Enabled() {
-				p.portalMetrics.utpOutFailConn.Inc(1)
+				p.portalMetrics.utpContentDecodedError.Inc(1)
 			}
 			return 0xff, nil, err
 		}
 		if metrics.Enabled() {
 			p.portalMetrics.messagesReceivedContent.Mark(1)
-			p.portalMetrics.utpInSuccess.Inc(1)
 		}
 		return resp[1], data, nil
 	case ContentEnrsSelector:
@@ -1509,7 +1507,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 					conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
 					if err != nil {
 						if metrics.Enabled() {
-							p.portalMetrics.utpOutFailConn.Inc(1)
+							p.portalMetrics.utpInContentFailConn.Inc(1)
 						}
 						p.Log.Error("failed to accept utp connection for handle find content", "connId", connectionId.Send, "err", err)
 						return
@@ -1520,7 +1518,7 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 					content, err = p.encodeUtpContent(n, content)
 					if err != nil {
 						if metrics.Enabled() {
-							p.portalMetrics.utpOutFailConn.Inc(1)
+							p.portalMetrics.utpContentDecodedError.Inc(1)
 						}
 						p.Log.Error("encode utp content failed", "err", err)
 						return
@@ -1530,14 +1528,10 @@ func (p *PortalProtocol) handleFindContent(n *enode.Node, addr *net.UDPAddr, req
 					conn.Close()
 					if err != nil {
 						if metrics.Enabled() {
-							p.portalMetrics.utpOutFailWrite.Inc(1)
+							p.portalMetrics.utpOutContentFailWrite.Inc(1)
 						}
 						p.Log.Error("failed to write content to utp connection", "err", err)
 						return
-					}
-
-					if metrics.Enabled() {
-						p.portalMetrics.utpOutSuccess.Inc(1)
 					}
 					p.Log.Trace("wrote content size to utp connection", "n", n)
 					return
@@ -1615,7 +1609,7 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						conn, err = p.Utp.AcceptWithCid(connectCtx, connectionId)
 						if err != nil {
 							if metrics.Enabled() {
-								p.portalMetrics.utpInFailConn.Inc(1)
+								p.portalMetrics.utpInOfferFailConn.Inc(1)
 							}
 							p.Log.Error("failed to accept utp connection for handle offer", "connId", connectionId.Send, "err", err)
 							return
@@ -1627,6 +1621,13 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						readCtx, readCancel := context.WithTimeout(bctx, defaultUTPReadTimeout)
 						defer readCancel()
 						n, err = conn.ReadToEOF(readCtx, &data)
+						if err != nil {
+							if metrics.Enabled() {
+								p.portalMetrics.utpInOfferFailRead.Inc(1)
+							}
+							p.Log.Error("failed to read content for handle offer", "connId", connectionId.Send, "err", err)
+							return
+						}
 						conn.Close()
 						// release permit fast
 						releasePermit.Release()
@@ -1639,10 +1640,6 @@ func (p *PortalProtocol) handleOffer(node *enode.Node, addr *net.UDPAddr, reques
 						if err != nil {
 							p.Log.Error("failed to handle offered Contents", "err", err)
 							return
-						}
-
-						if metrics.Enabled() {
-							p.portalMetrics.utpInSuccess.Inc(1)
 						}
 					}
 				}
@@ -1673,7 +1670,7 @@ func (p *PortalProtocol) handleOfferedContents(id enode.ID, keys [][]byte, paylo
 	contents, err := decodeContents(payload)
 	if err != nil {
 		if metrics.Enabled() {
-			p.portalMetrics.contentDecodedFalse.Inc(1)
+			p.portalMetrics.utpContentDecodedError.Inc(1)
 		}
 		return err
 	}
@@ -1681,9 +1678,6 @@ func (p *PortalProtocol) handleOfferedContents(id enode.ID, keys [][]byte, paylo
 	keyLen := len(keys)
 	contentLen := len(contents)
 	if keyLen != contentLen {
-		if metrics.Enabled() {
-			p.portalMetrics.contentDecodedFalse.Inc(1)
-		}
 		return fmt.Errorf("content keys len %d doesn't match content values len %d", keyLen, contentLen)
 	}
 
@@ -1696,11 +1690,11 @@ func (p *PortalProtocol) handleOfferedContents(id enode.ID, keys [][]byte, paylo
 	select {
 	case p.contentQueue <- contentElement:
 		if metrics.Enabled() {
-			p.portalMetrics.contentDecodedTrue.Inc(1)
+			p.portalMetrics.ContentQueueGauge.Inc(1)
 		}
 	default:
 		if metrics.Enabled() {
-			p.portalMetrics.contentDiscard.Inc(1)
+			p.portalMetrics.contentQueueDiscardCount.Inc(1)
 		}
 	}
 	return nil
@@ -1805,6 +1799,9 @@ func (p *PortalProtocol) offerWorker() {
 		case <-p.closeCtx.Done():
 			return
 		case offerRequestWithNode := <-p.offerQueue:
+			if metrics.Enabled() {
+				p.portalMetrics.offerQueueGauge.Dec(1)
+			}
 			p.Log.Trace("offerWorker", "offerRequestWithNode", offerRequestWithNode)
 			_, err := p.offer(offerRequestWithNode.Node, offerRequestWithNode.Request, offerRequestWithNode.permit)
 			if err != nil {
@@ -1934,6 +1931,9 @@ func (p *PortalProtocol) collectTableNodes(rip net.IP, distances []uint, limit i
 }
 
 func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bool, error) {
+	if metrics.Enabled() {
+		p.portalMetrics.contentLookupGauge.Inc(1)
+	}
 	lookupContext, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -1961,6 +1961,9 @@ func (p *PortalProtocol) ContentLookup(contentKey, contentId []byte) ([]byte, bo
 	close(resChan)
 
 	wg.Wait()
+	if metrics.Enabled() {
+		p.portalMetrics.contentLookupGauge.Dec(1)
+	}
 	if hasResult == 1 {
 		return result.Content, result.UtpTransfer, nil
 	}
@@ -2069,8 +2072,14 @@ func (p *PortalProtocol) TraceContentLookup(contentKey, contentId []byte) (*Trac
 }
 
 func (p *PortalProtocol) contentLookupWorker(n *enode.Node, contentKey []byte, resChan chan<- *traceContentInfoResp, cancel context.CancelFunc, done *int32) ([]*enode.Node, error) {
+	if metrics.Enabled() {
+		p.portalMetrics.contentLookupWorkerGauge.Inc(1)
+	}
 	wrapedNode := make([]*enode.Node, 0)
 	flag, content, err := p.findContent(n, contentKey)
+	if metrics.Enabled() {
+		p.portalMetrics.contentLookupWorkerGauge.Dec(1)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -2219,10 +2228,13 @@ func (p *PortalProtocol) GossipAndReturnPeers(srcNodeId *enode.ID, contentKeys [
 		}
 		select {
 		case p.offerQueue <- offerRequestWithNode:
+			if metrics.Enabled() {
+				p.portalMetrics.offerQueueGauge.Inc(1)
+			}
 		default:
 			p.Log.Warn("offer queue is full, drop offer request", "network", p.protocolName, "nodeId", n.ID(), "addr", n.IPAddr().String())
 			if metrics.Enabled() {
-				p.portalMetrics.gossipDropCount.Inc(1)
+				p.portalMetrics.offerQueueDiscardCount.Inc(1)
 			}
 		}
 	}
@@ -2321,4 +2333,8 @@ func lookupDistances(target, dest enode.ID) (dists []uint) {
 		}
 	}
 	return dists
+}
+
+func (p *PortalProtocol) GetMetrics() *portalMetrics {
+	return p.portalMetrics
 }

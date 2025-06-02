@@ -3,9 +3,10 @@ package portalwire
 import (
 	"database/sql"
 	"errors"
+	"strings"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"strings"
 )
 
 var ErrMetricsDisabled = errors.New("metrics are disabled")
@@ -29,21 +30,30 @@ type portalMetrics struct {
 	messagesSentPing        *metrics.Meter
 	messagesSentPong        *metrics.Meter
 
-	utpInFailConn     *metrics.Counter
-	utpInFailRead     *metrics.Counter
-	utpInFailDeadline *metrics.Counter
-	utpInSuccess      *metrics.Counter
+	utpInContentFailConn *metrics.Counter
+	utpInOfferFailConn   *metrics.Counter
+	utpInContentFailRead *metrics.Counter
+	utpInOfferFailRead   *metrics.Counter
 
-	utpOutFailConn     *metrics.Counter
-	utpOutFailWrite    *metrics.Counter
-	utpOutFailDeadline *metrics.Counter
-	utpOutSuccess      *metrics.Counter
+	utpOutContentFailConn  *metrics.Counter
+	utpOutOfferFailConn    *metrics.Counter
+	utpOutContentFailWrite *metrics.Counter
+	utpOutOfferFailWrite   *metrics.Counter
 
-	contentDecodedTrue  *metrics.Counter
-	contentDecodedFalse *metrics.Counter
-	contentDiscard      *metrics.Counter
+	utpRateLimitCount *metrics.Counter
 
-	gossipDropCount *metrics.Counter
+	utpContentDecodedError *metrics.Counter
+
+	contentQueueDiscardCount *metrics.Counter
+	offerQueueDiscardCount   *metrics.Counter
+
+	ValidationNormalFailed *metrics.Counter
+	ValidationOracleFailed *metrics.Counter
+
+	contentLookupGauge       *metrics.Gauge
+	contentLookupWorkerGauge *metrics.Gauge
+	ContentQueueGauge        *metrics.Gauge
+	offerQueueGauge          *metrics.Gauge
 }
 
 func newPortalMetrics(protocolName string) *portalMetrics {
@@ -64,18 +74,24 @@ func newPortalMetrics(protocolName string) *portalMetrics {
 		messagesSentOffer:           metrics.NewRegisteredMeter("portal/"+protocolName+"/sent/offer", nil),
 		messagesSentPing:            metrics.NewRegisteredMeter("portal/"+protocolName+"/sent/ping", nil),
 		messagesSentPong:            metrics.NewRegisteredMeter("portal/"+protocolName+"/sent/pong", nil),
-		utpInFailConn:               metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/inbound/fail_conn", nil),
-		utpInFailRead:               metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/inbound/fail_read", nil),
-		utpInFailDeadline:           metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/inbound/fail_deadline", nil),
-		utpInSuccess:                metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/inbound/success", nil),
-		utpOutFailConn:              metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/outbound/fail_conn", nil),
-		utpOutFailWrite:             metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/outbound/fail_write", nil),
-		utpOutFailDeadline:          metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/outbound/fail_deadline", nil),
-		utpOutSuccess:               metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/outbound/success", nil),
-		contentDecodedTrue:          metrics.NewRegisteredCounter("portal/"+protocolName+"/content/decoded/true", nil),
-		contentDecodedFalse:         metrics.NewRegisteredCounter("portal/"+protocolName+"/content/decoded/false", nil),
-		contentDiscard:              metrics.NewRegisteredCounter("portal/"+protocolName+"/content/gossip/discard", nil),
-		gossipDropCount:             metrics.NewRegisteredCounter("portal/"+protocolName+"/gossip/drop", nil),
+		utpInContentFailConn:        metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/content/inbound/fail_conn", nil),
+		utpInContentFailRead:        metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/content/inbound/fail_read", nil),
+		utpOutContentFailConn:       metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/content/outbound/fail_conn", nil),
+		utpOutContentFailWrite:      metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/content/outbound/fail_write", nil),
+		utpInOfferFailConn:          metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/offer/inbound/fail_conn", nil),
+		utpInOfferFailRead:          metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/offer/inbound/fail_read", nil),
+		utpOutOfferFailConn:         metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/offer/outbound/fail_conn", nil),
+		utpOutOfferFailWrite:        metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/offer/outbound/fail_write", nil),
+		utpContentDecodedError:      metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/decoded/false", nil),
+		contentQueueDiscardCount:    metrics.NewRegisteredCounter("portal/"+protocolName+"/content/queue/discard", nil),
+		utpRateLimitCount:           metrics.NewRegisteredCounter("portal/"+protocolName+"/utp/limit", nil),
+		offerQueueDiscardCount:      metrics.NewRegisteredCounter("portal/"+protocolName+"/offer/queue/discard", nil),
+		ValidationNormalFailed:      metrics.NewRegisteredCounter("portal/"+protocolName+"/validation/fail", nil),
+		ValidationOracleFailed:      metrics.NewRegisteredCounter("portal/"+protocolName+"/validation/oracle/fail", nil),
+		contentLookupGauge:          metrics.NewRegisteredGauge("portal/"+protocolName+"/content/lookup", nil),
+		contentLookupWorkerGauge:    metrics.NewRegisteredGauge("portal/"+protocolName+"/content/lookup/worker", nil),
+		ContentQueueGauge:           metrics.NewRegisteredGauge("portal/"+protocolName+"/content/queue", nil),
+		offerQueueGauge:             metrics.NewRegisteredGauge("portal/"+protocolName+"/offer/queue", nil),
 	}
 }
 
