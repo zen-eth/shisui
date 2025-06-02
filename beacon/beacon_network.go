@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	ssz "github.com/ferranbt/fastssz"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	"github.com/protolambda/zrnt/eth2/configs"
@@ -182,6 +183,13 @@ func (bn *Network) validateContents(contentKeys [][]byte, contents [][]byte) err
 		contentKey := contentKeys[i]
 		err := bn.validator.ValidateContent(contentKey, content)
 		if err != nil {
+			if metrics.Enabled() {
+				if errors.Is(err, validation.ErrOracle) {
+					bn.portalProtocol.GetMetrics().ValidationOracleFailed.Inc(1)
+				} else {
+					bn.portalProtocol.GetMetrics().ValidationNormalFailed.Inc(1)
+				}
+			}
 			bn.log.Error("content validate failed", "contentKey", hexutil.Encode(contentKey), "err", err)
 			return fmt.Errorf("content validate failed with content key %x", contentKey)
 		}
@@ -202,6 +210,9 @@ func (bn *Network) processContentLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case contentElement := <-contentChan:
+			if metrics.Enabled() {
+				bn.portalProtocol.GetMetrics().ContentQueueGauge.Dec(1)
+			}
 			err := bn.validateContents(contentElement.ContentKeys, contentElement.Contents)
 			if err != nil {
 				bn.log.Error("validate content failed", "err", err)
