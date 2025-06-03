@@ -3,6 +3,7 @@ package history
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -31,6 +32,8 @@ var (
 	ErrInvalidBlockHash         = errors.New("invalid block hash")
 	ErrInvalidBlockNumber       = errors.New("invalid block number")
 	ErrInternalError            = errors.New("internal error")
+
+	ErrInvalidContentKeySelector = errors.New("invalid contentKey selector")
 )
 
 var emptyReceiptHash = hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
@@ -115,6 +118,44 @@ func (h *Network) GetBlockHeader(blockHash []byte) (*types.Header, error) {
 		h.log.Error("failed to store content in getBlockHeader", "contentKey", hexutil.Encode(contentKey), "err", err)
 	}
 	return headerWithProof.Header, nil
+}
+
+func (h *Network) getBlockHashByNumber(number uint64) ([]byte, error) {
+	numArray := make([]byte, 8)
+	binary.LittleEndian.PutUint64(numArray, number)
+	contentKey := history.NewContentKey(history.BlockHeaderNumberType, numArray).Encode()
+	contentId := h.portalProtocol.ToContentId(contentKey)
+	h.log.Trace("contentKey convert to contentId", "contentKey", hexutil.Encode(contentKey), "contentId", hexutil.Encode(contentId))
+
+	blockHash, err := h.portalProtocol.Get(contentKey, contentId)
+	// other error
+	if err != nil && !errors.Is(err, storage.ErrContentNotFound) {
+		return nil, err
+	}
+	// no error
+	if err == nil {
+		return blockHash, nil
+	}
+	// no content in local storage
+	content, _, err := h.portalProtocol.ContentLookup(contentKey, contentId)
+	if err != nil {
+		h.log.Error("getBlockHashByNumber failed", "contentKey", hexutil.Encode(contentKey), "err", err)
+		return nil, ErrInternalError
+	}
+
+	err = h.portalProtocol.Put(contentKey, contentId, content)
+	if err != nil {
+		h.log.Error("failed to store content in getBlockHashByNumber", "contentKey", hexutil.Encode(contentKey), "err", err)
+	}
+	return content, nil
+}
+
+func (h *Network) GetBlockHeaderByNumber(number uint64) (*types.Header, error) {
+	blockHash, err := h.getBlockHashByNumber(number)
+	if err != nil {
+		return nil, err
+	}
+	return h.GetBlockHeader(blockHash)
 }
 
 func (h *Network) GetBlockBody(blockHash []byte) (*types.Body, error) {
