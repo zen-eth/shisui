@@ -20,7 +20,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/panjf2000/ants/v2 v2.11.3
-	github.com/panjf2000/gnet/v2 v2.8.0
+	github.com/panjf2000/gnet/v2 v2.9.0
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.34.1
 	github.com/protolambda/ztyp v0.2.2
